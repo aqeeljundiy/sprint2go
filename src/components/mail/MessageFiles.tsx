@@ -21,7 +21,7 @@ import '../../mailFiles.css';
 export function MessageFiles({ thread, message }: { thread: Thread; message: Message }) {
   const phone = usePhone();
   const [drive] = useStored('drive');
-  const files = (message.attachments ?? []).filter((a) => !a.inline);
+  const files = (message.attachments ?? []).filter((a) => !a.inline && !a.cid); // pictures inside the words stay there
   const [open, setOpen] = useState<number | null>(null);
   const [saving, setSaving] = useState<{ atts: Attachment[]; anchor: HTMLElement | null } | null>(null);
   const anchorRef = useRef<HTMLElement | null>(null);

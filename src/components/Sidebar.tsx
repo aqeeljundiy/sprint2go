@@ -88,6 +88,8 @@ interface Props {
   onTempMenu?: (a: Account, anchor: HTMLElement) => void;
   view: View;
   labels: Label[];
+  /** Mail's Labels under the folders (src/components/mail/Labels.tsx: the tree, folds, + and each label's menu). */
+  labelNav?: ReactNode;
   clients?: { id: string; name: string; color: string }[];
   onClient?: (id: string) => void;
   counts: Partial<Record<FolderId, number>>;
@@ -106,6 +108,7 @@ interface Props {
     email: string;
     onAccounts: () => void;
     labels: Label[]; // the ones in use
+    labelNav?: ReactNode; // Mail's own Labels section (replaces `labels` when given)
     tagUnread: Record<string, number>; // `label:<id>` / `project:<id>`: unread in the inbox
     todo: number;
     onSettings: () => void;
@@ -278,6 +281,8 @@ export function Sidebar(props: Props) {
                 </nav>
                 {props.savedNav}
 
+                {props.labelNav}
+
                 {(!!props.clients?.length || props.onNewProject) && (
                   <>
                     <div className="nav-heading sb-label">{term.Many}</div>
@@ -367,7 +372,8 @@ function PhoneMailDrawer(props: Props & { pm: NonNullable<Props['phoneMail']>; i
           {item('trash', Trash2, folderName('trash'), isActive({ kind: 'folder', id: 'trash' }), () => pick({ kind: 'folder', id: 'trash' }))}
         </nav>
         {props.savedNav}
-        {pm.labels.length > 0 && (
+        {pm.labelNav}
+        {!pm.labelNav && pm.labels.length > 0 && (
           <>
             <div className="gm-sep" />
             <div className="gm-head">{t('Labels')}</div>
@@ -378,7 +384,7 @@ function PhoneMailDrawer(props: Props & { pm: NonNullable<Props['phoneMail']>; i
         )}
         {(props.clients?.length || props.onNewTemp) && (
           <>
-            {pm.labels.length === 0 && <div className="gm-sep" />}
+            {pm.labels.length === 0 && !pm.labelNav && <div className="gm-sep" />}
             {!!props.clients?.length && <div className="gm-head">{term.Many}</div>}
             <nav className="gm-nav-group" aria-label={term.Many}>
               {props.clients?.map((c) => item(`project:${c.id}`, Folder, c.name, isActive({ kind: 'project', id: c.id }), () => pick({ kind: 'project', id: c.id }), pm.tagUnread[`project:${c.id}`], c.color))}

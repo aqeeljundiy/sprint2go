@@ -246,7 +246,7 @@ export function spanOf(v: string): number {
 const people = (ps: { name?: string; email?: string }[] | undefined) => (ps ?? []).map((p) => `${lower(p.name)} <${lower(p.email)}>`).join(' ');
 const plain = (html?: string) => (html ?? '').replace(/<style[\s\S]*?<\/style>|<script[\s\S]*?<\/script>/gi, ' ').replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&');
 /** What a plain word looks through: the subject, the people, the text and the file names. */
-const allText = (t: Pick<Thread, 'subject'>, m: Message) => lower(`${t.subject} ${people([m.from])} ${people(m.to)} ${m.body ?? ''} ${m.html && !m.body ? plain(m.html) : ''} ${(m.attachments ?? []).map((a) => a.name).join(' ')}`);
+const allText = (t: Pick<Thread, 'subject'>, m: Message) => lower(`${t.subject} ${people([m.from])} ${people(m.to)} ${people(m.cc ?? [])} ${m.body ?? ''} ${m.html && !m.body ? plain(m.html) : ''} ${(m.attachments ?? []).map((a) => a.name).join(' ')}`);
 /** A word matches at a word start or anywhere (Gmail matches whole words; people expect parts too). */
 const has = (hay: string, needle: string) => !!needle && hay.includes(lower(needle));
 const personMatch = (ps: { name?: string; email?: string }[] | undefined, v: string, ctx: QueryCtx) => {
@@ -268,10 +268,11 @@ function termHit(n: Extract<QNode, { k: 'term' }>, t: MatchThread, m: Message, c
       return n.exact ? lower(allText(t, m).replace(/\s+/g, ' ')).includes(lv.replace(/\s+/g, ' ')) : has(allText(t, m), lv);
     case 'from':
       return personMatch([m.from], v, ctx);
-    case 'to':
-    case 'cc': // received mail keeps Cc with To
+    case 'to': // Gmail's to: covers Cc too
     case 'deliveredto':
-      return personMatch(m.to, v, ctx);
+      return personMatch([...m.to, ...(m.cc ?? [])], v, ctx);
+    case 'cc': // Cc is kept apart from To (src/mailPeople.ts); older mail folded it into To
+      return personMatch(m.cc?.length ? m.cc : m.to, v, ctx);
     case 'bcc':
       return personMatch(m.bcc, v, ctx);
     case 'subject':

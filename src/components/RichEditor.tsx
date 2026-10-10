@@ -38,7 +38,20 @@ interface Props {
    * with its address or null; they're put where the caret was. Without it, pasted pictures are left out as before.
    */
   onImages?: (files: File[]) => Promise<({ url: string; name: string } | null)[]>;
+  /** The browser's spell check, in this language ('off': none). Missing: the browser's default. */
+  spellLang?: 'en' | 'id' | 'off';
+  /** Plain text: no toolbar, and pasted text loses its formatting. */
+  plain?: boolean;
+  /**
+   * Smart compose: given the text before the caret, the words that may come next (or nothing). They show greyed after
+   * the caret; Tab (or a tap on them) takes them, anything else makes them go.
+   */
+  suggest?: (before: string) => Promise<string | null>;
 }
+
+/** The greyed suggestion after the caret (smart compose). Never part of what the editor holds. */
+const GHOST = 'sc-ghost';
+const removeGhosts = (root: HTMLElement | null) => root?.querySelectorAll(`.${GHOST}`).forEach((g) => g.remove());
 
 type Cmd = 'bold' | 'italic' | 'underline' | 'strikeThrough' | 'insertUnorderedList' | 'insertOrderedList';
 
@@ -65,7 +78,7 @@ const SIZES = [
 const exec = (cmd: string, value?: string) => document.execCommand(cmd, false, value);
 
 export const RichEditor = forwardRef<RichEditorHandle, Props>(function RichEditor(
-  { initialHtml = '', placeholder, autoFocus, onChange, onSubmit, extra, onImages },
+  { initialHtml = '', placeholder, autoFocus, onChange, onSubmit, extra, spellLang, plain = false, suggest, onImages },
   ref,
 ) {
   const el = useRef<HTMLDivElement>(null);
@@ -83,6 +96,7 @@ export const RichEditor = forwardRef<RichEditorHandle, Props>(function RichEdito
     },
     setHtml: (html: string) => {
       if (!el.current) return;
+      dropGhost();
       el.current.innerHTML = sanitize(html);
       el.current.classList.remove('ai-in');
       void el.current.offsetWidth; // restart the highlight animation
@@ -109,7 +123,13 @@ export const RichEditor = forwardRef<RichEditorHandle, Props>(function RichEdito
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const emit = useCallback(() => {
-    const html = el.current?.innerHTML ?? '';
+    // The suggestion isn't written yet: what the editor holds leaves it out.
+    let html = el.current?.innerHTML ?? '';
+    if (el.current?.querySelector(`.${GHOST}`)) {
+      const copy = el.current.cloneNode(true) as HTMLElement;
+      removeGhosts(copy);
+      html = copy.innerHTML;
+    }
     const text = htmlToText(html);
     setEmpty(!text && !/<(ul|ol|blockquote|img)/.test(html));
     onChange(html, text);
@@ -128,6 +148,87 @@ export const RichEditor = forwardRef<RichEditorHandle, Props>(function RichEdito
     document.addEventListener('selectionchange', refreshActive);
     return () => document.removeEventListener('selectionchange', refreshActive);
   }, [refreshActive]);
+
+  /* ---------- smart compose ---------- */
+  const ghost = useRef<{ el: HTMLSpanElement; text: string } | null>(null);
+  const asked = useRef(0);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const suggestRef = useRef(suggest);
+  suggestRef.current = suggest;
+  function dropGhost() {
+    if (timer.current) clearTimeout(timer.current);
+    asked.current++;
+    if (ghost.current) {
+      ghost.current.el.remove();
+      ghost.current = null;
+    }
+    removeGhosts(el.current);
+  }
+  /** The caret is at the end of its line, with nothing selected: the only place a suggestion makes sense. */
+  const caretAtLineEnd = () => {
+    const sel = getSelection();
+    if (!sel || !sel.isCollapsed || !sel.rangeCount || !el.current?.contains(sel.anchorNode)) return null;
+    const r = sel.getRangeAt(0);
+    const block = (r.startContainer.nodeType === 1 ? (r.startContainer as Element) : r.startContainer.parentElement)?.closest('p, div, li, blockquote') ?? el.current;
+    const after = document.createRange();
+    after.setStart(r.endContainer, r.endOffset);
+    after.setEndAfter(block === el.current ? el.current.lastChild ?? el.current : block);
+    if (after.toString().trim()) return null;
+    const before = document.createRange();
+    before.setStart(el.current, 0);
+    before.setEnd(r.startContainer, r.startOffset);
+    return { range: r, before: before.toString() };
+  };
+  const planSuggestion = () => {
+    dropGhost();
+    if (!suggestRef.current) return;
+    const id = asked.current;
+    timer.current = setTimeout(async () => {
+      const at = caretAtLineEnd();
+      if (!at || at.before.trim().length < 2) return;
+      const words = await suggestRef.current?.(at.before).catch(() => null);
+      if (id !== asked.current || !words || !el.current) return;
+      const now = caretAtLineEnd();
+      if (!now || now.before !== at.before) return;
+      const span = document.createElement('span');
+      span.className = GHOST;
+      span.contentEditable = 'false';
+      span.setAttribute('aria-hidden', 'true');
+      span.dataset.tab = 'Tab';
+      span.textContent = words;
+      const r = now.range.cloneRange();
+      r.insertNode(span);
+      // The caret stays before the suggestion.
+      const sel = getSelection();
+      const back = document.createRange();
+      back.setStartBefore(span);
+      back.collapse(true);
+      sel?.removeAllRanges();
+      sel?.addRange(back);
+      ghost.current = { el: span, text: words };
+    }, 380);
+  };
+  /** Takes the suggestion: its words become text at the caret (Undo takes them back). */
+  const acceptGhost = () => {
+    const g = ghost.current;
+    if (!g) return false;
+    const sel = getSelection();
+    const r = document.createRange();
+    r.setStartBefore(g.el);
+    r.collapse(true);
+    sel?.removeAllRanges();
+    sel?.addRange(r);
+    g.el.remove();
+    ghost.current = null;
+    exec('insertText', g.text);
+    emit();
+    planSuggestion();
+    return true;
+  };
+  useEffect(() => () => dropGhost(), []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!suggest) dropGhost();
+  }, [!!suggest]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const saveSelection = () => {
     const sel = getSelection();
@@ -193,7 +294,8 @@ export const RichEditor = forwardRef<RichEditorHandle, Props>(function RichEdito
   const keep = (e: React.MouseEvent) => e.preventDefault();
 
   return (
-    <div className="rich">
+    <div className={`rich${plain ? ' plain' : ''}`}>
+      {!plain && (
       <div className="rich-toolbar" onMouseDown={keep}>
         <div className="tb-group">
           <button className={`tb ${popup === 'size' ? 'on' : ''}`} title={t('Text size')} onClick={() => openPopup('size')}>
@@ -300,6 +402,7 @@ export const RichEditor = forwardRef<RichEditorHandle, Props>(function RichEdito
           </div>
         )}
       </div>
+      )}
 
       <div
         ref={el}
@@ -307,10 +410,20 @@ export const RichEditor = forwardRef<RichEditorHandle, Props>(function RichEdito
         contentEditable
         suppressContentEditableWarning
         data-placeholder={placeholder}
-        onInput={emit}
-        onBlur={saveSelection}
+        spellCheck={spellLang ? spellLang !== 'off' : undefined}
+        lang={spellLang && spellLang !== 'off' ? spellLang : undefined}
+        autoCorrect={spellLang === 'off' ? 'off' : undefined}
+        onInput={() => (emit(), planSuggestion())}
+        onBlur={() => (dropGhost(), saveSelection())}
+        onMouseDown={(e) => {
+          // A tap on the greyed words takes them (phones have no Tab).
+          if ((e.target as HTMLElement).closest?.(`.${GHOST}`)) {
+            e.preventDefault();
+            acceptGhost();
+          } else dropGhost();
+        }}
         onDrop={(e) => {
-          if (!onImages || ![...e.dataTransfer.files].some((f) => f.type.startsWith('image/'))) return;
+          if (plain || !onImages || ![...e.dataTransfer.files].some((f) => f.type.startsWith('image/'))) return;
           e.preventDefault();
           e.stopPropagation();
           // Where it was dropped, not where the caret was.
@@ -319,6 +432,14 @@ export const RichEditor = forwardRef<RichEditorHandle, Props>(function RichEdito
           takeImages(e.dataTransfer.files, true);
         }}
         onKeyDown={(e) => {
+          if (ghost.current) {
+            if (e.key === 'Tab' && !e.shiftKey) {
+              e.preventDefault();
+              acceptGhost();
+              return;
+            }
+            if (!['Shift', 'Control', 'Alt', 'Meta'].includes(e.key)) dropGhost();
+          }
           if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
             e.preventDefault();
             onSubmit?.();
@@ -328,6 +449,14 @@ export const RichEditor = forwardRef<RichEditorHandle, Props>(function RichEdito
           }
         }}
         onPaste={(e) => {
+          dropGhost();
+          if (plain) {
+            // Plain text mode: what's pasted comes in as text.
+            e.preventDefault();
+            exec('insertText', e.clipboardData.getData('text/plain'));
+            emit();
+            return;
+          }
           if (onImages && takeImages(e.clipboardData.files)) return e.preventDefault();
           const html = e.clipboardData.getData('text/html');
           if (!html) return;

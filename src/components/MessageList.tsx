@@ -1,7 +1,7 @@
 import { forwardRef, useEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { lastTracked, summarize } from '../tracking';
-import { Archive, Check, Clock, Eye, EyeOff, FileText, Inbox, Mail, MailOpen, Menu, MessageSquare, MoreHorizontal, Paperclip, PenLine, RefreshCw, Search, ShieldAlert, Star, Trash2, X } from 'lucide-react';
+import { Archive, Check, Clock, Eye, EyeOff, FileText, Inbox, Mail, MailOpen, Menu, MessageSquare, MoreHorizontal, Paperclip, PenLine, RefreshCw, Search, ShieldAlert, Star, Tag, Trash2, X } from 'lucide-react';
 import type { Client, Label, Person, Thread, User } from '../types';
 import { threadHasAttachment } from '../mailAttachments';
 import { lastMessage, listDate, participants, relative, snippet } from '../utils';
@@ -85,6 +85,10 @@ interface Props {
   /** Phones: what Mail's search looks through (every folder but Spam and Trash), and "All apps" for the suite's search. */
   searchable?: Thread[];
   onAllApps?: () => void;
+  /** Labels and filters (src/components/mail/Organize.tsx): "Label as…" and "Filter messages like this" for chosen
+   * emails, and "Create filter from this search". */
+  moreActions?: (list: Thread[], anchor?: React.RefObject<HTMLElement | null>) => SheetAction[];
+  onFilterSearch?: (q: string, extra?: { from?: string; to?: string; files?: boolean }) => void;
 }
 
 const PULL_AT = 64; // px: pull this far, let go, and it refreshes
@@ -261,6 +265,7 @@ export const MessageList = forwardRef<HTMLInputElement, Props>(function MessageL
     if (extra) out.push({ id: 'snooze', label: t('Snooze…'), icon: Clock, run: () => setSnoozing({ ids }) });
     out.push({ label: anyUnread ? t('Mark as read') : t('Mark as unread'), icon: anyUnread ? MailOpen : Mail, run: () => actions.read(ids, !anyUnread) });
     out.push({ label: allStarred ? t('Unstar') : t('Star'), icon: Star, run: () => actions.star(ids, !allStarred) });
+    out.push(...(props.moreActions?.(list, moreBtn) ?? []));
     if (extra) out.push({ label: t('Select'), icon: Check, group: 'select', run: () => setPicked(new Set(ids)) });
     out.push({ label: t('Move to…'), icon: FolderInput, group: 'move', run: () => setMoving(ids) });
     const allImportant = list.every((th) => th.important);
@@ -283,6 +288,7 @@ export const MessageList = forwardRef<HTMLInputElement, Props>(function MessageL
     out.push({ label: t('Move to…'), icon: FolderInput, run: () => setMoving(ids) });
     const allMuted = list.every((th) => th.muted);
     out.push({ label: allMuted ? t('Unmute') : t('Mute'), icon: BellOff, run: () => mute(ids, !allMuted) });
+    out.push(...(props.moreActions?.(list) ?? []));
     if (list.some((th) => th.location !== 'spam')) out.push({ label: t('Report spam'), icon: ShieldAlert, group: 'end', run: () => actions.spam(ids) });
     return out;
   };
@@ -290,6 +296,7 @@ export const MessageList = forwardRef<HTMLInputElement, Props>(function MessageL
   const selList = threads.filter((t) => sel.has(t.id));
   const selUnread = selList.some((t) => t.unread);
   const moreBtn = useRef<HTMLButtonElement>(null);
+  const labelBtn = useRef<HTMLButtonElement>(null);
   const snoozeBtn = useRef<HTMLButtonElement>(null);
   const chips = CHIPS.filter((c) => c.id !== 'assigned' || props.assignChip);
   const lastSnoozed = snoozing ? threads.filter((t) => snoozing.ids.includes(t.id)) : [];
@@ -490,6 +497,12 @@ export const MessageList = forwardRef<HTMLInputElement, Props>(function MessageL
             <Trash2 size={20} />
             <span>{t('Delete')}</span>
           </button>
+          {props.moreActions && (
+            <button type="button" ref={labelBtn} onClick={() => props.moreActions!(selList, labelBtn).find((x) => x.id === 'label')?.run()}>
+              <Tag size={20} />
+              <span>{t('Label')}</span>
+            </button>
+          )}
           <button type="button" ref={moreBtn} onClick={() => setMenuFor({ ids: [...sel], anchor: moreBtn, title: tn(sel.size, '{n} selected', '{n} selected') })}>
             <MoreHorizontal size={20} />
             <span>{t('More')}</span>
@@ -523,6 +536,7 @@ export const MessageList = forwardRef<HTMLInputElement, Props>(function MessageL
       {phone && searching && (
         <MailSearch
           threads={props.searchable ?? threads}
+          onFilterSearch={props.onFilterSearch}
           me={me}
           meId={props.meId}
           clientOf={props.clientOf}

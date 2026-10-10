@@ -4,6 +4,7 @@ import { SmoothHeight, TabPane } from './ui/Smooth';
 import { brand as product, term } from '../terms';
 import {
   AlertTriangle,
+  Download,
   Archive,
   ArrowLeft,
   Ban,
@@ -47,7 +48,7 @@ import { RichEditor } from './RichEditor';
 import { TrackingPanel } from './TrackingPanel';
 import { isMine } from '../identity';
 import { isTeam } from '../tracking';
-import { hasOwnText, sanitize, textToHtml } from '../sanitize';
+import { hasOwnText, textToHtml } from '../sanitize';
 import { ai, type Summary } from '../ai';
 import type { Todo } from '../types';
 import type { Attachment } from '../types';
@@ -67,6 +68,17 @@ import { t, tn, tx } from '../i18n';
 import { MailSafety, smartMenu } from './mail/Safety';
 import { tj } from '../i18n/tj';
 import { fmtDate } from '../i18n/format';
+// Gmail's reading extras (src/components/mail/): HTML as sent, show original, print, translate, message-level actions,
+// Reply all and editing a reply's people and subject.
+import { MailBody, type Translation } from './mail/MailBody';
+import { OriginalSheet, downloadEml, printMail, translateText } from './mail/MessageTools';
+import { ReplyHead } from './mail/ReplyHead';
+import { canReplyAll, replyPeople } from '../mailPeople';
+import type { ReplyOpts } from './mail/composeExtras';
+import { Code2, Languages, Printer } from 'lucide-react';
+import { defaultSpell, type SpellLang } from './mail/composeExtras';
+import { suggestNext } from './mail/smartCompose';
+import { usePersisted } from '../settings';
 
 interface Props {
   thread: Thread | null;
@@ -94,9 +106,19 @@ interface Props {
   onMoveToInbox: (id: string) => void;
   onStar: (id: string) => void;
   onMarkUnread: (id: string) => void;
-  /** `track`: the reply box's tracking switch was on (only offered when the company allows it, for outside people). */
-  onReply: (id: string, html: string, text: string, track: boolean, all?: boolean, files?: OutFile[]) => void;
-  onForward: (t: Thread) => void;
+  /** `track`: the reply box's tracking switch was on (only offered when the company allows it, for outside people). `opts`: the people or subject the reply box changed. */
+  onReply: (id: string, html: string, text: string, track: boolean, all?: boolean, opts?: ReplyOpts) => void;
+  /** Forward the conversation's last message, or this one. */
+  onForward: (t: Thread, m?: Message) => void;
+  /** A reply moved into the full compose window, with what the reply box held. */
+  onPopOut?: (threadId: string, draft: { to: Person[]; cc: Person[]; subject: string; html: string; text: string }) => void;
+  /** The signature for an address (Settings, Mail), and the address of this mailbox a conversation goes out from. */
+  signatureFor?: (address: string) => string;
+  replyAddress?: (t: Thread) => string | undefined;
+  /** What Reply and R do: answer the sender, or everyone (Settings, Mail). */
+  defaultReply?: 'reply' | 'all';
+  /** Smart compose in replies (Settings, Mail). */
+  smartCompose?: boolean;
   /** Read tracking is offered (the company hasn't switched it off), and whether it starts on (Settings, Mail). */
   canTrack?: boolean;
   trackByDefault?: boolean;
@@ -118,6 +140,10 @@ interface Props {
   unsubscribedAt?: string;
   onUnsubscribe: (t: Thread) => void;
   onBlock: (t: Thread) => void;
+  /** Labels and filters (src/components/mail/Organize.tsx): the label chips, the "Filed by" line, "Label as…" and "Filter messages like this". */
+  labelChips?: ReactNode;
+  filedLine?: ReactNode;
+  organizeActions?: (t: Thread) => SheetAction[];
   teammates: User[]; // people with access to this mailbox
   /** Team mail: more than one person opens this mailbox, so comments live here. */
   team: boolean;
@@ -144,7 +170,18 @@ const firstLine = (s: string) => (s.match(/^.*?[.!?](\s|$)/)?.[0] ?? s).trim();
 
 export function Reader(props: Props) {
   const { thread } = props;
+  // The signature of the address replies go out from (an alias has its own; Settings, Mail).
+  const sigAddress = thread ? props.replyAddress?.(thread) : undefined;
+  const signature = sigAddress && props.signatureFor ? props.signatureFor(sigAddress) : props.signature;
   const phone = usePhone();
+  const [translations, setTranslations] = useState<Map<string, Translation>>(new Map());
+  const [original, setOriginal] = useState<string | null>(null); // the message whose source is open
+  // The desktop reply box: its people and subject when changed (null: Gmail's), and which fields are open.
+  const [rPeople, setRPeople] = useState<{ to: Person[]; cc: Person[] } | null>(null);
+  const [rSubject, setRSubject] = useState<string | null>(null);
+  const [spell] = usePersisted<SpellLang | ''>('s2g-mail-spell', '');
+  const spellLang: SpellLang = spell || defaultSpell();
+  const nextWords = props.smartCompose === false ? undefined : (before: string) => suggestNext(before, { aiOn: props.aiOn, workspaceId: thread?.workspaceId ?? props.client?.workspaceId ?? '', subject: thread?.subject, me: props.myName, lang: spellLang === 'id' ? 'Indonesian' : undefined });
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [showAll, setShowAll] = useState(false);
   const [replyOpen, setReplyOpen] = useState(false);
@@ -189,6 +226,10 @@ export function Reader(props: Props) {
     setReplyAll(false);
     setDetails(new Set());
     setMsgMenu(null);
+    setTranslations(new Map());
+    setOriginal(null);
+    setRPeople(null);
+    setRSubject(null);
     // AI answers are saved per message: opening the email again never pays twice.
     const key = thread.messages[thread.messages.length - 1].id;
     setSummary(AI_CACHE.summary.get(key) ?? null);
@@ -244,8 +285,22 @@ export function Reader(props: Props) {
     if (initial !== undefined) setReplyInitial(initial);
     if (phone) flushSync(() => (setReplyAll(all), setReplyOpen(true)));
     else {
+      setReplyAll(all);
+      setRPeople(null);
       setReplyOpen(true);
       requestAnimationFrame(() => endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' }));
+    }
+  };
+  /** Translate: the message in the reader's language (the company's AI); again to show the original. */
+  const translate = async (m: Message) => {
+    if (translations.has(m.id)) return setTranslations((x) => new Map([...x].filter(([k]) => k !== m.id)));
+    const set = (v: Translation) => setTranslations((x) => new Map(x).set(m.id, v));
+    if (!props.aiOn) return set('needs-ai');
+    set('loading');
+    try {
+      set(await translateText(m.body || '', thread?.workspaceId ?? (props.client?.workspaceId ?? '')));
+    } catch (e) {
+      set(e instanceof Error && e.message === 'needs-ai' ? 'needs-ai' : 'failed');
     }
   };
 
@@ -254,7 +309,7 @@ export function Reader(props: Props) {
       if (e.key !== 'r' || !thread || e.metaKey || e.ctrlKey) return;
       if ((e.target as HTMLElement).closest?.('input, textarea, [contenteditable]')) return;
       e.preventDefault();
-      startReply();
+      startReply(undefined, props.defaultReply === 'all');
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -361,9 +416,13 @@ export function Reader(props: Props) {
   if (phone && !props.open) return null;
 
   const last = thread.messages[thread.messages.length - 1];
-  const replyTo = isMine(last.from.email) ? last.to[0] ?? last.from : last.from;
-  // The reply goes to the same people as App's reply(); only those outside the team can be tracked.
-  const replyOutside = (isMine(last.from.email) ? last.to : [last.from]).filter((p) => !isTeam(p.email));
+  // Who the reply goes to: Gmail's rules (src/mailPeople.ts), or what the reply box changed them to.
+  const gmailPeople = replyPeople(last, replyAll, isMine);
+  const rWho = rPeople ?? gmailPeople;
+  const reSubject = /^re:/i.test(thread.subject) ? thread.subject : `Re: ${thread.subject}`;
+  const canAllDesk = canReplyAll(last, isMine);
+  // Only people outside the team can be tracked.
+  const replyOutside = [...rWho.to, ...rWho.cc].filter((p) => !isTeam(p.email));
   const replyTracked = !!props.canTrack && replyOutside.length > 0 && (replyTrack ?? !!props.trackByDefault);
   const draft = REPLY_DRAFTS.get(thread.id);
   const assignee = thread.assignee ? props.teammates.find((u) => u.id === thread.assignee) : undefined;
@@ -377,13 +436,28 @@ export function Reader(props: Props) {
     });
 
   const send = () => {
-    if ((!hasOwnText(reply.text, props.signature) && !replyFiles.files.length) || replyFiles.busy) return;
-    props.onReply(thread.id, reply.html, reply.text, replyTracked, false, replyFiles.out());
+    if ((!hasOwnText(reply.text, signature) && !replyFiles.files.length) || replyFiles.busy) return;
+    const out = replyFiles.out();
+    props.onReply(thread.id, reply.html, reply.text, replyTracked, replyAll, { ...(rPeople ? { to: rPeople.to, cc: rPeople.cc } : {}), ...(rSubject?.trim() ? { subject: rSubject.trim() } : {}), ...(out.length ? { files: out } : {}) });
     replyFiles.clear();
     setReply({ html: '', text: '' });
     setReplyOpen(false);
     setReplyInitial(null);
+    setRPeople(null);
+    setRSubject(null);
   };
+  /** One message's own actions (Gmail's ⋮ on each message): reply, forward, print, the source, translate. */
+  const confidentialIn = (m: Message) => !!m.confidential && !m.confidential.sender;
+  const messageTools = (m: Message): SheetAction[] => [
+    { label: t('Reply'), icon: Reply, disabled: !!props.replyOff, run: () => startReply() },
+    ...(canAllDesk ? [{ label: t('Reply all'), icon: ReplyAll, disabled: !!props.replyOff, run: () => startReply(undefined, true) }] : []),
+    { label: t('Forward'), icon: Forward, disabled: !!props.replyOff || confidentialIn(m), hint: confidentialIn(m) ? t('Confidential: it can’t be forwarded') : undefined, run: () => props.onForward(thread, m) },
+    { label: t('Print'), icon: Printer, group: 'tools', disabled: confidentialIn(m), run: () => printMail(thread.id, m.id) },
+    { label: t('Show original'), icon: Code2, group: 'tools', run: () => setOriginal(m.id) },
+    { label: t('Download message'), icon: Download, group: 'tools', disabled: confidentialIn(m), run: () => downloadEml(thread.id, m.id) },
+    ...(m.html || m.body ? [{ label: translations.has(m.id) ? t('Show original language') : t('Translate'), icon: Languages, group: 'tools', disabled: confidentialIn(m), run: () => void translate(m) }] : []),
+    { label: t('Mark unread from here'), icon: Mail, group: 'mark', run: () => props.onMarkUnread(thread.id) },
+  ];
 
   /** Pictures pasted or dropped into a reply: uploaded, then shown where they were put (cid images when sent). */
   const inlineImages = (pics: File[]) =>
@@ -406,10 +480,13 @@ export function Reader(props: Props) {
 
   const moreActions = (): SheetAction[] => [
     ...(phone ? [] : [{ label: t('Reply'), icon: Reply, run: () => startReply() }]),
+    ...(phone || !canAllDesk ? [] : [{ label: t('Reply all'), icon: ReplyAll, run: () => startReply(undefined, true) }]),
     { label: t('Forward'), icon: Forward, disabled: !!props.replyOff, run: () => props.onForward(thread) },
+    { label: t('Print all'), icon: Printer, run: () => printMail(thread.id) },
     ...(props.onMakeTask ? [{ label: tx('mail', 'Make a task'), icon: ListPlus, run: () => props.onMakeTask!(thread.id) }] : []),
     { label: t('Mark as unread'), icon: Mail, group: 'mark', run: () => props.onMarkUnread(thread.id) },
     { label: thread.starred ? t('Unstar') : t('Star'), icon: Star, group: 'mark', checked: thread.starred, run: () => props.onStar(thread.id) },
+    ...(props.organizeActions?.(thread) ?? []),
     ...(phone && props.shared ? [] : props.shared ? [{ label: t('Who handles this…'), icon: UserPlus, group: 'mark', run: () => setAssignOpen(true) }] : []),
     ...smartMenu(thread), // Move to, Important, Mute, Report phishing, Delete forever (mail/Safety.tsx)
     ...(thread.location !== 'spam' ? [{ label: t('Report spam'), icon: ShieldAlert, group: 'end', run: () => props.onSpam(thread.id) }] : []),
@@ -457,19 +534,45 @@ export function Reader(props: Props) {
     const open = expanded.has(m.id);
     return (
       <article key={m.id} className={`message ${open ? 'open' : ''}`}>
+        {open && (
+          <span className="msg-acts">
+            <button type="button" className="icon-btn" onClick={() => startReply(undefined, props.defaultReply === 'all' && canAllDesk)} aria-label={props.defaultReply === 'all' && canAllDesk ? t('Reply all') : t('Reply')} title={props.defaultReply === 'all' && canAllDesk ? t('Reply all') : t('Reply')} disabled={!!props.replyOff}>
+              {props.defaultReply === 'all' && canAllDesk ? <ReplyAll size={16} /> : <Reply size={16} />}
+            </button>
+            <button
+              type="button"
+              className="icon-btn"
+              onClick={(e) => {
+                msgMenuBtn.current = e.currentTarget;
+                setMsgMenu({ m, anchor: msgMenuBtn });
+              }}
+              aria-label={t('More for this message')}
+              title={t('More')}
+            >
+              <MoreVertical size={16} />
+            </button>
+          </span>
+        )}
         <button className="message-head" onClick={() => toggle(m.id)} aria-expanded={open}>
           <Avatar person={m.from} size={phone ? 34 : 38} />
           <div className="message-who">
             <div className="message-from">
               <strong>{isMine(m.from.email) ? t('You') : m.from.name}</strong>
               {open && <span className="email">&lt;{m.from.email}&gt;</span>}
+              {m.priority === 'high' && <span className="prio-chip">{t('High priority')}</span>}
             </div>
             <div className="message-to">
               {open
-                ? m.bcc?.length
-                  ? t('to {names}, Bcc {bcc}', { names: m.to.map((p) => (isMine(p.email) ? t('me') : p.name)).join(', '), bcc: m.bcc.map((p) => p.name || p.email).join(', ') })
-                  : t('to {names}', { names: m.to.map((p) => (isMine(p.email) ? t('me') : p.name)).join(', ') })
-                : snippet(m.body)}
+                ? [
+                    t('to {names}', { names: m.to.map((p) => (isMine(p.email) ? t('me') : p.name || p.email)).join(', ') }),
+                    m.cc?.length ? t('Cc {names}', { names: m.cc.map((p) => (isMine(p.email) ? t('me') : p.name || p.email)).join(', ') }) : '',
+                    m.bcc?.length ? t('Bcc {names}', { names: m.bcc.map((p) => p.name || p.email).join(', ') }) : '',
+                  ]
+                    .filter(Boolean)
+                    .join(' · ')
+                : m.confidential && !m.confidential.sender
+                  ? t('Confidential email')
+                  : snippet(m.body)}
             </div>
           </div>
           <time title={fullDate(m.date)}>
@@ -503,8 +606,8 @@ export function Reader(props: Props) {
         {open && (
           <div className="message-body">
             {m.invite && props.inviteCard && <div className="mi-wrap">{props.inviteCard(m)}</div>}
-            <CodeCard text={`${thread.subject}\n${m.body}`} />
-            {m.html ? <div className="prose" dangerouslySetInnerHTML={{ __html: sanitize(m.html) }} /> : m.body.split('\n\n').map((para, i) => <p key={i}>{para}</p>)}
+            {!m.confidential && <CodeCard text={`${thread.subject}\n${m.body}`} />}
+            <MailBody m={m} spam={thread.location === 'spam'} blockTrackers={props.blockTrackers} translation={translations.get(m.id)} onShowOriginalText={() => setTranslations((x) => new Map([...x].filter(([k]) => k !== m.id)))} />
             {/* Files: previews, Download all, Save to Drive (src/components/mail/MessageFiles.tsx). */}
             <MessageFiles thread={thread} message={m} />
             {m.tracking && <TrackingPanel thread={thread} message={m} />}
@@ -521,7 +624,7 @@ export function Reader(props: Props) {
       </span>
       {!suggestions &&
         quickReplies().map((sug, i) => (
-          <button key={sug} className="tpl" style={{ ['--i' as string]: i }} onClick={() => startReply(textToHtml(sug) + (props.signature ? `<p><br></p>${props.signature}` : ''))}>
+          <button key={sug} className="tpl" style={{ ['--i' as string]: i }} onClick={() => startReply(textToHtml(sug) + (signature ? `<p><br></p>${signature}` : ''))}>
             {sug}
           </button>
         ))}
@@ -531,7 +634,7 @@ export function Reader(props: Props) {
         </button>
       )}
       {suggestions?.map((sug, i) => (
-        <button key={i} style={{ ['--i' as string]: i }} onClick={() => startReply(textToHtml(sug) + (props.signature ? `<p><br></p>${props.signature}` : ''))}>
+        <button key={i} style={{ ['--i' as string]: i }} onClick={() => startReply(textToHtml(sug) + (signature ? `<p><br></p>${signature}` : ''))}>
           {sug.split('\n')[0]}
         </button>
       ))}
@@ -560,8 +663,10 @@ export function Reader(props: Props) {
                 <Clock size={13} /> {thread.snoozeIfNoReply ? t('Back {when} if nobody replies', { when: whenWords(new Date(thread.snoozedUntil!)) }) : t('Back {when}', { when: whenWords(new Date(thread.snoozedUntil!)) })}
               </span>
             )}
+            {props.labelChips}
             <span className="thread-count">{tn(n, '{n} message', '{n} messages')}</span>
           </div>
+          {props.filedLine}
         </div>
 
         {(props.aiOn || props.onMakeTask || props.todos.length > 0) && (
@@ -700,11 +805,30 @@ export function Reader(props: Props) {
             <TabPane key={String(replyOpen)}>
               {replyOpen ? (
                 <div className="reply-box">
-                  <div className="reply-to">
-                    <Reply size={14} /> {tj('Replying to {name}', { name: <strong>{replyTo.name}</strong> })}
-                  </div>
-                  <div onKeyDown={(e) => e.key === 'Escape' && !(e.target as HTMLElement).closest('.tb-popup') && setReplyOpen(false)}>
-                    <RichEditor autoFocus initialHtml={replyInitial ?? draft?.html ?? (props.signature ? `<p><br></p>${props.signature}` : '')} placeholder={t('Write your reply…')} onChange={(html, text) => (setReply({ html, text }), REPLY_DRAFTS.set(thread.id, { html, text }))} onSubmit={send} onImages={inlineImages} />
+                  <ReplyHead
+                    all={replyAll}
+                    canAll={canAllDesk}
+                    to={rWho.to}
+                    cc={rWho.cc}
+                    subject={rSubject ?? reSubject}
+                    contacts={participantsOf(thread)}
+                    onKind={(all) => (setReplyAll(all), setRPeople(null))}
+                    onPeople={(to, cc) => setRPeople({ to, cc })}
+                    onSubject={setRSubject}
+                    onForward={() => (setReplyOpen(false), props.onForward(thread))}
+                    onPopOut={
+                      props.onPopOut
+                        ? () => {
+                            props.onPopOut!(thread.id, { to: rWho.to, cc: rWho.cc, subject: rSubject?.trim() || reSubject, html: reply.html || (replyInitial ?? draft?.html ?? ''), text: reply.text });
+                            REPLY_DRAFTS.delete(thread.id);
+                            setReplyOpen(false);
+                            setReplyInitial(null);
+                          }
+                        : undefined
+                    }
+                  />
+                  <div onKeyDown={(e) => e.key === 'Escape' && !(e.target as HTMLElement).closest('.tb-popup, .recip') && setReplyOpen(false)}>
+                    <RichEditor autoFocus initialHtml={replyInitial ?? draft?.html ?? (signature ? `<p><br></p>${signature}` : '')} placeholder={t('Write your reply…')} onChange={(html, text) => (setReply({ html, text }), REPLY_DRAFTS.set(thread.id, { html, text }))} onSubmit={send} spellLang={spellLang} suggest={nextWords} onImages={inlineImages} />
                   </div>
                   <DraftFilesList state={replyFiles} />
                   <div className="reply-actions">
@@ -745,7 +869,7 @@ export function Reader(props: Props) {
                         send();
                         REPLY_DRAFTS.delete(thread.id);
                       }}
-                      disabled={(!hasOwnText(reply.text, props.signature) && !replyFiles.files.length) || replyFiles.busy}
+                      disabled={(!hasOwnText(reply.text, signature) && !replyFiles.files.length) || replyFiles.busy}
                       title={replyFiles.busy ? t('Wait for the files to finish uploading') : undefined}
                     >
                       <Send size={15} /> {t('Send')} <kbd>⌘↵</kbd>
@@ -757,8 +881,13 @@ export function Reader(props: Props) {
                   {quick}
                   <div className="reply-buttons">
                     <button className={`ghost-btn outline ${props.replyOff ? 'off' : ''}`} aria-disabled={props.replyOff ? true : undefined} title={props.replyOff} onClick={() => startReply()}>
-                      <Reply size={15} /> {draft ? t('Reply (draft)') : t('Reply')} <kbd>R</kbd>
+                      <Reply size={15} /> {draft ? t('Reply (draft)') : t('Reply')} {props.defaultReply !== 'all' && <kbd>R</kbd>}
                     </button>
+                    {canAllDesk && (
+                      <button className={`ghost-btn outline ${props.replyOff ? 'off' : ''}`} aria-disabled={props.replyOff ? true : undefined} title={props.replyOff} onClick={() => startReply(undefined, true)}>
+                        <ReplyAll size={15} /> {t('Reply all')} {props.defaultReply === 'all' && <kbd>R</kbd>}
+                      </button>
+                    )}
                     <button className={`ghost-btn outline ${props.replyOff ? 'off' : ''}`} aria-disabled={props.replyOff ? true : undefined} title={props.replyOff} onClick={() => (props.replyOff ? props.onReplyOff?.() : props.onForward(thread))}>
                       <Forward size={15} /> {t('Forward')}
                     </button>
@@ -785,29 +914,29 @@ export function Reader(props: Props) {
   if (phone) {
     // Gmail's reader: back and the actions at the top; the subject with its star and chips; each message with Reply and
     // ⋮ in its header; Reply, Reply all, Forward (and Comment for team mail) docked at the bottom.
-    const others = [last.from, ...last.to].filter((p, i, l) => !isMine(p.email) && l.findIndex((q) => q.email.toLowerCase() === p.email.toLowerCase()) === i);
-    const canAll = others.length > 1;
+    const canAll = canAllDesk;
     const PrimaryIcon = primary?.icon;
     const openTodos = props.todos.filter((td) => !td.done).length;
     const incomingLast = [...thread.messages].reverse().find((m) => !isMine(m.from.email));
     const phoneMore = (): SheetAction[] => [
       ...(thread.location !== 'drafts' && thread.location !== 'trash' ? [{ label: t('Snooze'), icon: Clock, run: () => setSnoozeOpen(true) }] : []),
       ...(props.shared ? [{ label: t('Who handles this…'), icon: UserPlus, run: () => setAssignOpen(true) }] : []),
+      ...(props.organizeActions?.(thread) ?? []),
       ...(props.onMakeTask ? [{ label: tx('mail', 'Make a task'), icon: ListPlus, run: () => props.onMakeTask!(thread.id) }] : []),
       ...(thread.invite && !props.inviteAdded ? [{ label: t('Add to calendar'), icon: CalendarPlus, run: () => props.onAddInvite(thread.id) }] : []),
+      { label: t('Print all'), icon: Printer, run: () => printMail(thread.id) },
       ...(incoming ? [{ label: t('Block {name}', { name: incoming.from.name || incoming.from.email }), icon: Ban, group: 'end', run: () => props.onBlock(thread) }] : []),
       ...(thread.location !== 'spam' ? [{ label: t('Report spam'), icon: ShieldAlert, group: 'end', run: () => props.onSpam(thread.id) }] : []),
       ...smartMenu(thread), // Move to, Important, Mute, Report phishing, Delete forever (mail/Safety.tsx)
     ];
+    // Gmail's ⋮ on each message: the same tools as on desktop, plus Make a task and Block.
     const messageMore = (m: Message): SheetAction[] => [
-      ...(canAll ? [{ label: t('Reply all'), icon: ReplyAll, disabled: !!props.replyOff, run: () => startReply(undefined, true) }] : []),
-      { label: t('Forward'), icon: Forward, disabled: !!props.replyOff, run: () => props.onForward(thread) },
-      { label: t('Mark as unread'), icon: Mail, run: () => props.onMarkUnread(thread.id) },
-      ...(props.onMakeTask ? [{ label: tx('mail', 'Make a task'), icon: ListPlus, run: () => props.onMakeTask!(thread.id) }] : []),
+      ...messageTools(m).filter((a) => a.icon !== Reply),
+      ...(props.onMakeTask ? [{ label: tx('mail', 'Make a task'), icon: ListPlus, group: 'mark', run: () => props.onMakeTask!(thread.id) }] : []),
       ...(!isMine(m.from.email) ? [{ label: t('Block {name}', { name: m.from.name || m.from.email }), icon: Ban, group: 'end', run: () => props.onBlock(thread) }] : []),
     ];
     const toWords = (m: Message) => {
-      const names = m.to.map((p) => (isMine(p.email) ? t('me') : p.name || p.email));
+      const names = [...m.to, ...(m.cc ?? [])].map((p) => (isMine(p.email) ? t('me') : p.name || p.email));
       return names.length > 2 ? t('to {names} and {n} more', { names: names.slice(0, 2).join(', '), n: names.length - 2 }) : t('to {names}', { names: names.join(', ') });
     };
     const isLatest = (m: Message) => m.id === last.id;
@@ -846,8 +975,8 @@ export function Reader(props: Props) {
               <ChevronDown size={14} className={`rot-chev${showDetails ? ' open' : ''}`} />
             </button>
             <span className="gm-msg-acts">
-              <button type="button" className="gm-icon" onClick={() => startReply()} aria-label={t('Reply')} title={t('Reply')}>
-                <Reply size={20} />
+              <button type="button" className="gm-icon" onClick={() => startReply(undefined, props.defaultReply === 'all' && canAll)} aria-label={props.defaultReply === 'all' && canAll ? t('Reply all') : t('Reply')} title={props.defaultReply === 'all' && canAll ? t('Reply all') : t('Reply')}>
+                {props.defaultReply === 'all' && canAll ? <ReplyAll size={20} /> : <Reply size={20} />}
               </button>
               <button
                 type="button"
@@ -872,6 +1001,24 @@ export function Reader(props: Props) {
                 </dd>
                 <dt>{t('To')}</dt>
                 <dd>{m.to.map((p) => `${p.name ? p.name + ' ' : ''}<${p.email}>`).join(', ')}</dd>
+                {m.cc?.length ? (
+                  <>
+                    <dt>Cc</dt>
+                    <dd>{m.cc.map((p) => `${p.name ? p.name + ' ' : ''}<${p.email}>`).join(', ')}</dd>
+                  </>
+                ) : null}
+                {m.replyTo?.length ? (
+                  <>
+                    <dt>{t('Reply to')}</dt>
+                    <dd>{m.replyTo.map((p) => p.email).join(', ')}</dd>
+                  </>
+                ) : null}
+                {m.priority ? (
+                  <>
+                    <dt>{t('Priority')}</dt>
+                    <dd>{m.priority === 'high' ? t('High') : t('Low')}</dd>
+                  </>
+                ) : null}
                 {m.bcc?.length ? (
                   <>
                     <dt>Bcc</dt>
@@ -909,8 +1056,9 @@ export function Reader(props: Props) {
             {isList && incomingLast?.id === m.id && listBanner}
             {isLatest(m) && proposed}
             {m.invite && props.inviteCard && <div className="mi-wrap">{props.inviteCard(m)}</div>}
-            <CodeCard text={`${thread.subject}\n${m.body}`} />
-            {m.html ? <div className="prose" dangerouslySetInnerHTML={{ __html: sanitize(m.html) }} /> : m.body.split('\n\n').map((para, i) => <p key={i}>{para}</p>)}
+            {!m.confidential && <CodeCard text={`${thread.subject}\n${m.body}`} />}
+            <MailBody m={m} spam={thread.location === 'spam'} blockTrackers={props.blockTrackers} translation={translations.get(m.id)} onShowOriginalText={() => setTranslations((x) => new Map([...x].filter(([k]) => k !== m.id)))} />
+            {/* Files: previews, Download all, Save to Drive (src/components/mail/MessageFiles.tsx). */}
             <MessageFiles thread={thread} message={m} />
             {m.tracking && <TrackingPanel thread={thread} message={m} />}
           </div>
@@ -992,11 +1140,13 @@ export function Reader(props: Props) {
                   <Clock size={12} /> {thread.snoozeIfNoReply ? t('Back {when} if nobody replies', { when: whenWords(new Date(thread.snoozedUntil!)) }) : t('Back {when}', { when: whenWords(new Date(thread.snoozedUntil!)) })}
                 </span>
               )}
+              {props.labelChips}
             </h2>
             <button type="button" className={`gm-star${thread.starred ? ' on' : ''}`} onClick={() => props.onStar(thread.id)} aria-pressed={thread.starred} aria-label={thread.starred ? t('Unstar') : t('Star')}>
               <Star size={22} />
             </button>
           </div>
+          {props.filedLine}
 
           {props.aiOn && (
             <div className="gm-chiprow">
@@ -1062,12 +1212,12 @@ export function Reader(props: Props) {
             <div className="smart-replies gm-smart">
               {!suggestions &&
                 quickReplies().map((sug, i) => (
-                  <button key={sug} className="tpl" style={{ ['--i' as string]: i }} onClick={() => startReply(textToHtml(sug) + (props.signature ? `<p><br></p>${props.signature}` : ''))}>
+                  <button key={sug} className="tpl" style={{ ['--i' as string]: i }} onClick={() => startReply(textToHtml(sug) + (signature ? `<p><br></p>${signature}` : ''))}>
                     {sug}
                   </button>
                 ))}
               {suggestions?.map((sug, i) => (
-                <button key={i} style={{ ['--i' as string]: i }} onClick={() => startReply(textToHtml(sug) + (props.signature ? `<p><br></p>${props.signature}` : ''))}>
+                <button key={i} style={{ ['--i' as string]: i }} onClick={() => startReply(textToHtml(sug) + (signature ? `<p><br></p>${signature}` : ''))}>
                   {sug.split('\n')[0]}
                 </button>
               ))}
@@ -1163,19 +1313,24 @@ export function Reader(props: Props) {
         <AssignPicker open={assignOpen} onClose={() => setAssignOpen(false)} people={props.teammates} me={props.meUser} current={thread.assignee} presence={props.presence} onPick={(id) => props.onAssign(thread.id, id)} />
         <ActionSheet open={moreOpen} onClose={() => setMoreOpen(false)} title={thread.subject} anchor={moreBtn} menu actions={moreOpen ? phoneMore() : []} />
         <ActionSheet open={!!msgMenu} onClose={() => setMsgMenu(null)} anchor={msgMenu?.anchor} menu actions={msgMenu ? messageMore(msgMenu.m) : []} />
+        {original && <OriginalSheet threadId={thread.id} messageId={original} onClose={() => setOriginal(null)} />}
         {replyOpen && (
           <QuickReply
             key={thread.id}
-            to={replyAll ? others : [replyTo]}
+            to={gmailPeople.to}
+            cc={gmailPeople.cc}
+            contacts={participantsOf(thread)}
+            spellLang={spellLang}
+            suggest={nextWords}
             all={replyAll}
             subject={thread.subject}
-            initialHtml={replyInitial ?? draft?.html ?? (props.signature ? `<p><br></p>${props.signature}` : '')}
+            initialHtml={replyInitial ?? draft?.html ?? (signature ? `<p><br></p>${signature}` : '')}
             initialFiles={restoredFiles}
-            signature={props.signature}
+            signature={signature}
             userId={props.meUser.id}
             myName={props.myName}
             track={props.canTrack && replyOutside.length > 0 ? { on: replyTracked, set: setReplyTrack } : null}
-            onSend={(html, text, files) => (setRestoredFiles([]), props.onReply(thread.id, html, text, replyTracked, replyAll, files))}
+            onSend={(html, text, opts) => (setRestoredFiles([]), props.onReply(thread.id, html, text, replyTracked, replyAll, opts))}
             onKeep={(d) => {
               if (d) REPLY_DRAFTS.set(thread.id, d);
               else REPLY_DRAFTS.delete(thread.id);
@@ -1234,6 +1389,8 @@ export function Reader(props: Props) {
       </header>
       {content}
       {pickers}
+      <ActionSheet open={!!msgMenu} onClose={() => setMsgMenu(null)} anchor={msgMenu?.anchor} title={t('This message')} actions={msgMenu ? messageTools(msgMenu.m) : []} />
+      {original && <OriginalSheet threadId={thread.id} messageId={original} onClose={() => setOriginal(null)} />}
     </section>
   );
 }

@@ -434,7 +434,7 @@ export function runReplyReminders(at = Date.now()) {
     if (!db.db.prepare("UPDATE mail_remind SET state = 'told' WHERE thread_id = ? AND message_id = ? AND state = 'waiting'").run(r.thread_id, r.message_id).changes) continue;
     const account = (ws.accounts ?? []).find((a: any) => a.id === r.account_id);
     const who: string[] = r.by_user ? [r.by_user] : account && account.kind !== 'shared' ? (account.users ?? []) : [];
-    const outside = ((msg.to ?? []) as any[]).filter((p) => p?.email && !isInternal(ws, p.email));
+    const outside = ([...(msg.to ?? []), ...(msg.cc ?? [])] as any[]).filter((p) => p?.email && !isInternal(ws, p.email));
     const name = outside.length === 1 ? outside[0].name || outside[0].email : '';
     const subject = String(t.subject ?? '').slice(0, 120) || '(no subject)';
     const text = `No reply yet${name ? ` from ${name}` : ''} to “${subject}”. Time to follow up?`;

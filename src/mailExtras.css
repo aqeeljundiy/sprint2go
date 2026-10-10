@@ -1,0 +1,425 @@
+/* Mail's reading and writing extras (src/components/mail/MailBody, MessageTools, ReplyHead, composeExtras,
+   MailWriting, smartCompose). Phone-only rules for these live in src/mobile/mail.css. */
+
+/* ---------- HTML mail in its own frame (MailBody.tsx) ---------- */
+.mail-frame {
+  margin: 0 0 12px;
+  transition: background-color 0.2s var(--ease, ease);
+}
+.mail-frame iframe {
+  display: block;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color-scheme: light;
+  transition: height 0.15s ease-out;
+}
+/* Dark mode: a designed email keeps its own colours on white paper. */
+.mail-frame.paper {
+  background: #fff;
+  border-radius: var(--r-tile);
+  padding: 12px;
+}
+.img-bar,
+.tr-note,
+.conf-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  margin: 0 0 12px;
+  padding: 8px 12px;
+  border-radius: var(--r-tile);
+  background: var(--hover);
+  color: var(--text-2);
+  font-size: 13px;
+  line-height: 18px;
+  animation: fadeIn 0.2s var(--ease, ease);
+}
+.img-bar > svg,
+.tr-note > svg,
+.conf-banner > svg {
+  flex: none;
+}
+.img-bar .link-btn,
+.tr-note .link-btn,
+.conf-banner .link-btn {
+  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.img-bar span,
+.conf-banner span {
+  flex: 1 1 200px;
+  min-width: 0;
+}
+.conf-banner {
+  background: var(--accent-soft);
+  color: var(--text);
+}
+.conf-banner.shut {
+  background: var(--hover);
+  color: var(--text-2);
+}
+.conf-body {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+.conf-pic {
+  display: block;
+  max-width: 100%;
+  border-radius: var(--r-tile);
+  margin: 0 0 12px;
+  pointer-events: none;
+}
+.conf-files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  font-size: 13px;
+}
+.conf-files span {
+  padding: 4px 12px;
+  border-radius: var(--r-pill);
+  background: var(--hover);
+}
+.conf-files small {
+  flex-basis: 100%;
+  color: var(--text-3);
+}
+@media print {
+  .conf-body {
+    display: none;
+  }
+}
+
+/* ---------- A message's own actions (desktop) ---------- */
+.message {
+  position: relative;
+}
+.msg-acts {
+  position: absolute;
+  top: 12px;
+  right: 8px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  z-index: 1;
+  animation: fadeIn 0.18s var(--ease, ease);
+}
+.message.open > .message-head {
+  padding-right: 84px;
+}
+.prio-chip {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--danger);
+  background: var(--danger-soft);
+  border-radius: var(--r-pill);
+  padding: 2px 8px;
+  margin-left: 8px;
+  white-space: nowrap;
+}
+
+/* ---------- The reply box's head: Reply or Reply all, the people, the subject, Pop out ---------- */
+.reply-head {
+  border-bottom: 1px solid var(--border);
+}
+.rh-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px 8px 8px;
+  min-height: 44px;
+}
+.rh-kind {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  height: 28px;
+  padding: 0 6px;
+  border-radius: var(--r-control);
+  color: var(--text-2);
+  transition: background-color 0.15s, color 0.15s;
+}
+.rh-kind:hover,
+.rh-kind.on {
+  background: var(--hover);
+  color: var(--text);
+}
+.rh-people {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  flex: 1 1 auto;
+  text-align: left;
+  font-size: 13px;
+  color: var(--text);
+  padding: 4px 6px;
+  border-radius: var(--r-control);
+  transition: background-color 0.15s;
+}
+.rh-people:hover {
+  background: var(--hover);
+}
+.rh-to,
+.rh-cc {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rh-cc {
+  color: var(--text-3);
+}
+.rh-label {
+  font-size: 13px;
+  color: var(--text-3);
+}
+.rh-fields .recip,
+.rh-subject {
+  border-top: 1px solid var(--line);
+}
+.rh-subject input {
+  font: inherit;
+}
+
+/* ---------- Compose: what's switched on for this email ---------- */
+.cx-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--line);
+  animation: fadeIn 0.18s var(--ease, ease);
+}
+.cx-chip {
+  display: inline-flex;
+  align-items: center;
+  border-radius: var(--r-pill);
+  background: var(--hover);
+  color: var(--text-2);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 16px;
+}
+.cx-chip.cx-conf {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+.cx-chip-main {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 4px 4px 10px;
+  color: inherit;
+  font: inherit;
+}
+.cx-chip-x {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--r-round);
+  color: inherit;
+  opacity: 0.7;
+  transition: opacity 0.15s, background-color 0.15s;
+}
+.cx-chip-x:hover {
+  opacity: 1;
+  background: color-mix(in oklab, currentColor 12%, transparent);
+}
+
+/* Confidential mode's sheet */
+.cm-intro {
+  margin: 0 0 16px;
+  color: var(--text-2);
+  font-size: 13px;
+  line-height: 18px;
+}
+.cm-label {
+  font-size: 13px;
+  font-weight: 600;
+  margin: 0 0 4px;
+}
+.cm-spans {
+  margin: 0 -8px 12px;
+}
+.cm-code {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0 4px;
+  border-top: 1px solid var(--line);
+}
+.cm-code > span {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.cm-code small {
+  color: var(--text-3);
+  font-size: 12px;
+  line-height: 16px;
+}
+.cm-foot,
+.og-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+/* ---------- Smart compose: the greyed words after the caret ---------- */
+.sc-ghost {
+  color: var(--text-3);
+  pointer-events: auto;
+  cursor: pointer;
+  -webkit-user-select: none;
+  user-select: none;
+  animation: fadeIn 0.12s ease-out;
+}
+@media (hover: hover) and (pointer: fine) {
+  .sc-ghost::after {
+    content: attr(data-tab);
+    display: inline-block;
+    margin-left: 6px;
+    padding: 0 5px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-size: 10px;
+    line-height: 14px;
+    vertical-align: 1px;
+    color: var(--text-3);
+  }
+}
+.rich.plain .rich-body {
+  font-family: var(--font);
+}
+
+/* ---------- Show original ---------- */
+.og-facts {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 6px 16px;
+  margin: 0 0 16px;
+  font-size: 13px;
+  line-height: 18px;
+}
+.og-facts dt {
+  color: var(--text-3);
+}
+.og-facts dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.og-facts .mono,
+.og-source {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+.og-verdict {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 600;
+}
+.og-verdict.pass {
+  color: var(--ok);
+}
+.og-verdict.fail {
+  color: var(--danger);
+}
+.og-verdict.none {
+  color: var(--text-3);
+}
+.og-dim {
+  color: var(--text-3);
+  margin-left: 8px;
+}
+.og-note {
+  color: var(--text-3);
+  font-size: 12px;
+  margin: 0 0 12px;
+}
+.og-source {
+  margin: 0;
+  padding: 12px;
+  border-radius: var(--r-tile);
+  background: var(--hover);
+  font-size: 12px;
+  line-height: 17px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 50vh;
+  overflow: auto;
+}
+.og-wait {
+  display: grid;
+  place-items: center;
+  min-height: 160px;
+  color: var(--text-3);
+}
+.og-sheet .sheet-body,
+.cm-sheet .sheet-body {
+  padding: 0 16px 16px;
+}
+@media (min-width: 768px) {
+  .sheet.og-sheet {
+    width: min(760px, 100%);
+  }
+}
+
+/* Printing happens in a frame nobody sees. */
+iframe.print-frame {
+  position: fixed;
+  width: 0;
+  height: 0;
+  border: 0;
+  right: 0;
+  bottom: 0;
+  visibility: hidden;
+}
+
+/* ---------- Settings: a signature per address ---------- */
+.sig-for {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0 0 12px;
+  font-size: 13px;
+  color: var(--text-2);
+}
+.sig-default {
+  margin-bottom: 8px;
+}
+.sig-reset {
+  margin-top: 8px;
+  font-size: 13px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .img-bar,
+  .tr-note,
+  .conf-banner,
+  .msg-acts,
+  .cx-chips,
+  .sc-ghost {
+    animation: none;
+  }
+  .mail-frame iframe {
+    transition: none;
+  }
+}
+
+/* A narrow compose window: read tracking shows as its eye alone (the words are in its tooltip), so the footer fits. */
+.compose.narrow .compose-foot .track-toggle > span {
+  display: none;
+}
+.compose.narrow .compose-foot .track-toggle {
+  padding-inline: 8px;
+}

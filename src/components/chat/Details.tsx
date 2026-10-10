@@ -198,12 +198,12 @@ export function ChannelAbout(p: {
 }) {
   const { channel, client, team, other } = p;
   const person = (id: string) => p.users.find((u) => u.id === id);
-  const emails = client?.domain ? p.mail.filter((th) => th.messages.some((m) => [m.from, ...m.to].some((x) => x.email.toLowerCase().endsWith('@' + client.domain)))) : [];
-  const contacts = client?.domain ? [...new Map(p.mail.flatMap((th) => th.messages.flatMap((m) => [m.from, ...m.to])).filter((x) => x.email.toLowerCase().endsWith('@' + client.domain)).map((x) => [x.email.toLowerCase(), x])).values()] : [];
+  const emails = client?.domain ? p.mail.filter((th) => th.messages.some((m) => [m.from, ...m.to, ...(m.cc ?? [])].some((x) => x.email.toLowerCase().endsWith('@' + client.domain)))) : [];
+  const contacts = client?.domain ? [...new Map(p.mail.flatMap((th) => th.messages.flatMap((m) => [m.from, ...m.to, ...(m.cc ?? [])])).filter((x) => x.email.toLowerCase().endsWith('@' + client.domain)).map((x) => [x.email.toLowerCase(), x])).values()] : [];
   const lastContact = (email: string) =>
     p.mail
       .flatMap((th) => th.messages)
-      .filter((m) => [m.from, ...m.to].some((x) => x.email.toLowerCase() === email))
+      .filter((m) => [m.from, ...m.to, ...(m.cc ?? [])].some((x) => x.email.toLowerCase() === email))
       .map((m) => m.date)
       .sort()
       .pop();

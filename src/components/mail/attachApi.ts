@@ -28,7 +28,7 @@ export const inDrive = (threadId: string, name: string, drive: DriveItem[] = sto
  */
 export async function saveToDrive(o: { threadId: string; messageId?: string; atts: Attachment[]; folderId: string | null; date?: string; wsId?: string }): Promise<number> {
   const wsId = o.wsId ?? session.wsId;
-  const atts = o.atts.filter((a) => !a.blocked && !a.inline);
+  const atts = o.atts.filter((a) => !a.blocked && !a.inline && !a.cid);
   if (!atts.length) return 0;
   if (realFor(wsId)) {
     const r = await fetch('/api/mail/files/drive', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ threadId: o.threadId, messageId: o.messageId, urls: atts.map((a) => a.url).filter(Boolean), folderId: o.folderId }) }).catch(() => null);

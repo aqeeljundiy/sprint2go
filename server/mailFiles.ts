@@ -180,13 +180,12 @@ export async function storeIncoming(raw: Buffer, parsed: ParsedMail, workspaceId
     if (blocked || scanned?.state === 'infected') {
       rmSync(path, { force: true });
       out.push({ name, size: fmtSize(a.size), type, blocked: blocked ?? WHY.virus });
-      if (inline && html) html = html.split(`cid:${cid}`).join('');
       continue;
     }
     db.recordFile({ id, workspaceId, by, name, type, size: a.size });
     const url = `/api/files/${id}`;
-    if (inline && html) html = html.split(`cid:${cid}`).join(url);
-    out.push({ name, size: fmtSize(a.size), url, type, scan: scanned?.state === 'clean' ? 'clean' : 'unscanned', ...(inline ? { inline: true } : {}) });
+    // The HTML keeps its cid: links; the reader's frame puts each picture back from its file (mailHtml.ts, by `cid`).
+    out.push({ name, size: fmtSize(a.size), url, type, scan: scanned?.state === 'clean' ? 'clean' : 'unscanned', ...(inline ? { inline: true, cid } : {}) });
   }
   return { attachments: out, html };
 }
@@ -266,7 +265,7 @@ export function searchAttachments(userId: string, filter: FileFilter & { workspa
 }
 /** `has:attachment` and `filename:` for one conversation, for the search builder. */
 export const threadMatches = (thread: Doc, q: { hasAttachment?: boolean; filename?: string }) =>
-  (thread.messages ?? []).some((m: Doc) => (m.attachments ?? []).some((a: Doc) => !a.inline && !a.blocked && (!q.filename || filenameMatches(a.name, q.filename)))) || (!q.hasAttachment && !q.filename);
+  (thread.messages ?? []).some((m: Doc) => (m.attachments ?? []).some((a: Doc) => !a.inline && !a.cid && !a.blocked && (!q.filename || filenameMatches(a.name, q.filename)))) || (!q.hasAttachment && !q.filename);
 
 /* ---------- download all as a zip ---------- */
 
@@ -400,7 +399,7 @@ function messageFiles(thread: Doc, messageId: string | null, wsId: string) {
   const msgs = (thread.messages ?? []).filter((m: Doc) => !messageId || m.id === messageId);
   return msgs.flatMap((m: Doc) =>
     (m.attachments ?? [])
-      .filter((a: Doc) => !a.inline && !a.blocked)
+      .filter((a: Doc) => !a.inline && !a.cid && !a.blocked)
       .map((a: Doc) => ({ a, m, id: fileIdOf(a.url) }))
       .filter((x: Doc) => x.id && db.fileInfo(x.id)?.workspaceId === wsId && existsSync(db.filePath(x.id))),
   ) as { a: Doc; m: Doc; id: string }[];

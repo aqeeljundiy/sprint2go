@@ -45,6 +45,8 @@ jobs:
         run: node --import ./server/register.mjs --test server/ics.test.ts server/repeat.test.ts
       - name: Mail smoke test
         run: node scripts/smoke-mail.mjs
+      - name: Mail extras (Cc kept apart, alias From, Reply-To and priority, confidential links, codes and expiry, show original, print, picture proxy)
+        run: node --import ./server/register.mjs scripts/mail-extras-tests.mjs
       - name: Security and billing checks
         run: node scripts/security-tests.mjs
       - name: AI models (provider lists, picking, fallback)
@@ -61,12 +63,11 @@ jobs:
         run: node --import ./server/register.mjs scripts/tables-tests.mjs
       - name: Phone mail apps (IMAP, SMTP submission, app passwords)
         run: node scripts/imap-tests.mjs
+      - name: Mail labels and filters (every criterion and action, order and stop, blocked senders, forwarding rules, existing mail and Undo, who may do what, IMAP folders)
+        run: node --import ./server/register.mjs scripts/mail-filters-tests.mjs
       - name: Whitelist (Unlimited lifts every limit, no invoices, AI and Boosted monthly limits, people's rules, operators only, audit, MRR)
         run: node --import ./server/register.mjs scripts/whitelist-tests.mjs
-<<<<<<< HEAD
       - name: Mail attachments (previews, Download all as zip, Save to Drive, big files as links, blocked types and virus scans, files kept on scheduled mail)
         run: node --import ./server/register.mjs scripts/mail-files-tests.mjs
-=======
       - name: Mail sorting (search operators, categories, Important, spam scoring and learning, phishing signs, mute, 30-day Spam and Trash)
         run: node --import ./server/register.mjs scripts/mail-smart-tests.mjs
->>>>>>> main

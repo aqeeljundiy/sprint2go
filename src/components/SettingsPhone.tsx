@@ -1,3 +1,4 @@
+import { SignaturesPhone, WritingPhone } from './mail/MailWriting';
 import { useState, type ReactNode } from 'react';
 import { Ban, Inbox, Plus, UserPlus, Users } from 'lucide-react';
 import type { Account, BlockRule, CalendarDef, Role, User, Workspace } from '../types';
@@ -11,7 +12,6 @@ import { Badge } from './ui/Person';
 import { ChoiceRow, EditScreen, GRow, Group, SwitchRow, TextRow } from './ui/Grouped';
 import { Avatar } from './Avatar';
 import { PhotoPicker } from './PhotoPicker';
-import { RichEditor } from './RichEditor';
 import { WorkspaceLogo } from './WorkspaceLogo';
 import { BrandFields } from './WorkspaceForms';
 import { LANGS, getLang, t, tn, tx, type Lang } from '../i18n';
@@ -251,25 +251,17 @@ export function AccountPhone({ s, update, email, me, onPhoto, security }: { s: S
   );
 }
 
-/** Plain text of a signature, for its row. */
-const textOf = (html: string) => {
-  const d = document.createElement('div');
-  d.innerHTML = html.replace(/<(br|\/div|\/p|\/li)[^>]*>/gi, ' $&');
-  return (d.textContent ?? '').replace(/\s+/g, ' ').trim();
-};
-
 /** Mail & signature: the signature on its own screen, undo send, read tracking and blocked senders. */
-export function MailPhone({ s, update, ws, canManage, blocked, onUnblock, onSecurity, extras }: { s: Settings; update: (p: Partial<Settings>) => void; ws: Workspace; canManage: boolean; blocked: BlockRule[]; onUnblock: (id: string) => void; onSecurity: () => void; extras?: ReactNode }) {
-  const [sig, setSig] = useState(false);
+export function MailPhone({ s, update, ws, me, canManage, blocked, onUnblock, onSecurity, extras }: { s: Settings; update: (p: Partial<Settings>) => void; ws: Workspace; me: string; canManage: boolean; blocked: BlockRule[]; onUnblock: (id: string) => void; onSecurity: () => void; extras?: ReactNode }) {
   const [rule, setRule] = useState<string | null>(null);
   const b = blocked.find((x) => x.id === rule);
   const who = (x: BlockRule) => (x.kind === 'domain' ? t('Everyone at @{domain}', { domain: x.value }) : x.value);
   return (
     <>
-      <Group footer={t('Added to the end of every new email and reply.')}>
-        <GRow label={t('Signature')} value={textOf(s.signature) || t('None')} onClick={() => setSig(true)} />
-      </Group>
+      {/* A signature per address you send from, smart compose and the default reply (src/components/mail/MailWriting.tsx). */}
+      <SignaturesPhone s={s} update={update} ws={ws} me={me} />
       {extras}
+      <WritingPhone s={s} update={update} />
       <Group footer={s.undoSend ? tn(s.undoSend, 'Your email waits {n} second before it goes out, so Undo can take it back and nobody gets it.', 'Your email waits {n} seconds before it goes out, so Undo can take it back and nobody gets it.') : t('Your email goes out the moment you press Send.')}>
         <ChoiceRow
           label={t('Undo send')}
@@ -293,7 +285,7 @@ export function MailPhone({ s, update, ws, canManage, blocked, onUnblock, onSecu
       <Group title={t('Blocked senders')} footer={blocked.length ? undefined : t('Nobody yet. Use “Block” on any email to stop a sender for good.')}>
         {blocked.length === 0 ? <GRow label={t('Nobody blocked')} /> : blocked.map((x) => <GRow key={x.id} icon={Ban} plainIcon label={who(x)} onClick={() => setRule(x.id)} />)}
       </Group>
-      {sig && <SignatureScreen html={s.signature} onSave={(html) => update({ signature: html })} onBack={() => setSig(false)} />}
+
       {b && (
         <PushScreen title={t('Blocked sender')} onBack={() => setRule(null)} className="g-page g-edit">
           <div className="g-body">
@@ -308,19 +300,6 @@ export function MailPhone({ s, update, ws, canManage, blocked, onUnblock, onSecu
         </PushScreen>
       )}
     </>
-  );
-}
-
-/** The signature on a screen of its own: the editor, Cancel and Save. */
-function SignatureScreen({ html, onSave, onBack }: { html: string; onSave: (html: string) => void; onBack: () => void }) {
-  const [v, setV] = useState(html);
-  return (
-    <EditScreen title={t('Signature')} onBack={onBack} canSave={v !== html} onSave={() => onSave(v)}>
-      <div className="signature-box set-sig">
-        <RichEditor initialHtml={html} placeholder={t('Your signature')} onChange={setV} autoFocus />
-      </div>
-      <p className="g-foot">{t('Added to the end of every new email and reply.')}</p>
-    </EditScreen>
   );
 }
 

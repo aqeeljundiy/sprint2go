@@ -136,7 +136,7 @@ export function filenameMatches(name: string, q: string): boolean {
 }
 
 /** The files people can open (not refused ones, not pictures that sit inside the email's words). */
-export const listedAttachments = (m: Pick<Message, 'attachments'>) => (m.attachments ?? []).filter((a) => !a.inline);
+export const listedAttachments = (m: Pick<Message, 'attachments'>) => (m.attachments ?? []).filter((a) => !a.inline && !a.cid);
 /** `has:attachment`: the conversation has a file someone attached (pictures inside the words don't count, as in Gmail). */
 export const threadHasAttachment = (t: Pick<Thread, 'messages'>) => (t.messages ?? []).some((m) => listedAttachments(m).length > 0);
 
@@ -151,7 +151,7 @@ export function mailFiles(threads: Thread[], f: FileFilter = {}): MailFile[] {
       if (f.before && m.date >= f.before) continue;
       if (from && !String(m.from?.email ?? '').toLowerCase().includes(from) && !String(m.from?.name ?? '').toLowerCase().includes(from)) continue;
       (m.attachments ?? []).forEach((att, index) => {
-        if (att.inline) return;
+        if (att.inline || att.cid) return;
         const kind = fileKind(att.name, att.type);
         if (f.kinds?.length && !f.kinds.includes(kind)) return;
         if (f.q && !filenameMatches(att.name, f.q)) return;

@@ -279,7 +279,7 @@ try {
   const rzAtts = rz1?.messages[0].attachments ?? [];
   check(rzAtts.filter((a) => !a.inline).length === 2 && rzAtts.every((a) => a.url && a.url !== pdf.url && a.scan === 'clean'), 'the teammate gets their own copies of the files, scanned clean');
   const inl = rzAtts.find((a) => a.inline);
-  check(!!inl && rz1.messages[0].html.includes(inl.url), 'and sees the picture in place, not as an attachment');
+  check(!!inl && !!inl.cid && rz1.messages[0].html.includes(`cid:${inl.cid}`), 'and sees the picture in place (its cid kept for the reader’s frame), not as an attachment');
 
   const exe = await aqeel.upload('tool.exe', program());
   const rExe = await sendMail('exe out', [{ name: 'tool.exe', url: exe.url }]);
@@ -332,7 +332,7 @@ try {
   check(by('setup.exe') && !by('setup.exe').url && /run programs/.test(by('setup.exe').blocked ?? ''), 'an .exe is listed as blocked and not kept');
   check(by('bundle.zip') && !by('bundle.zip').url && /zip/.test(by('bundle.zip').blocked ?? ''), 'a zip holding a .vbs is blocked');
   check(by('scan-me.pdf') && !by('scan-me.pdf').url && /virus/.test(by('scan-me.pdf').blocked ?? ''), 'a file the scanner flags is blocked as a virus');
-  check(by('logo.png')?.inline && t3.messages[0].html.includes(by('logo.png').url) && !t3.messages[0].html.includes('cid:'), 'a cid picture shows in place');
+  check(by('logo.png')?.inline && by('logo.png').cid === 'logo123' && !!by('logo.png').url && t3.messages[0].html.includes('cid:logo123'), 'a cid picture is kept with its cid, so the reader shows it in place');
   check(scans > 0, 'the scanner was asked (CLAMD_HOST)');
   check(!db.prepare("SELECT 1 FROM files WHERE name IN ('setup.exe', 'bundle.zip', 'scan-me.pdf') AND workspace_id = 'pnp'").get(), 'nothing refused is kept as a file');
   check(!db.prepare("SELECT 1 FROM mail_raw WHERE thread_id = ? AND kind = 'raw'").get(t3.id), 'mail apps (IMAP) get a copy without the refused files, not the source as it arrived');

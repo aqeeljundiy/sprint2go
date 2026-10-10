@@ -40,7 +40,7 @@ export interface AITodo {
 const plain = (t: Thread) => ({
   id: t.id,
   subject: t.subject,
-  messages: t.messages.map((m) => ({ from: `${m.from.name} <${m.from.email}>`, to: m.to.map((p) => p.email).join(', '), date: m.date, body: m.body })),
+  messages: t.messages.map((m) => ({ from: `${m.from.name} <${m.from.email}>`, to: [...m.to, ...(m.cc ?? [])].map((p) => p.email).join(', '), date: m.date, body: m.body })),
 });
 
 class NoKey extends Error {}

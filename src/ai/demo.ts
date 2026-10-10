@@ -159,7 +159,7 @@ export async function assistant(question: string, threads: Thread[], me: string)
       const m = lastFromThem(t);
       return !m.listUnsubscribe && !/no-?reply|notifications|billing|news|deals/i.test(m.from.email);
     };
-    const score = (t: Thread) => (t.labels.includes('clients') ? 2 : 0) + (t.unread ? 1 : 0) + (t.starred ? 1 : 0);
+    const score = (t: Thread) => (t.labels.includes('lb-clients') ? 2 : 0) + (t.unread ? 1 : 0) + (t.starred ? 1 : 0);
     const picks = inbox.filter((t) => human(t) && (t.unread || t.starred)).sort((a, b) => score(b) - score(a)).slice(0, 4);
     return {
       answer: picks.length

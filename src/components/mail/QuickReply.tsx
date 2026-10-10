@@ -12,6 +12,8 @@ import { t } from '../../i18n';
 import { AttachButton, DraftFilesList, useDraftFiles, type OutFile } from './DraftFiles';
 import { uploadForMail } from './attachApi';
 import { toast } from '../../toast';
+import { RecipientInput } from '../RecipientInput';
+import type { ReplyOpts } from './composeExtras';
 
 /**
  * Reply and Reply all on a phone: Gmail's full-screen compose, with the people filled in and the subject shown as
@@ -19,7 +21,11 @@ import { toast } from '../../toast';
  * templates, read tracking and Discard under ⋮. The strip above the keyboard has Help me write, formatting and templates.
  */
 export function QuickReply({
-  to,
+  to: startTo,
+  cc: startCc = [],
+  contacts = [],
+  spellLang,
+  suggest,
   all,
   subject,
   initialHtml,
@@ -33,6 +39,11 @@ export function QuickReply({
   initialFiles,
 }: {
   to: Person[];
+  cc?: Person[];
+  contacts?: Person[];
+  /** The browser's spell check language, and smart compose (RichEditor). */
+  spellLang?: 'en' | 'id' | 'off';
+  suggest?: (before: string) => Promise<string | null>;
   all?: boolean; // Reply all
   subject: string;
   initialHtml: string;
@@ -41,7 +52,8 @@ export function QuickReply({
   myName: string;
   /** Read tracking, when it's offered for these recipients: whether it's on, and switching it. */
   track: { on: boolean; set: (on: boolean) => void } | null;
-  onSend: (html: string, text: string, files: OutFile[]) => void;
+  /** `opts`: the people or subject, when they were changed here. */
+  onSend: (html: string, text: string, opts?: ReplyOpts) => void;
   onKeep: (draft: { html: string; text: string } | null) => void; // closed without sending: what's written, or null
   onClose: () => void;
   /** Files of a reply that came back (not sent, or Undo). */
@@ -64,7 +76,12 @@ export function QuickReply({
   const inlineImages = (pics: File[]) => Promise.all(pics.map((f) => uploadForMail(f).then((up) => ({ url: up.url, name: f.name }), (e: Error) => (toast({ text: e.message }), null))));
   const sigText = signature ? htmlToText(signature) : '';
   const own = (sigText ? body.text.replace(sigText, '') : body.text).trim();
-  const re = /^re:/i.test(subject) ? subject : `Re: ${subject}`;
+  const reStart = /^re:/i.test(subject) ? subject : `Re: ${subject}`;
+  // Gmail lets the people and the subject of a reply change.
+  const [to, setTo] = useState(startTo);
+  const [cc, setCc] = useState(startCc);
+  const [re, setRe] = useState(reStart);
+  const changed = (): ReplyOpts => ({ ...(to !== startTo || cc !== startCc ? { to, cc } : {}), ...(re.trim() && re !== reStart ? { subject: re.trim() } : {}) });
 
   const leave = (then: () => void) => {
     setClosing(true);
@@ -73,8 +90,9 @@ export function QuickReply({
   const close = () => leave(() => (onKeep(hasOwnText(latest.current.text, signature) ? latest.current : null), onClose()));
   const send = () => {
     if (!ready) return;
+    if (!to.length && !cc.length) return;
     const out = files.out();
-    leave(() => (onSend(latest.current.html, latest.current.text, out), onKeep(null), onClose()));
+    leave(() => (onSend(latest.current.html, latest.current.text, { ...changed(), ...(out.length ? { files: out } : {}) }), onKeep(null), onClose()));
   };
   const insert = (text: string) => {
     editor.current?.setHtml(textToHtml(text) + (signature ? `<p><br></p>${signature}` : ''));
@@ -102,16 +120,14 @@ export function QuickReply({
           </button>
         </header>
         <div className="compose-main">
-          <div className="recip gm-fixed">
-            <span className="recip-label">{t('To')}</span>
-            <span className="gm-fixed-value">{to.map((p) => p.name || p.email).join(', ')}</span>
-          </div>
-          <div className="compose-field gm-fixed">
+          <RecipientInput label={t('To')} value={to} contacts={contacts} onChange={setTo} />
+          {(cc.length > 0 || all) && <RecipientInput label="Cc" value={cc} contacts={contacts} onChange={setCc} />}
+          <label className="compose-field">
             <span>{t('Subject')}</span>
-            <span className="gm-fixed-value muted">{re}</span>
-          </div>
+            <input value={re} onChange={(e) => setRe(e.target.value)} />
+          </label>
           <div className="compose-body" onClick={(e) => startAtTop(e, typed)}>
-            <RichEditor ref={editor} autoFocus initialHtml={initialHtml} placeholder={t('Compose email')} onChange={(html, text) => setBody({ html, text })} onSubmit={send} onImages={inlineImages} />
+            <RichEditor ref={editor} autoFocus initialHtml={initialHtml} placeholder={t('Compose email')} onChange={(html, text) => setBody({ html, text })} onSubmit={send} spellLang={spellLang} suggest={suggest} onImages={inlineImages} />
           </div>
           <DraftFilesList state={files} />
         </div>

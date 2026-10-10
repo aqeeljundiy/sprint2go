@@ -1,6 +1,7 @@
 import { mark, type Msg } from './i18n/index';
 import type { SandboxMark } from './sandbox';
 import type { SummaryRun } from './jobTimes';
+import type { FiledBy } from './mailFilterMatch';
 
 export type FolderId = 'inbox' | 'starred' | 'sent' | 'drafts' | 'archive' | 'spam' | 'trash' | 'snoozed' | 'scheduled' | 'assigned';
 
@@ -26,13 +27,22 @@ export interface Attachment {
   scan?: 'clean' | 'unscanned';
   /** Refused on arrival (a type Gmail refuses, one inside a zip, or a virus): why, and the file isn't kept. */
   blocked?: string;
+  cid?: string; // a picture shown inside the email's HTML (cid:...), kept as a file too
 }
 
 export interface Message {
   id: string;
   from: Person;
   to: Person[];
+  cc?: Person[]; // kept apart from To, as it was sent (older mail folded Cc into To)
   bcc?: Person[]; // the sender's own copy only: who got it without the others seeing
+  replyTo?: Person[]; // the Reply-To header: replies go there instead of to the sender
+  priority?: 'high' | 'low'; // the Importance / X-Priority header
+  /** Confidential mode (server/mailConfidential.ts): set by the server. The sender's copy keeps its words; a recipient's holds a notice and opens the words from the server while access lasts. */
+  confidential?: ConfidentialMeta;
+  plain?: boolean; // written in plain text mode
+  /** A draft's choices for when it's sent (scheduled ones too): an alias as From, Reply-To, priority, confidential mode. */
+  sendOptions?: { fromAddress?: string; replyTo?: Person[]; priority?: 'high' | 'low'; confidential?: { expiresAt: string; passcode: boolean } };
   date: string; // ISO
   body: string; // plain-text version (used for snippets and search)
   html?: string; // rich version, when the message was written with formatting
@@ -58,6 +68,15 @@ export interface Message {
 export interface MailWarning {
   kind: 'auth' | 'lookalike' | 'spoof' | 'links' | 'first' | 'reported';
   detail?: string; // the domain it imitates, the colleague's name, a link's real address
+}
+
+/** A confidential email: until when it can be opened, whether a code is needed, and whether its sender removed access. */
+export interface ConfidentialMeta {
+  id: string;
+  expiresAt: string; // ISO
+  passcode: boolean; // people outside sprint2go get a code by email before it opens
+  revokedAt?: string;
+  sender?: boolean; // this is the sender's own copy
 }
 
 export type RsvpStatus = 'accepted' | 'tentative' | 'declined';
@@ -158,6 +177,8 @@ export interface Thread {
   trashedAt?: string; // when it went to Trash (deleted for good 30 days later)
   spamWhy?: string[]; // why the filter put it in Spam (short words, for the banner)
   replyTo?: { threadId: string; mid?: string; references?: string[] }; // a reply drafted in a connected AI app: when sent, it carries that conversation's headers so it lands in the same thread
+  /* Labels and filters (src/mailFilterMatch.ts, server/mailFilters.ts) */
+  filed?: FiledBy[]; // the server's: what filters (or a block) did to it on arrival, newest last
 }
 
 /** A meeting proposed inside an email, offered as "Add to calendar". */
@@ -325,6 +346,7 @@ export interface Workspace {
   mailCredits?: number; // emails left on Boosted sending
   mailCreditsNotified?: boolean;
   mailAliases?: MailAlias[]; // extra addresses that deliver into mailboxes (set through the server)
+  mailForwarding?: 'off' | 'company' | 'verified'; // automatic forwarding by filters: off, to the company's own addresses, or also to outside addresses that confirmed (the default)
   mailChecks?: { at: string; allOk: boolean; checks: { key: string; ok: boolean; found: string; want: string }[] }; // the last DNS check
   /** What really works, worked out by the server: mail in, mail out, per mailbox, with the reason when it doesn't. */
   mailReady?: { at: string; receive: boolean; send: boolean; why: { receive?: string; send?: string }; mailboxes: Record<string, { receive: boolean; send: boolean; why?: string; sendWhy?: string }> };

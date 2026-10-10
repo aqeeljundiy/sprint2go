@@ -339,3 +339,31 @@ Question: ${input.question}`,
     { effort: 'medium' },
   );
 }
+
+/**
+ * Mail's smart compose: the next few words of what someone is typing, or nothing when there's no obvious next words.
+ * Short and plain, in the writer's own language; never a new sentence about something they haven't started.
+ */
+export async function nextWords(input: { text: string; subject?: string; to?: string; me?: string; lang?: string }) {
+  const before = String(input.text ?? '').slice(-1200);
+  if (before.trim().length < 3) return { completion: '' };
+  const out = JSON.parse(
+    await ask(
+      `Continue this email exactly where the cursor is (at the end), like an autocomplete: up to 8 words that most likely come next, finishing the current sentence at most. Use the writer's language${input.lang ? ` (probably ${input.lang})` : ''} and tone. If nothing obvious comes next, return an empty string. Start with a space if a space is needed. Never repeat what's written.${input.subject ? `\nSubject: ${String(input.subject).slice(0, 200)}` : ''}${input.to ? `\nTo: ${String(input.to).slice(0, 100)}` : ''}${input.me ? `\nWriter: ${String(input.me).slice(0, 100)}` : ''}\n\n<draft>\n${before}\n</draft>`,
+      { effort: 'low', schema: { type: 'object', properties: { completion: { type: 'string' } }, required: ['completion'], additionalProperties: false } },
+    ),
+  ) as { completion: string };
+  const c = String(out.completion ?? '').replace(/\n[\s\S]*$/, '').slice(0, 80);
+  return { completion: c.trim() ? c : '' };
+}
+
+/** Mail: an email in another language, keeping its paragraphs; `to` is the language's English name (e.g. "Indonesian"). */
+export async function translate(input: { text: string; to: string }) {
+  const lang = String(input.to ?? 'English').slice(0, 40);
+  const out = JSON.parse(
+    await ask(`Translate this email into ${lang}. Keep the paragraphs, names, numbers, links and dates. If it's already in ${lang}, return it as it is. Also name the language it was written in (in English).\n\n<email>\n${String(input.text ?? '').slice(0, 20_000)}\n</email>`, {
+      schema: { type: 'object', properties: { text: { type: 'string' }, from: { type: 'string' } }, required: ['text', 'from'], additionalProperties: false },
+    }),
+  ) as { text: string; from: string };
+  return { text: out.text, from: out.from };
+}

@@ -1,6 +1,6 @@
 import type { Status, User, Workspace } from './types';
 import type { TaskTemplate } from './data/templates';
-import { THREADS } from './data/mock';
+import { DEMO_MAIL_FILTERS, DEMO_MAIL_LABELS, THREADS } from './data/mock';
 import { EVENTS, EXTERNAL_EVENTS, SEED_CALENDARS } from './data/calendar';
 import { DRIVE } from './data/drive';
 import { CHANNELS, CLIENTS, MEETINGS, MESSAGES, NOTICES, TASKS, TEAMS } from './data/team';
@@ -31,6 +31,8 @@ export const seed = () => ({
   rows: ROWS as TableRow[],
   prefs: {} as Record<string, Record<string, unknown>>,
   quotes: [] as Quote[], // each person's settings and views, so they follow them between devices
+  mailLabels: DEMO_MAIL_LABELS, // Mail's labels: a mailbox's own and the company's (server/mailFilters.ts)
+  mailFilters: DEMO_MAIL_FILTERS, // Mail's filters, run by the server on every arriving email
 });
 export type Collections = ReturnType<typeof seed>;
 export type CollectionKey = keyof Collections;
