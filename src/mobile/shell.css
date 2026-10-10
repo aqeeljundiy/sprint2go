@@ -8,9 +8,9 @@
 
 :root {
   --badge: #d93636; /* unread counts: a solid red that keeps white text readable in both themes */
-  --tabbar-h: 64px; /* the bar row: a 52px pill with 6px above and below */
+  --tabbar-h: 56px; /* the bar: five labelled tabs, plus the home bar under it */
   --bar-space: 0px; /* how much of the bottom the bar takes (phones only) */
-  --fab-space: 0px; /* extra room lists keep under a floating create button (tiny phones only) */
+  --fab-space: 0px; /* room lists keep at their end so the last row scrolls clear of the floating create button */
   --tap: 44px; /* the smallest tap target on a phone */
 }
 
@@ -25,6 +25,7 @@
   /* The bar's room at the bottom: gone on focused screens (.bar-away), the keyboard's height while typing. */
   :root {
     --bar-space: calc(var(--tabbar-h) + env(safe-area-inset-bottom));
+    --fab-space: 88px;
   }
   :root.bar-away {
     --bar-space: env(safe-area-inset-bottom);
@@ -213,12 +214,13 @@
     min-height: 0;
   }
 
-  /* No ☰ drawers on phones: the top bar's switchers replace them. The sidebar stays in the page, out of sight. */
+  /* The desktop sidebar stays in the page, out of sight, unless the app on screen asks for it as a left drawer
+     (useSidebarDrawer: Mail's folders). */
   .sidebar {
     position: fixed;
     inset: 0 auto 0 0;
-    width: min(300px, 86vw);
-    z-index: 45;
+    width: min(304px, 84vw);
+    z-index: var(--z-panel);
     visibility: hidden;
     transform: translateX(-104%);
   }
@@ -229,24 +231,71 @@
   .sb-resize {
     display: none;
   }
+  :root.phone-sidebar .sidebar {
+    padding-top: env(safe-area-inset-top);
+    border-radius: 0 16px 16px 0;
+    background: var(--surface);
+    box-shadow: var(--shadow-lg);
+    transition:
+      transform 0.2s cubic-bezier(0.4, 0, 1, 1),
+      visibility 0s linear 0.2s;
+  }
+  :root.phone-sidebar .sidebar.open {
+    visibility: visible;
+    transform: none;
+    transition:
+      transform 0.25s var(--ease),
+      visibility 0s;
+  }
+  :root.phone-sidebar .scrim {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: calc(var(--z-panel) - 1);
+    background: rgb(0 0 0 / 0.32);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s ease-in;
+  }
+  :root.phone-sidebar .scrim.show {
+    opacity: 1;
+    pointer-events: auto;
+    transition: opacity 0.2s ease-out;
+  }
   .account-menu {
     width: calc(min(300px, 86vw) - 16px);
   }
 
-  /* ---------- Top bar: workspace, title switcher, search ---------- */
+  /* ---------- Top bar (Teams' row): company logo with your avatar, title, search ---------- */
 
   .mobile-top {
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: 0;
     position: sticky;
     top: 0;
     z-index: 30;
-    min-height: 56px;
-    padding: max(6px, env(safe-area-inset-top)) 6px 6px 8px;
-    background: color-mix(in oklab, var(--bg) 92%, transparent);
-    backdrop-filter: blur(12px);
-    border-bottom: 1px solid var(--line);
+    min-height: calc(52px + env(safe-area-inset-top));
+    padding: env(safe-area-inset-top) 4px 0 10px;
+    background: var(--bg);
+    border-bottom: 1px solid transparent;
+    transition: border-color 0.2s;
+  }
+  /* A page at rest has no line; it shows once the content scrolls under the bar. */
+  .mobile-top.scrolled {
+    border-bottom-color: var(--line);
+  }
+  /* Where an app's <TopBar> puts its parts (src/mobile/TopBar.tsx). */
+  .mt-slot {
+    display: contents;
+  }
+  .mobile-top.own {
+    padding: env(safe-area-inset-top) 0 0;
+  }
+  .mobile-top.own .mt-replace {
+    display: block;
+    flex: 1;
+    min-width: 0;
   }
   .mt-ws,
   .mt-back {
@@ -259,42 +308,79 @@
     border-radius: 12px;
     transition: background 0.15s;
   }
+  .mt-ws .ws-logo-img,
+  .mt-ws > :first-child {
+    border-radius: 8px;
+  }
   .mt-back {
     color: var(--accent);
+  }
+  .mt-back.named {
+    display: inline-flex;
+    gap: 0;
+    padding: 0 8px 0 0;
+    font-size: 17px;
+    font-weight: 400;
   }
   .mt-ws:active,
   .mt-back:active {
     background: var(--hover);
   }
+  /* You, on the company logo's corner. */
+  .mt-me {
+    position: absolute;
+    right: 1px;
+    bottom: 3px;
+    display: grid;
+    border-radius: 50%;
+    box-shadow: 0 0 0 2px var(--bg);
+  }
+  .mt-me .avatar {
+    font-size: 8px !important;
+  }
   .mt-ws-dot {
     position: absolute;
-    top: 5px;
-    right: 4px;
+    top: 3px;
+    right: 1px;
     width: 10px;
     height: 10px;
     border-radius: 50%;
     background: var(--badge);
     box-shadow: 0 0 0 2px var(--bg);
   }
+  .mt-btn {
+    color: var(--text-2);
+  }
   .mt-title {
     display: inline-flex;
     align-items: center;
     gap: 4px;
     min-width: 0;
-    max-width: 64vw;
+    max-width: 66vw;
     min-height: var(--tap);
     margin: 0;
-    padding: 0 8px;
+    padding: 0 6px 0 2px;
     border-radius: 12px;
-    font-size: 19px;
-    font-weight: 750;
+    font-size: 22px;
+    font-weight: 700;
     letter-spacing: -0.02em;
     color: var(--text);
-    transition: background 0.15s;
+    transition:
+      background 0.15s,
+      opacity 0.15s ease-out;
   }
   button.mt-title:active,
   .mt-title.open {
     background: var(--hover);
+  }
+  /* A large title in the page (<LargeTitle>, Home's greeting): the bar's title waits, then fades in small. */
+  .mt-title.tucked {
+    opacity: 0;
+  }
+  .mt-title.small {
+    font-size: 17px;
+    font-weight: 650;
+    letter-spacing: -0.01em;
   }
   .mt-title-text {
     min-width: 0;
@@ -313,6 +399,9 @@
   .mobile-top .icon-btn {
     width: var(--tap);
     height: var(--tap);
+  }
+  .mt-search {
+    color: var(--text-2);
   }
   .mt-bell {
     position: relative;
@@ -333,14 +422,106 @@
     line-height: 18px;
     text-align: center;
   }
-  .ws-unread {
-    margin-left: auto;
-    padding: 1px 8px;
-    border-radius: 999px;
-    background: var(--accent-soft);
-    color: var(--accent-text);
-    font-size: 12px;
+
+  /* Large titles in the page (src/mobile/TopBar.tsx). */
+  .large-title {
+    padding: 8px 16px 0;
+  }
+
+  /* ---------- You and your companies (the logo's sheet, Teams' account panel) ---------- */
+
+  .ws-panel {
+    padding-bottom: 4px;
+  }
+  .ws-panel .as-item {
+    gap: 12px;
+  }
+  .ws-you {
+    min-height: 64px;
+  }
+  .ws-you-name {
+    font-size: 17px;
     font-weight: 700;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  .ws-you small,
+  .ws-row small {
+    font-size: 13px;
+    color: var(--text-3);
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  .as-chev {
+    flex: none;
+    color: var(--text-3);
+  }
+  .ws-status-icon {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 40px;
+  }
+  .ws-presence {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--ok-solid, #2f9e44);
+  }
+  .ws-row {
+    min-height: 56px;
+  }
+  .ws-row .as-label {
+    font-size: 16px;
+    font-weight: 600;
+  }
+  .ws-row.on {
+    color: var(--text);
+  }
+  .ws-logo {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 40px;
+    height: 32px;
+  }
+  .ws-logo > * {
+    border-radius: 8px;
+  }
+  .ws-demo-icon,
+  .ws-plain-icon {
+    color: var(--text-2);
+  }
+  .ws-add-icon {
+    width: 32px;
+    margin: 0 4px;
+    border: 1.5px dashed var(--border);
+    border-radius: 8px;
+    color: var(--text-2);
+  }
+  .ws-panel .ws-unread {
+    min-width: 0;
+    padding: 0 4px;
+    background: none;
+    flex: none;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-3);
+  }
+  .ws-check {
+    flex: none;
+    color: var(--accent);
+  }
+  .ws-name-line {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+  }
+  .ws-settings {
+    min-height: 52px;
   }
 
   /* A list as the whole screen (chat's channels, notes). */
@@ -369,7 +550,7 @@
     display: none;
   }
 
-  /* Lists no longer keep room for a floating button: the create button sits in the bar row. */
+  /* Lists keep room at their end so the last row scrolls clear of the floating create button. */
   .rows,
   .home-scroll,
   .drive-scroll,
@@ -378,7 +559,7 @@
     padding-bottom: calc(24px + var(--fab-space));
   }
 
-  /* ---------- Bottom bar: four apps and More in a pill, the create button at the end of the row ---------- */
+  /* ---------- Bottom bar (Teams' plain bar, Gmail's pill behind the selected icon) ---------- */
 
   .tabbar {
     position: fixed;
@@ -386,22 +567,14 @@
     right: 0;
     bottom: 0;
     z-index: 35;
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) 0px;
-    column-gap: 0;
-    align-items: center;
+    display: block;
     height: calc(var(--tabbar-h) + env(safe-area-inset-bottom));
-    padding: 6px 12px calc(6px + env(safe-area-inset-bottom));
-    background: var(--bg);
+    padding: 0 0 env(safe-area-inset-bottom);
+    background: var(--surface);
+    border-top: 1px solid var(--line);
     transition:
-      grid-template-columns 0.22s var(--ease),
-      column-gap 0.22s var(--ease),
       transform 0.24s var(--ease),
       opacity 0.2s ease-out;
-  }
-  .tabbar.has-create {
-    grid-template-columns: minmax(0, 1fr) 52px;
-    column-gap: 8px;
   }
   /* A focused screen or the keyboard: the bar steps down out of the way. */
   .bar-away .tabbar {
@@ -412,47 +585,68 @@
       transform 0.18s cubic-bezier(0.4, 0, 1, 1),
       opacity 0.16s ease-in;
   }
-  .tabbar-pill {
+  .tabbar-tabs {
+    position: relative;
     display: grid;
     grid-auto-flow: column;
     grid-auto-columns: minmax(0, 1fr);
-    height: 52px;
-    padding: 3px;
-    border-radius: 26px;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    box-shadow: 0 6px 20px -12px rgba(16, 18, 24, 0.3);
+    height: var(--tabbar-h);
   }
-  .tabbar-pill button {
+  .tabbar-tabs button {
+    position: relative;
+    z-index: 1;
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: center;
-    gap: 1px;
+    justify-content: flex-start;
+    gap: 2px;
     min-width: 0;
-    border-radius: 22px;
+    padding-top: 5px;
     color: var(--text-3);
-    transition:
-      color 0.2s,
-      background 0.2s;
+    transition: color 0.2s;
   }
-  .tabbar-pill button.on {
+  .tabbar-tabs button.on {
     color: var(--accent-text);
-    background: var(--accent-soft);
   }
-  .tabbar-pill button:active {
-    background: var(--hover);
+  .tabbar-tabs button.on .tab-label {
+    color: var(--text);
+    font-weight: 600;
+  }
+  /* The pill slides between tabs: one per bar, a fifth of the width each, 56 x 30 behind the icon. */
+  .tabbar-ink {
+    position: absolute;
+    top: 5px;
+    left: 0;
+    width: calc(100% / var(--tabs, 5));
+    height: 30px;
+    display: grid;
+    place-items: center;
+    pointer-events: none;
+    transform: translateX(calc(var(--at, 0) * 100%));
+    transition:
+      transform 0.2s var(--ease),
+      opacity 0.15s;
+  }
+  .tabbar-ink.off {
+    opacity: 0;
+  }
+  .tabbar-ink i {
+    width: 56px;
+    height: 30px;
+    border-radius: 15px;
+    background: var(--accent-soft);
   }
   .tab-icon {
     position: relative;
     display: grid;
     place-items: center;
-    height: 24px;
+    width: 56px;
+    height: 30px;
   }
   .tab-icon i {
     position: absolute;
-    top: -4px;
-    left: calc(50% + 3px);
+    top: -1px;
+    left: calc(50% + 4px);
     min-width: 18px;
     height: 18px;
     padding: 0 5px;
@@ -466,123 +660,135 @@
     line-height: 18px;
     text-align: center;
   }
+  .tab-icon i.dot {
+    top: 3px;
+    left: calc(50% + 8px);
+    min-width: 8px;
+    width: 8px;
+    height: 8px;
+    padding: 0;
+  }
   .tab-label {
-    max-width: 100%;
+    max-width: calc(100% - 4px);
     overflow: hidden;
     white-space: nowrap;
     text-overflow: ellipsis;
-    font-size: 12px;
-    font-weight: 600;
+    font-size: 11px;
+    font-weight: 500;
+    line-height: 14px;
+    color: var(--text-3);
+    transition: color 0.2s;
   }
-  .tabbar-create {
-    display: grid;
-    place-items: center;
-    width: 52px;
-    height: 52px;
-    border-radius: 50%;
+
+  /* ---------- The create button: floats 16 px above the bar at the right ---------- */
+
+  .fab {
+    position: fixed;
+    right: 16px;
+    bottom: calc(var(--bar-space) + 16px);
+    z-index: 34;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0;
+    min-width: 56px;
+    height: 56px;
+    padding: 0 16px;
+    border-radius: 28px;
     background: var(--accent);
     color: #fff;
-    box-shadow: 0 8px 22px -8px color-mix(in srgb, var(--accent) 70%, transparent);
+    box-shadow: 0 6px 16px -6px color-mix(in srgb, var(--accent) 75%, transparent);
+    font-size: 16px;
+    font-weight: 600;
     opacity: 0;
     transform: scale(0.6);
     pointer-events: none;
     transition:
       transform 0.2s var(--ease),
       opacity 0.16s ease-out,
+      bottom 0.2s var(--ease),
       background 0.15s;
   }
-  .tabbar.has-create .tabbar-create {
+  .fab svg {
+    flex: none;
+  }
+  .fab.extended {
+    border-radius: 16px;
+  }
+  .fab-label {
+    max-width: 160px;
+    overflow: hidden;
+    white-space: nowrap;
+    padding-left: 10px;
+    transition:
+      max-width 0.2s ease-out,
+      padding 0.2s ease-out,
+      opacity 0.15s;
+  }
+  .fab.small .fab-label {
+    max-width: 0;
+    padding-left: 0;
+    opacity: 0;
+  }
+  .fab.on {
     opacity: 1;
     transform: none;
     pointer-events: auto;
   }
-  .tabbar.has-create .tabbar-create:active {
-    transform: scale(0.93);
+  .fab.on:active {
+    transform: scale(0.94);
+  }
+  .bar-away .fab.on,
+  .more-open .fab.on {
+    opacity: 0;
+    transform: scale(0.6);
+    pointer-events: none;
+    transition:
+      transform 0.16s cubic-bezier(0.4, 0, 1, 1),
+      opacity 0.14s ease-in;
   }
 
-  /* Toasts and docked things sit above the bar. */
-  .toast {
-    bottom: calc(var(--bar-space) + 12px);
+  /* Toasts and docked things sit at the bottom above the bar, and above the create button when it shows. Never over
+     the top bar or a sheet's header. */
+  .toast,
+  .toast.quiet {
+    top: auto;
+    bottom: calc(var(--bar-space) + 16px);
     width: calc(100% - 32px);
     justify-content: space-between;
     z-index: var(--z-toast);
+  }
+  :root.has-fab:not(.bar-away) .toast {
+    bottom: calc(var(--bar-space) + 88px);
   }
   .ask-pill {
     bottom: calc(var(--bar-space) + 12px);
   }
 
-  /* ---------- More ---------- */
+  /* ---------- More (Teams' app drawer): a grid of the other apps in their colours, Ask AI and Settings ---------- */
 
-  .more-search {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    width: calc(100% - 8px);
-    min-height: 46px;
-    margin: 0 4px 6px;
-    padding: 0 12px;
-    border-radius: 14px;
-    background: var(--surface-2);
-    border: 1px solid var(--border);
-    color: var(--text-3);
-    font-size: 14px;
-    text-align: left;
-    transition: background 0.15s;
-  }
-  .more-search svg {
-    flex: none;
-  }
-  .more-search:active {
-    background: var(--hover);
-  }
-  .more-search span {
-    overflow: hidden;
-    white-space: nowrap;
-    text-overflow: ellipsis;
-  }
-  .more-new-row {
-    display: grid;
-    grid-template-columns: repeat(6, minmax(0, 1fr));
-    gap: 2px;
-  }
-  .more-new-row button {
-    display: grid;
-    justify-items: center;
-    gap: 4px;
-    min-height: 64px;
-    padding: 6px 0;
-    border-radius: 12px;
-    font-size: 12px;
+  .more-head-btn {
+    min-height: var(--tap);
+    padding: 0 4px;
+    font-size: 15px;
     font-weight: 600;
-    color: var(--text-2);
-    transition: background 0.15s;
-  }
-  .more-new-row button:active {
-    background: var(--hover);
-  }
-  .more-new-icon {
-    display: grid;
-    place-items: center;
-    width: 40px;
-    height: 40px;
-    border-radius: 50%;
-    background: var(--accent-soft);
-    color: var(--accent-text);
+    color: var(--accent);
+    text-decoration: none;
   }
   .more-apps2 {
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 4px;
-    margin: 6px 0 2px;
+    gap: 0;
+    margin: 4px 4px 8px;
   }
   .more-apps2 button {
     position: relative;
     display: grid;
     justify-items: center;
     align-content: start;
-    gap: 5px;
-    min-height: 76px;
-    padding: 8px 2px;
+    gap: 6px;
+    min-height: 96px;
+    padding: 10px 2px 8px;
     border-radius: 14px;
     transition: background 0.15s;
   }
@@ -594,15 +800,28 @@
     position: relative;
     display: grid;
     place-items: center;
-    width: 44px;
-    height: 44px;
+    width: 52px;
+    height: 52px;
     border-radius: 14px;
-    background: var(--surface-2);
-    border: 1px solid var(--line);
-    color: var(--text-2);
+    background: color-mix(in srgb, var(--c, var(--accent)) 14%, transparent);
+    color: var(--c, var(--accent));
   }
-  .more-apps2 button.on .more-app-icon {
-    color: var(--accent);
+  /* Each app in its own colour, like Teams' drawer. */
+  [data-app='home'] { --c: #e8590c; }
+  [data-app='mail'] { --c: #d93636; }
+  [data-app='chat'] { --c: #8e44ad; }
+  [data-app='tasks'] { --c: #2b8a3e; }
+  [data-app='calendar'] { --c: #2f6fe0; }
+  [data-app='projects'] { --c: #c2255c; }
+  [data-app='notes'] { --c: #d29a00; }
+  [data-app='tables'] { --c: #e8590c; }
+  [data-app='drive'] { --c: #12957a; }
+  [data-app='meet'] { --c: #0b8fb3; }
+  [data-app='vault'] { --c: #6b5bd6; }
+  [data-app='teams'] { --c: #4263eb; }
+  :root[data-theme='dark'] .more-app-icon {
+    background: color-mix(in srgb, var(--c, var(--accent)) 22%, transparent);
+    color: color-mix(in srgb, var(--c, var(--accent)) 70%, white);
   }
   .more-app-icon i {
     position: absolute;
@@ -623,9 +842,9 @@
   .more-app-icon i.live {
     top: -3px;
     right: -3px;
-    min-width: 12px;
-    width: 12px;
-    height: 12px;
+    min-width: 10px;
+    width: 10px;
+    height: 10px;
     padding: 0;
     background: var(--ok-solid);
   }
@@ -634,14 +853,18 @@
     overflow: hidden;
     white-space: nowrap;
     text-overflow: ellipsis;
-    font-size: 12.5px;
+    font-size: 12px;
     font-weight: 600;
+    color: var(--text);
   }
   .more-app-live {
     margin-top: -4px;
     font-size: 12px;
     font-weight: 600;
     color: var(--ok);
+  }
+  .more-rows .as-item {
+    min-height: 52px;
   }
   .more-count {
     padding: 1px 8px;
@@ -665,18 +888,111 @@
     min-height: var(--tap);
   }
 
-  /* Notifications, as a sheet from More. */
-  .notices-sheet .notices {
-    position: static;
-    width: auto;
-    max-height: none;
-    border: 0;
-    box-shadow: none;
-    animation: none;
-    background: none;
+  /* ---------- Notifications: a full screen (Slack's Activity) ---------- */
+
+  .ns-readall {
+    min-height: var(--tap);
+    padding: 0 8px;
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--accent);
+    text-decoration: none;
+    white-space: nowrap;
+  }
+  .ns-chips {
+    margin: 8px 16px 4px;
+  }
+  .ns-list {
+    padding: 0 0 calc(24px + env(safe-area-inset-bottom));
+  }
+  .ns-day {
+    margin: 0;
+    padding: 16px 16px 6px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-3);
+  }
+  .ns-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    width: 100%;
+    min-height: 64px;
+    padding: 12px 16px;
+    text-align: left;
+    background: var(--surface);
+    transition: background 0.15s;
+  }
+  .ns-row:active {
+    background: var(--hover);
+  }
+  .ns-face {
+    position: relative;
+    flex: none;
+    display: grid;
+  }
+  .ns-kind,
+  .ns-kind-big {
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    background: var(--accent-soft);
+    color: var(--accent-text);
+  }
+  .ns-kind-big {
+    width: 36px;
+    height: 36px;
+  }
+  .ns-kind {
+    position: absolute;
+    right: -3px;
+    bottom: -3px;
+    width: 16px;
+    height: 16px;
+    box-shadow: 0 0 0 2px var(--surface);
+  }
+  .ns-text {
+    flex: 1;
+    min-width: 0;
+    display: grid;
+    gap: 3px;
+  }
+  .ns-line {
+    font-size: 15px;
+    line-height: 1.35;
+    color: var(--text-2);
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    overflow: hidden;
+  }
+  .ns-row.unread .ns-line {
+    color: var(--text);
+    font-weight: 600;
+  }
+  .ns-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: var(--text-3);
+  }
+  .ns-needs {
+    font-size: 12px;
+    font-style: normal;
+    font-weight: 600;
+    color: var(--accent-text);
+  }
+  .ns-dot {
+    flex: none;
+    width: 8px;
+    height: 8px;
+    margin-top: 7px;
+    border-radius: 50%;
+    background: var(--accent);
   }
 
-  /* ---------- Search: the whole screen on a phone, above the keyboard ---------- */
+  /* ---------- Search (Gmail's): the whole screen, Back on the left, above the keyboard ---------- */
 
   .palette-scrim {
     padding: 0;
@@ -692,13 +1008,73 @@
     padding-top: env(safe-area-inset-top);
   }
   .palette-input {
-    padding: 6px 6px 6px 16px;
+    min-height: 56px;
+    padding: 6px 4px;
+    gap: 4px;
+  }
+  .palette-input input {
+    font-size: 17px !important;
+  }
+  .palette-back,
+  .palette-clear {
+    flex: none;
+    width: var(--tap);
+    height: var(--tap);
+    color: var(--text-2);
+  }
+  .palette-input kbd {
+    display: none;
   }
   .palette li button {
-    min-height: 48px;
+    display: grid;
+    grid-template-columns: 24px minmax(0, 1fr);
+    grid-template-rows: auto auto;
+    column-gap: 14px;
+    row-gap: 2px;
+    align-items: center;
+    min-height: 56px;
+    padding: 8px 16px;
   }
-  .pi-sub {
-    max-width: 45%;
+  .palette li button > svg {
+    grid-row: 1 / span 2;
+    width: 22px;
+    height: 22px;
+    color: var(--text-3);
+  }
+  .palette li button .pi-title {
+    font-size: 16px;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  .palette li button .pi-sub {
+    grid-column: 2;
+    max-width: none;
+    margin: 0;
+    font-size: 13px;
+    color: var(--text-3);
+    text-align: left;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  .palette li button > svg:only-of-type ~ .pi-title:last-child {
+    grid-row: 1 / span 2;
+  }
+  .palette-group {
+    padding: 16px 16px 4px;
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0;
+    text-transform: none;
+    color: var(--text-3);
+  }
+  /* No keyboard highlight on touch: nothing looks picked until it's tapped. */
+  .palette li button.hi {
+    background: none;
+  }
+  .palette li button:active {
+    background: var(--hover);
   }
 
   /* ---------- The keyboard: what's at the bottom rides above it ---------- */
@@ -814,33 +1190,8 @@
   }
 }
 
-/* Tiny phones: the pill takes the row, the create button floats above it and lists keep room under it. */
-@media (max-width: 359px) {
-  :root {
-    --fab-space: 72px;
-  }
-  .tabbar {
-    padding-left: 8px;
-    padding-right: 8px;
-  }
-  .tabbar.has-create {
-    grid-template-columns: minmax(0, 1fr) 0px;
-    column-gap: 0;
-  }
-  .tabbar-create {
-    position: fixed;
-    right: 12px;
-    bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom) + 12px);
-    width: 56px;
-    height: 56px;
-  }
-}
-
 /* ---------- Search chips (every width) ---------- */
 
-.palette-close {
-  display: none; /* phones only: desktop has Escape */
-}
 .palette-chips {
   display: flex;
   gap: 6px;
@@ -869,22 +1220,26 @@
 .palette-chips button:hover {
   background: var(--hover);
 }
+/* Desktop keeps the app's own chip first; phones put "All apps" first (Gmail). */
+@media (min-width: 768px) {
+  .palette-chips .scope-chip {
+    order: -1;
+  }
+}
 .palette-chips button.on {
   background: var(--accent-soft);
   border-color: transparent;
   color: var(--accent-text);
 }
 @media (max-width: 767px) {
-  .palette-close {
-    display: inline-flex;
-    align-items: center;
-    min-height: var(--tap);
-    padding: 0 10px;
-    color: var(--accent);
-    font-weight: 600;
+  .palette-chips {
+    min-height: 44px;
+    padding: 6px 16px;
   }
   .palette-chips button {
-    min-height: 36px;
+    min-height: 32px;
+    border-radius: 16px;
+    font-size: 14px;
   }
 }
 
@@ -900,9 +1255,9 @@
   grid-auto-columns: minmax(0, 1fr);
   gap: 2px;
   padding: 4px;
-  border-radius: 24px;
-  background: var(--surface-2);
-  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
 }
 .bar-preview span {
   display: grid;
@@ -1042,7 +1397,13 @@
 @media (prefers-reduced-motion: reduce) {
   .tabbar,
   .bar-away .tabbar,
-  .tabbar-create,
+  .tabbar-ink,
+  .fab,
+  .fab-label,
+  .bar-away .fab.on,
+  .more-open .fab.on,
+  .mt-title,
+  .mobile-top,
   .bar-row,
   .bar-cut,
   .pull-search,

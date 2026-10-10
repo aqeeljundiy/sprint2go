@@ -66,14 +66,14 @@ import { DrivePreview } from './components/DrivePreview';
 import { AppRail, APPS, appWord } from './components/AppRail';
 import { AppSettingsButton, appSettingsLinks } from './components/AppSettings';
 import { Avatar } from './components/Avatar';
-import { Notifications } from './components/Notifications';
+import { Notifications, NoticesScreen } from './components/Notifications';
 import { CommandPalette, type PaletteItem } from './components/CommandPalette';
 import { HomeView } from './components/HomeView';
 import { TaskDrawer } from './components/TaskDrawer';
 import { TasksView, dueLabel, isBrief, type TaskScope } from './components/TasksView';
 import { TasksSidebar } from './components/TasksSidebar';
 import type { DumpResult } from './components/BrainDump';
-import { ChatSidebar, ChatView, NewMessageSheet, fullLayout, sectionIdOf, sectionPeople, sectionTitle, type ChatPage, type Presence, type SendPayload } from './components/ChatApp';
+import { ChatSidebar, ChatView, NewMessageSheet, StatusPicker, statusText, fullLayout, sectionIdOf, sectionPeople, sectionTitle, type ChatPage, type Presence, type SendPayload } from './components/ChatApp';
 import { ChatPages } from './components/chat/Pages';
 import { useDockRef } from './components/chat/huddleDock';
 import { ChatPrefsHost, isMutedValue } from './components/chat/chatPrefs';
@@ -85,12 +85,12 @@ import { openSettingsList } from './components/settingsList';
 import { PushScreen } from './components/ui/PushScreen';
 import { Sheet } from './components/ui/Sheet';
 import { offerInstall } from './components/InstallPrompt';
-import { BottomBar } from './mobile/BottomBar';
+import { BottomBar, CreateFab } from './mobile/BottomBar';
 import { MoreSheet } from './mobile/MoreSheet';
 import { duplicateOf } from './components/tasks/taskOps';
 import { needsCount, needsYou } from './needsYou';
 import { DEFAULT_BAR, MORE_ORDER, companyBar } from './mobile/BarDefaults';
-import { useAppSettings, useChrome, useFocusedScreen, useTitleMenu } from './mobile/chrome';
+import { useAppSettings, useChrome, useFocusedScreen, useTitleMenu, useTitleTucked } from './mobile/chrome';
 import { PHONE, TABLET, useMedia } from './mobile/media';
 import { usePullToSearch } from './mobile/usePullToSearch';
 import { useKeyboard } from './mobile/keyboard';
@@ -186,7 +186,7 @@ function PushedSettings({ push, onBack, children }: { push: { label: string } | 
   );
 }
 
-/** `quiet`: news nobody asked for just now (to-dos found in the background). Phones show it over the top bar, not over content. */
+/** `quiet`: news nobody asked for just now (to-dos found in the background). Gone after 4 s. */
 type Toast = { id: number; text: string; action?: { label: string; run: () => void }; also?: { label: string; run: () => void }; ms?: number; quiet?: boolean };
 type ComposeState = { key: number; draftId?: string; initial?: Outgoing; parked?: boolean };
 
@@ -564,7 +564,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
 
   useEffect(() => {
     if (!toast) return;
-    const t = setTimeout(() => setToast(null), toast.ms ?? 5000);
+    const t = setTimeout(() => setToast(null), toast.ms ?? (toast.quiet ? 4000 : 5000));
     return () => clearTimeout(t);
   }, [toast]);
 
@@ -3646,7 +3646,10 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const huddleDock = useDockRef();
 
   const chrome = useChrome(mode);
+  const tucked = useTitleTucked(mode);
   const kb = useKeyboard();
+  const [statusOpen, setStatusOpen] = useState(false);
+  const [newOpen, setNewOpen] = useState(false); // Home's create button: New, with Brain dump first
   const ownBarOn = ownBar || savedBar.join() !== DEFAULT_BAR.join();
   const teamBar = companyBar(ws, myTeamIds);
   const tabApps: AppId[] = (ownBarOn ? savedBar : (teamBar ?? DEFAULT_BAR)).filter((id) => enabled.has(id)).slice(0, 4);
@@ -3677,9 +3680,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     return n;
   }, [chatUnread, wsChannels, messages, lastRead, myFirst, user.id]);
   // Home's badge: what's in its "Needs you" list (src/needsYou.ts, the same rules Home and the AI connector use).
-  const needsBadge = useMemo(
+  const needsNow = useMemo(
     () =>
-      needsCount(
         needsYou({
           me: user.id,
           today: localDay(),
@@ -3694,42 +3696,23 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
           mine: isMine,
           notices: myNotices,
         }),
-      ),
     [wsTasks, wsTeams, wsClients, scoped, myNotices, user.id, ws.members], // eslint-disable-line react-hooks/exhaustive-deps
   );
+  const needsBadge = needsCount(needsNow);
+  // Home's tab has no number (its list is on screen when you open it): a dot when something in Needs you is new since
+  // you last looked at Home.
+  const [needsSeen, setNeedsSeen] = usePersisted<string[]>(`s2g-needs-seen:${user.id}:${ws.id}`, []);
+  const needKeys = needsNow.filter((x) => x.group !== 'today').map((x) => x.key);
+  useEffect(() => {
+    if (mode === 'home' && needKeys.some((k) => !needsSeen.includes(k))) setNeedsSeen(needKeys.slice(0, 200));
+  }, [mode, needKeys.join('|')]); // eslint-disable-line react-hooks/exhaustive-deps
+  const homeDot = mode !== 'home' && needKeys.some((k) => !needsSeen.includes(k));
   const barBadge = (id: AppId) => (id === 'home' ? needsBadge : id === 'mail' ? (accountUnread.all ?? 0) : id === 'chat' ? chatForMe : 0);
   // Search: inside the app on screen when it has things to search, with "All apps" one tap away.
   const [searchScope, setSearchScope] = useState<AppId | null>(null);
   const openSearch = (scope: AppId | null) => (setSearchScope(scope), setPaletteOpen(true));
   const searchHere = () => openSearch(mode !== 'settings' && SEARCHABLE.includes(mode) ? mode : null);
   usePullToSearch(searchHere, mobile && !paletteOpen);
-  // Recent: the last projects, notes and tables opened here (More lists five).
-  const [recentIds, setRecentIds] = usePersisted<{ kind: 'project' | 'note' | 'table'; id: string }[]>(`s2g-recent:${user.id}:${ws.id}`, []);
-  const visited = (kind: 'project' | 'note' | 'table', id: string) => setRecentIds((list) => (list[0]?.kind === kind && list[0]?.id === id ? list : [{ kind, id }, ...list.filter((x) => !(x.kind === kind && x.id === id))].slice(0, 12)));
-  useEffect(() => {
-    if (mode === 'projects' && projScope.kind === 'client') visited('project', projScope.id);
-  }, [mode, projScope]); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => {
-    if (mode === 'notes' && noteId) visited('note', noteId);
-  }, [mode, noteId]); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => {
-    if (mode === 'tables' && tableId && wsTables.some((t) => t.id === tableId)) visited('table', tableId);
-  }, [mode, tableId]); // eslint-disable-line react-hooks/exhaustive-deps
-  const recentLinks = recentIds
-    .map((r) => {
-      if (r.kind === 'project') {
-        const c = wsClientsAll.find((x) => x.id === r.id);
-        return c && { id: `p-${c.id}`, label: c.name, hint: term.One, icon: Briefcase, run: () => openClient(c.id) };
-      }
-      if (r.kind === 'note') {
-        const n = wsNotes.find((x) => x.id === r.id);
-        return n && { id: `n-${n.id}`, label: n.title || t('Untitled note'), hint: t('Note'), icon: FileText, run: () => openNote(n.id) };
-      }
-      const tb = wsTables.find((x) => x.id === r.id);
-      return tb && { id: `t-${tb.id}`, label: tb.name, hint: t('Table'), icon: Table2, run: () => (openTable(tb.id), go('tables')) };
-    })
-    .filter((x): x is NonNullable<typeof x> => !!x)
-    .slice(0, 5);
   // An app's settings, opened over the app (Back returns to it) instead of jumping to the Settings page.
   const [pushed, setPushed] = useState<{ kind: 'own' | 'section'; id: string; label: string } | null>(null);
   useEffect(() => setPushed(null), [mode, ws.id]);
@@ -4159,6 +4142,11 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             onPortal={setPortalKey}
             onShared={myPortals.length > 1 ? () => setPortalKey('*') : undefined}
             onSearch={searchHere}
+            me={{ person: ME, onOpen: () => (setSettingsSection('account'), go('settings')) }}
+            status={{ emoji: statuses[user.id]?.emoji, text: statuses[user.id] ? statusText(statuses[user.id]!) : t('Available'), run: () => setStatusOpen(true) }}
+            onSettings={() => (openSettingsList(), go('settings'))}
+            claim={chrome.bar}
+            large={tucked}
           />
         )}
         {mobile && <div className="huddle-dock top-dock" ref={huddleDock} />}
@@ -5113,27 +5101,24 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         <BottomBar
           apps={tabApps.map((id) => {
             const a = APPS.find((x) => x.id === id)!;
-            return { id, name: a.name, icon: a.icon, badge: barBadge(id) };
+            return { id, name: a.name, icon: a.icon, badge: id === 'home' ? 0 : barBadge(id), dot: id === 'home' && homeDot };
           })}
-          current={moreOpen ? '' : mode}
+          current={mode}
           moreOn={moreOpen || !tabApps.includes(mode as AppId)}
-          onApp={(id) => go(id as AppId)}
+          onApp={(id) => (setMoreOpen(false), go(id as AppId))}
           onMore={() => (setEditingBar(false), setMoreOpen((o) => !o))}
           onEdit={() => (setEditingBar(true), setMoreOpen(true))}
-          create={mode === 'settings' ? null : chrome.create}
         />
       )}
+      {mobile && <CreateFab create={mode === 'settings' ? null : chrome.create} off={moreOpen || newOpen} />}
       {moreOpen && (
         <MoreSheet
           onClose={() => (setMoreOpen(false), setEditingBar(false))}
-          onSearch={() => (setMoreOpen(false), openSearch(null))}
-          make={makeLinks}
           apps={moreApps}
-          onApp={(id) => go(id as AppId)}
+          onApp={(id) => (setMoreOpen(false), go(id as AppId))}
           current={mode}
-          recent={recentLinks}
           onAsk={toggleAsk}
-          onAccount={() => (mode !== 'settings' && openSettingsList(), go('settings'))}
+          onSettings={() => (setMoreOpen(false), mode !== 'settings' && openSettingsList(), go('settings'))}
           editing={editingBar}
           onEditing={setEditingBar}
           edit={{
@@ -5145,8 +5130,45 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         />
       )}
       {noticesOpen && mobile && (
-        <Sheet onClose={() => setNoticesOpen(false)} label={t('Notifications')} className="notices-sheet" size="tall">
-          <Notifications notices={myNotices} onOpen={openNotice} onReadAll={() => setNotices((ns) => ns.map((n) => (n.userId === user.id && n.workspaceId === ws.id ? { ...n, read: true } : n)))} onClose={() => setNoticesOpen(false)} />
+        <NoticesScreen
+          notices={myNotices}
+          users={allUsers}
+          needs={needsNow.flatMap((x) => x.noticeIds)}
+          onOpen={(n) => (setNoticesOpen(false), openNotice(n))}
+          onRead={(ids, read) => setNotices((ns) => ns.map((n) => (ids.includes(n.id) ? { ...n, read } : n)))}
+          onReadAll={() => setNotices((ns) => ns.map((n) => (n.userId === user.id && n.workspaceId === ws.id ? { ...n, read: true } : n)))}
+          onBack={() => setNoticesOpen(false)}
+        />
+      )}
+      {statusOpen && (
+        <Sheet onClose={() => setStatusOpen(false)} title={t('Your status')}>
+          <StatusPicker
+            status={statuses[user.id]}
+            onStatus={(st) => (
+              setStatuses((all) => {
+                const next = { ...all };
+                if (st) next[user.id] = st;
+                else delete next[user.id];
+                return next;
+              }),
+              setStatusOpen(false)
+            )}
+          />
+        </Sheet>
+      )}
+      {newOpen && (
+        <Sheet onClose={() => setNewOpen(false)} title={t('New')} className="new-sheet">
+          <div className="as-list">
+            {[...(aiOn && enabled.has('tasks') ? [{ id: 'dump', label: t('Brain dump'), hint: t('Type what’s on your mind; AI turns it into tasks'), icon: Sparkles, run: () => openDump('') }] : []), ...makeLinks].map((m) => (
+              <button key={m.id} type="button" className="as-item" onClick={() => (setNewOpen(false), m.run())}>
+                <m.icon size={20} className="as-icon" />
+                <span className="as-label">
+                  {m.label}
+                  {'hint' in m && m.hint && <small>{m.hint}</small>}
+                </span>
+              </button>
+            ))}
+          </div>
         </Sheet>
       )}
       {newMessage && <NewMessageSheet users={members} me={user.id} onPick={(id) => openChannel(dmWith(id))} onNewChannel={canStartChannels ? () => setChanDialog({}) : undefined} onClose={() => setNewMessage(false)} />}

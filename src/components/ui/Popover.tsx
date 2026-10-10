@@ -27,6 +27,7 @@ export function Popover({
   width,
   title,
   align = 'start',
+  menu = false,
 }: {
   anchor: RefObject<HTMLElement | null>;
   open: boolean;
@@ -35,13 +36,14 @@ export function Popover({
   width?: number;
   title?: string; // shown on the phone sheet
   align?: 'start' | 'end';
+  menu?: boolean; // stays a dropdown next to its button on phones too (Gmail's overflow menu), for short lists
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
   const entry = useRef<Entry | null>(null);
   const [pos, setPos] = useState<{ top: number; left: number; up: boolean; maxH?: number } | null>(null);
-  const sheet = typeof window !== 'undefined' && window.matchMedia(PHONE).matches;
+  const sheet = !menu && typeof window !== 'undefined' && window.matchMedia(PHONE).matches;
 
   useLayoutEffect(() => {
     if (!open) return;

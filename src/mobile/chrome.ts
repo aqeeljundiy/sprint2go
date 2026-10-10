@@ -1,4 +1,4 @@
-import { useEffect, useRef, useSyncExternalStore, type ReactNode } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import type { AppId } from '../types';
 import type { Option } from '../components/ui/Select';
@@ -8,10 +8,13 @@ import type { SheetAction } from '../components/ui/ActionSheet';
  * How an app talks to the phone shell (the top bar, the bottom bar and its create button). Each app calls these hooks
  * from its own component; the shell shows what the app on screen registered. Nothing here renders anything.
  *
- *   useCreateAction('mail', { label: 'Compose', icon: PenLine, run: compose })   the round button by the tab bar
+ *   useCreateAction('mail', { label: 'Compose', icon: PenLine, run: compose, extended: true })   the floating button
  *   useTitleMenu('tasks', { label, value, options, onChange })                   the screen title as a switcher
  *   useAppSettings('tasks', { id, label, hint, render })                         a row at the bottom of that switcher
  *   useFocusedScreen(open, back?)                                                 the tab bar steps aside
+ *   useSidebarDrawer(on)                                                          the app's Sidebar opens as a left drawer
+ *   <TopBar lead={…} title={…} actions={…} search={false} />  (src/mobile/TopBar.tsx)  the app owns parts of the top bar
+ *   <LargeTitle title="Home">…</LargeTitle>  (src/mobile/TopBar.tsx)  a big title in the page that tucks into the bar
  *
  * Registrations follow the component: they're there while it's mounted and gone when it unmounts. When two parts of an
  * app register the same thing, the one mounted last wins.
@@ -23,6 +26,11 @@ export interface CreateAction {
   run: () => void;
   /** Long-press the button (or right-click it) for these, e.g. Brain dump next to New task. */
   more?: SheetAction[];
+  /** Gmail's extended button: the icon and the label ("Compose"). It shrinks to the round icon while the list scrolls
+   *  down and grows back on the way up (and at the top). */
+  extended?: boolean;
+  /** Keep it registered but out of sight for now (while selecting rows, say): it scales away and comes back. */
+  hidden?: boolean;
 }
 
 export interface TitleMenu {
@@ -73,19 +81,25 @@ const titles = slot<TitleMenu>();
 const settings = slot<SettingsEntry>();
 const focused = slot<{ back?: () => void }>();
 
-/** The app's main action: the round button docked at the end of the tab bar on phones. Pass null when there's none. */
+/**
+ * The app's main action: the button floating above the bottom bar at the right on phones (Gmail's Compose, Teams'
+ * round compose). Pass null when there's none. `extended` shows the label too and shrinks on scroll; `hidden` keeps it
+ * registered but out of sight.
+ */
 export function useCreateAction(app: AppId, action: CreateAction | null | false | undefined) {
   const ref = useRef(action || null);
   ref.current = action || null;
   const on = !!action;
   const label = action ? action.label : '';
   const icon = action ? action.icon : null;
+  const extended = !!(action && action.extended);
+  const hidden = !!(action && action.hidden);
   const moreKey = action && action.more ? action.more.map((m) => `${m.label}:${m.disabled ? 0 : 1}`).join('|') : '';
   useEffect(() => {
     if (!on || !icon) return;
     const more = ref.current?.more?.map((m, i) => ({ ...m, run: () => ref.current?.more?.[i]?.run() }));
-    return creates.add(app, { label, icon, run: () => ref.current?.run(), more });
-  }, [app, on, label, icon, moreKey]);
+    return creates.add(app, { label, icon, run: () => ref.current?.run(), more, extended, hidden });
+  }, [app, on, label, icon, moreKey, extended, hidden]);
 }
 
 /** The screen title as a switcher (mailbox in Mail, scope in Tasks…). Pass null for a plain title. */
@@ -127,6 +141,66 @@ export function useFocusedScreen(open = true, back?: () => void) {
   }, [open, hasBack]);
 }
 
+/**
+ * The app's own Sidebar (the desktop one, from App.tsx) opens on phones as a modal drawer from the left while `on`
+ * (Gmail's folders). Without it the sidebar stays hidden on phones. Open and close it with App's `sidebarOpen`.
+ */
+export function useSidebarDrawer(on = true) {
+  useEffect(() => {
+    if (!on) return;
+    const root = document.documentElement;
+    root.classList.add('phone-sidebar');
+    return () => root.classList.remove('phone-sidebar');
+  }, [on]);
+}
+
+/* ---------- The top bar: which parts an app owns (filled by <TopBar>, src/mobile/TopBar.tsx) ---------- */
+
+export interface TopBarClaim {
+  lead: boolean; // the left button (the company logo by default)
+  title: boolean; // the title (the app's name or its title switcher by default)
+  actions: boolean; // buttons before search
+  search: boolean; // false: no search button
+  replace: boolean; // the whole row is the app's (Gmail's search pill)
+}
+const bars = slot<TopBarClaim>();
+const larges = slot<{ tucked: () => boolean; sub: (f: () => void) => () => void }>();
+
+/** Where <TopBar> puts its parts: the shell's top bar registers its slots here. */
+type Targets = { lead: HTMLElement | null; title: HTMLElement | null; actions: HTMLElement | null; replace: HTMLElement | null };
+let targets: Targets = { lead: null, title: null, actions: null, replace: null };
+const targetSubs = new Set<() => void>();
+export function setTopTargets(next: Partial<Targets>) {
+  targets = { ...targets, ...next };
+  targetSubs.forEach((f) => f());
+}
+export function useTopTargets() {
+  return useSyncExternalStore(
+    (f) => (targetSubs.add(f), () => void targetSubs.delete(f)),
+    () => targets,
+    () => targets,
+  );
+}
+/** Used by <TopBar>: claim parts of the bar while mounted. */
+export function useTopBarClaim(app: AppId, claim: TopBarClaim) {
+  const key = JSON.stringify(claim);
+  useEffect(() => bars.add(app, JSON.parse(key) as TopBarClaim), [app, key]);
+}
+/** Used by <LargeTitle>: while mounted the bar's title is tucked away until the big one scrolls under the bar. */
+export function useLargeTitleClaim(app: AppId, tucked: () => boolean, sub: (f: () => void) => () => void) {
+  const ref = useRef({ tucked, sub });
+  ref.current = { tucked, sub };
+  useEffect(() => larges.add(app, { tucked: () => ref.current.tucked(), sub: (f) => ref.current.sub(f) }), [app]);
+}
+/** The shell: is the bar's title tucked away right now (a large title on screen)? */
+export function useTitleTucked(app: AppId | 'settings') {
+  useSlot(larges);
+  const lt = app === 'settings' ? null : larges.latest(app);
+  const [, bump] = useState(0);
+  useEffect(() => (lt ? lt.sub(() => bump((n) => n + 1)) : undefined), [lt]);
+  return lt ? { large: true, tucked: lt.tucked() } : { large: false, tucked: false };
+}
+
 /* ---------- read by the shell ---------- */
 
 function useSlot<T>(s: ReturnType<typeof slot<T>>) {
@@ -140,6 +214,7 @@ export function useChrome(app: AppId | 'settings') {
   const t = useSlot(titles);
   const s = useSlot(settings);
   const f = useSlot(focused);
+  const b = useSlot(bars);
   const isApp = app !== 'settings';
   const top = f.latest('*');
   return {
@@ -148,5 +223,6 @@ export function useChrome(app: AppId | 'settings') {
     settings: isApp ? s.all(app) : [],
     focused: !!top,
     back: top?.back,
+    bar: isApp ? b.latest(app) : null,
   };
 }

@@ -1,8 +1,7 @@
-import { Bell, PenSquare, Search, Sparkles, UserRound, type LucideIcon } from 'lucide-react';
+import { Bell, ChevronRight, Settings, Sparkles, type LucideIcon } from 'lucide-react';
 import { Sheet } from '../components/ui/Sheet';
 import { SmoothHeight, TabPane } from '../components/ui/Smooth';
 import { EditBar, type EditApp } from './EditBar';
-import { term } from '../terms';
 import { t } from '../i18n';
 
 export interface MoreApp {
@@ -12,46 +11,34 @@ export interface MoreApp {
   badge?: number;
   live?: string; // something on right now ("Live"): a dot and the word
 }
-export interface MoreLink {
-  id: string;
-  label: string;
-  icon: LucideIcon;
-  hint?: string;
-  run: () => void;
-}
 
 /**
- * More, on phones: jump (search), make something new, open another app, pick up where you were (Recent), then Ask AI,
- * editing the bar and Account. Editing the bar happens in the same sheet. (Notifications live on Home, in Updates; a
- * screen that has no Home, like a guest portal, can still pass onNotices to list them here.)
+ * More, on phones (Teams' app drawer): a header with Edit, the other apps in a four-column grid in their own colours,
+ * then Ask AI and Settings. Nothing else: search is in the top bar, creating is each app's own button, your account is
+ * on the logo top left. Editing the bar happens in the same sheet. (A screen that has no Home, like a guest portal, can
+ * pass onNotices to list notifications here.)
  */
 export function MoreSheet({
   onClose,
-  onSearch,
-  make,
   apps,
   onApp,
   current,
-  recent,
   notices,
   onNotices,
   onAsk,
-  onAccount,
+  onSettings,
   editing,
   onEditing,
   edit,
 }: {
   onClose: () => void;
-  onSearch: () => void;
-  make: MoreLink[];
   apps: MoreApp[];
   onApp: (id: string) => void;
   current: string;
-  recent: MoreLink[];
   notices?: number;
   onNotices?: () => void;
   onAsk?: () => void;
-  onAccount: () => void;
+  onSettings: () => void;
   editing: boolean;
   onEditing: (on: boolean) => void;
   edit: { apps: EditApp[]; bar: string[]; onChange: (bar: string[]) => void; reset?: { label: string; run: () => void } };
@@ -62,13 +49,17 @@ export function MoreSheet({
       className="more-panel"
       aboveBar
       label={editing ? t('Edit the bar') : t('More')}
-      title={editing ? t('Edit the bar') : undefined}
+      title={editing ? t('Edit the bar') : t('More')}
       head={
         editing ? (
-          <button type="button" className="primary-btn sm" onClick={() => onEditing(false)}>
+          <button type="button" className="link-btn more-head-btn" onClick={() => onEditing(false)}>
             {t('Done')}
           </button>
-        ) : undefined
+        ) : (
+          <button type="button" className="link-btn more-head-btn" onClick={() => onEditing(true)}>
+            {t('Edit')}
+          </button>
+        )
       }
     >
       <SmoothHeight>
@@ -84,33 +75,12 @@ export function MoreSheet({
             </div>
           ) : (
             <div className="more-main">
-              <button type="button" className="more-search" onClick={onSearch}>
-                <Search size={18} />
-                <span>{t('Search or jump to an app, {project} or person', { project: term.one })}</span>
-              </button>
-
-              {make.length > 0 && (
-                <section className="more-new" aria-label={t('New')}>
-                  <h3 className="as-group">{t('New')}</h3>
-                  <div className="more-new-row">
-                    {make.map((m) => (
-                      <button key={m.id} type="button" onClick={() => (onClose(), m.run())}>
-                        <span className="more-new-icon">
-                          <m.icon size={19} />
-                        </span>
-                        <span>{m.label}</span>
-                      </button>
-                    ))}
-                  </div>
-                </section>
-              )}
-
               {apps.length > 0 && (
                 <section className="more-apps2" aria-label={t('Apps')}>
                   {apps.map((a) => (
-                    <button key={a.id} type="button" className={current === a.id ? 'on' : ''} aria-current={current === a.id ? 'page' : undefined} onClick={() => onApp(a.id)}>
+                    <button key={a.id} type="button" data-app={a.id} className={current === a.id ? 'on' : ''} aria-current={current === a.id ? 'page' : undefined} onClick={() => onApp(a.id)}>
                       <span className="more-app-icon">
-                        <a.icon size={22} />
+                        <a.icon size={24} />
                         {a.badge ? <i>{a.badge > 99 ? '99+' : a.badge}</i> : null}
                         {a.live && !a.badge ? <i className="live" aria-label={a.live} /> : null}
                       </span>
@@ -121,45 +91,26 @@ export function MoreSheet({
                 </section>
               )}
 
-              {recent.length > 0 && (
-                <section aria-label={t('Recent')}>
-                  <h3 className="as-group">{t('Recent')}</h3>
-                  <div className="as-list">
-                    {recent.map((r) => (
-                      <button key={r.id} type="button" className="as-item" onClick={() => (onClose(), r.run())}>
-                        <r.icon size={18} className="as-icon" />
-                        <span className="as-label">
-                          <span className="more-ellipsis">{r.label}</span>
-                          {r.hint && <small>{r.hint}</small>}
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                </section>
-              )}
-
               <div className="as-sep" />
-              <div className="as-list">
+              <div className="as-list more-rows">
                 {onNotices && (
                   <button type="button" className="as-item" onClick={onNotices}>
-                    <Bell size={18} className="as-icon" />
+                    <Bell size={20} className="as-icon" />
                     <span className="as-label">{t('Notifications')}</span>
                     {!!notices && <b className="more-count">{notices > 99 ? '99+' : notices}</b>}
                   </button>
                 )}
                 {onAsk && (
                   <button type="button" className="as-item" onClick={() => (onClose(), onAsk())}>
-                    <Sparkles size={18} className="as-icon" />
+                    <Sparkles size={20} className="as-icon" />
                     <span className="as-label">{t('Ask AI')}</span>
+                    <ChevronRight size={18} className="as-chev" />
                   </button>
                 )}
-                <button type="button" className="as-item" onClick={() => onEditing(true)}>
-                  <PenSquare size={18} className="as-icon" />
-                  <span className="as-label">{t('Edit the bar')}</span>
-                </button>
-                <button type="button" className="as-item" onClick={onAccount}>
-                  <UserRound size={18} className="as-icon" />
-                  <span className="as-label">{t('Account and settings')}</span>
+                <button type="button" className="as-item" onClick={onSettings}>
+                  <Settings size={20} className="as-icon" />
+                  <span className="as-label">{t('Settings')}</span>
+                  <ChevronRight size={18} className="as-chev" />
                 </button>
               </div>
             </div>

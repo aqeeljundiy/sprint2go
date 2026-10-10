@@ -831,7 +831,7 @@ function Tile({ id, label, icon, line, hot, onOpen, onMenu }: { id: TileId; labe
 }
 
 /** Your status: Focus, Away, your own words, or none. */
-function StatusPicker({ status, onStatus }: { status?: Status; onStatus: (s: Status | null) => void }) {
+export function StatusPicker({ status, onStatus }: { status?: Status; onStatus: (s: Status | null) => void }) {
   const [custom, setCustom] = useState('');
   return (
     <div className="status-pop">

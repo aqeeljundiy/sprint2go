@@ -13,6 +13,7 @@ const LEAVING = [
   '.pop-scrim',
   '.sheet-scrim',
   '.push-screen',
+  '.side-drawer-scrim',
   '.install-scrim',
   '.pop',
   '.account-menu',

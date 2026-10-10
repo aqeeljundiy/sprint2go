@@ -38,6 +38,7 @@ export function ActionSheet({
   header,
   width = 240,
   className,
+  menu = false,
 }: {
   open: boolean;
   onClose: () => void;
@@ -48,6 +49,7 @@ export function ActionSheet({
   header?: ReactNode; // above the list (a row of reactions, a preview)
   width?: number;
   className?: string; // on the phone's sheet (a kind of question the page can make room for)
+  menu?: boolean; // opened from a button on a phone: a dropdown by the button instead of a sheet (Gmail's overflow menu)
 }) {
   const point = useMemo(() => (at ? pointAnchor(at.x, at.y) : null), [at]);
   if (!open) return null;
@@ -72,7 +74,7 @@ export function ActionSheet({
       })}
     </div>
   );
-  if (isPhone() || (!anchor && !point))
+  if ((isPhone() && !(menu && anchor)) || (!anchor && !point))
     return (
       <Sheet onClose={onClose} title={title} className={`action-sheet${className ? ` ${className}` : ''}`}>
         {header}
@@ -80,7 +82,7 @@ export function ActionSheet({
       </Sheet>
     );
   return (
-    <Popover anchor={(anchor ?? point)!} open onClose={onClose} width={width} title={title}>
+    <Popover anchor={(anchor ?? point)!} open onClose={onClose} width={width} title={title} menu={menu} align={menu && isPhone() ? 'end' : 'start'}>
       {header}
       {list}
     </Popover>
@@ -95,7 +97,7 @@ export function ActionSheet({
  *   <div className="note-row lp" {...m.bind}>…<button ref={more} onClick={() => m.openFrom(more)}>…</button></div>
  *   {m.menu}
  */
-export function useActionMenu(actions: SheetAction[] | (() => SheetAction[]), opts: { title?: string; header?: ReactNode; disabled?: boolean } = {}) {
+export function useActionMenu(actions: SheetAction[] | (() => SheetAction[]), opts: { title?: string; header?: ReactNode; disabled?: boolean; menu?: boolean } = {}) {
   const [state, setState] = useState<{ at?: { x: number; y: number }; anchor?: RefObject<HTMLElement | null> } | null>(null);
   const list = useRef(actions);
   list.current = actions;
@@ -115,6 +117,6 @@ export function useActionMenu(actions: SheetAction[] | (() => SheetAction[]), op
         setState({ at: { x: e.clientX, y: e.clientY } });
       },
     },
-    menu: <ActionSheet open={!!state} onClose={() => setState(null)} title={opts.title} header={opts.header} actions={resolved} anchor={state?.anchor} at={state?.at ?? null} />,
+    menu: <ActionSheet open={!!state} onClose={() => setState(null)} title={opts.title} header={opts.header} actions={resolved} anchor={state?.anchor} at={state?.at ?? null} menu={opts.menu} />,
   };
 }

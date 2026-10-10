@@ -2013,6 +2013,18 @@ button.chip.client-chip:hover { background: color-mix(in oklab, var(--c) 14%, va
     transform: translateX(100%);
   }
 }
+/* A drawer from the left (SideDrawer) goes back out to the left while the page under it lightens. */
+.is-leaving.side-drawer-scrim {
+  animation: s2gFadeOut 0.2s ease-in forwards !important;
+}
+.is-leaving .side-drawer {
+  animation: s2gDrawerOut 0.2s cubic-bezier(0.4, 0, 1, 1) forwards !important;
+}
+@keyframes s2gDrawerOut {
+  to {
+    transform: translateX(-100%);
+  }
+}
 @media (min-width: 768px) {
   .is-leaving .sheet {
     animation: s2gPopOut 0.18s cubic-bezier(0.4, 0, 1, 1) forwards !important;
@@ -2020,6 +2032,7 @@ button.chip.client-chip:hover { background: color-mix(in oklab, var(--c) 14%, va
 }
 @media (prefers-reduced-motion: reduce) {
   .is-leaving .sheet,
+  .is-leaving .side-drawer,
   .is-leaving.push-screen {
     animation: s2gFadeOut 0.15s ease forwards !important;
   }

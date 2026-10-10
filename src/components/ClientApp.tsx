@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { type CSSProperties, useEffect, useMemo, useRef, useState } from 'react';
+import { CreateFab } from '../mobile/BottomBar';
 import { SmoothHeight } from './ui/Smooth';
 import { setTermWord, term, brand as product } from '../terms';
 import {
@@ -20,7 +21,7 @@ import {
   Moon,
   Sun,
   UserRound,
-  Menu as MenuIcon,
+  MoreHorizontal as MenuIcon,
   MessagesSquare,
   Paperclip,
   Plus,
@@ -219,9 +220,6 @@ export function ClientApp(p: Props) {
   // Phones: the screen's main job sits at the end of the bar, like the team app's create button.
   const uploader = useUploader(actions, say);
   const create = mode === 'requests' && access.requests && can(person, 'request') && client.status !== 'ended' ? { label: t('New request'), icon: Plus, run: () => setNewRequest(true) } : mode === 'files' && access.uploads && can(person, 'upload') && client.status !== 'ended' ? { label: t('Upload'), icon: Upload, run: uploader.pick } : null;
-  const lastCreate = useRef(create); // drawn while the button scales away, so its icon doesn't vanish first
-  if (create) lastCreate.current = create;
-  const CreateIcon = lastCreate.current?.icon;
   const barFits = BAR.length <= 5;
   const barItems = barFits ? BAR : BAR.slice(0, 4);
   const barMore = [...(barFits ? [] : BAR.slice(4)), ...extra];
@@ -815,33 +813,43 @@ export function ClientApp(p: Props) {
       </main>
 
       {mobile && (
-        <nav className={`tabbar guest-bar${create ? ' has-create' : ''}`} aria-label={client.name}>
-          <div className="tabbar-pill">
-            {barItems.map(([id, label, Icon, n]) => (
-              <button key={id} type="button" className={mode === id ? 'on' : ''} aria-current={mode === id ? 'page' : undefined} onClick={() => (id === 'work' && mode !== 'work' && approvals.length ? go('work', 'approve') : go(id))}>
-                <span className="tab-icon">
-                  <Icon size={21} />
-                  {n ? <i aria-label={tn(n, '{n} waiting', '{n} waiting')}>{n > 99 ? '99+' : n}</i> : null}
-                </span>
-                <span className="tab-label" title={label}>
-                  {label}
-                </span>
-              </button>
-            ))}
-            {!barFits && (
-              <button type="button" className={meOpen || barMore.some(([id]) => id === mode) ? 'on' : ''} onClick={() => setMeOpen(true)} aria-haspopup="dialog">
-                <span className="tab-icon">
-                  <MenuIcon size={21} />
-                </span>
-                <span className="tab-label">{t('More')}</span>
-              </button>
-            )}
-          </div>
-          <button type="button" className="tabbar-create" onClick={() => create?.run()} aria-label={create?.label} title={create?.label} tabIndex={create ? 0 : -1} aria-hidden={!create}>
-            {CreateIcon && <CreateIcon size={22} />}
-          </button>
-          {uploader.input}
-        </nav>
+        <>
+          <nav className="tabbar guest-bar" aria-label={client.name}>
+            {(() => {
+              const at = barItems.findIndex(([id]) => id === mode);
+              const more = !barFits && (meOpen || barMore.some(([id]) => id === mode));
+              const tabs = barItems.length + (barFits ? 0 : 1);
+              return (
+                <div className="tabbar-tabs" style={{ '--tabs': tabs, '--at': more ? barItems.length : at } as CSSProperties}>
+                  <span className={`tabbar-ink${at < 0 && !more ? ' off' : ''}`} aria-hidden="true">
+                    <i />
+                  </span>
+                  {barItems.map(([id, label, Icon, n]) => (
+                    <button key={id} type="button" className={mode === id ? 'on' : ''} aria-current={mode === id ? 'page' : undefined} onClick={() => (id === 'work' && mode !== 'work' && approvals.length ? go('work', 'approve') : go(id))}>
+                      <span className="tab-icon">
+                        <Icon size={24} strokeWidth={mode === id ? 2.25 : 1.75} />
+                        {n ? <i aria-label={tn(n, '{n} waiting', '{n} waiting')}>{n > 99 ? '99+' : n}</i> : null}
+                      </span>
+                      <span className="tab-label" title={label}>
+                        {label}
+                      </span>
+                    </button>
+                  ))}
+                  {!barFits && (
+                    <button type="button" className={more ? 'on' : ''} onClick={() => setMeOpen(true)} aria-haspopup="dialog">
+                      <span className="tab-icon">
+                        <MenuIcon size={24} strokeWidth={more ? 2.25 : 1.75} />
+                      </span>
+                      <span className="tab-label">{t('More')}</span>
+                    </button>
+                  )}
+                </div>
+              );
+            })()}
+            {uploader.input}
+          </nav>
+          <CreateFab create={create} />
+        </>
       )}
 
       {task && (

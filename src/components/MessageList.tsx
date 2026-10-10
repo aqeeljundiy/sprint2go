@@ -84,7 +84,7 @@ const CHIPS: { id: Exclude<MailFilter, 'all'>; label: string }[] = [
 export const MessageList = forwardRef<HTMLInputElement, Props>(function MessageList(props, searchRef) {
   const { title, threads, me, selectedId, query, filter, actions } = props;
   const phone = usePhone();
-  useCreateAction('mail', props.onCompose && { label: t('Compose'), icon: PenLine, run: props.onCompose, more: props.onDrafts ? [{ label: t('Drafts'), icon: FileText, run: props.onDrafts }] : undefined });
+  useCreateAction('mail', props.onCompose && { label: t('Compose'), icon: PenLine, run: props.onCompose, extended: true, more: props.onDrafts ? [{ label: t('Drafts'), icon: FileText, run: props.onDrafts }] : undefined });
   const listRef = useRef<HTMLUListElement>(null);
   const unread = threads.filter((t) => t.unread).length;
   const [refreshing, setRefreshing] = useState(false);

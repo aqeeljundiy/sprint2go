@@ -387,8 +387,49 @@
 .kb-open .push-foot {
   padding-bottom: 8px;
 }
+/* Gmail's back: the arrow alone, in the text colour. */
+.push-back.icon-only {
+  padding: 0;
+  justify-content: center;
+  color: var(--text-2);
+}
+
+/* ---------- SideDrawer: a modal drawer from the left (src/components/ui/SideDrawer.tsx) ---------- */
+
+.side-drawer-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-panel);
+  background: rgb(0 0 0 / 0.32);
+  animation: fade-in 0.2s ease-out backwards;
+}
+.side-drawer {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: min(304px, 84vw);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: env(safe-area-inset-top) 0 calc(16px + env(safe-area-inset-bottom));
+  border-radius: 0 16px 16px 0;
+  background: var(--surface);
+  box-shadow: var(--shadow-lg);
+  transition: transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+  animation: s2gDrawerIn 0.25s cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
+}
+@keyframes s2gDrawerIn {
+  from {
+    transform: translateX(-100%);
+  }
+}
 
 @media (prefers-reduced-motion: reduce) {
+  .side-drawer,
+  .side-drawer-scrim {
+    animation: fade-in 0.15s ease-out backwards;
+    transition: none;
+  }
   .sheet,
   .push-screen {
     animation: fade-in 0.15s ease-out backwards;

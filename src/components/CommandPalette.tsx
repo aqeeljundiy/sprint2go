@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { term } from '../terms';
-import { Brain, Building2, CalendarPlus, Check, FileText, Hash, ListChecks, Mail, PenLine, Search, User, type LucideIcon } from 'lucide-react';
+import { ArrowLeft, Brain, Building2, CalendarPlus, Check, Clock, FileText, Hash, ListChecks, Mail, PenLine, Search, User, X, type LucideIcon } from 'lucide-react';
+import { isPhone } from '../mobile/media';
 import { lsKey } from '../settings';
 import { APPS } from './AppRail';
 import type { AppId } from '../types';
@@ -21,7 +22,7 @@ export interface PaletteItem {
 /** Which app each kind of result belongs to, for searching inside one app and for grouping results by app. */
 const GROUP_APP: Record<string, AppId> = { Tasks: 'tasks', Emails: 'mail', Channels: 'chat', Messages: 'chat', Notes: 'notes', Meetings: 'meet', Rows: 'tables', Files: 'drive' };
 // The groups' words, for the language check (they're shown with t(group)).
-mark('Needs you'), mark('Actions'), mark('Go to'), mark('Recent'), mark('Apps'), mark('People'), mark('Emails'), mark('Channels'), mark('Messages'), mark('Meetings'), mark('Rows'), mark('Files');
+mark('Needs you'), mark('Actions'), mark('Go to'), mark('Recent'), mark('Recent searches'), mark('Recently opened'), mark('Apps'), mark('People'), mark('Emails'), mark('Channels'), mark('Messages'), mark('Meetings'), mark('Rows'), mark('Files');
 export const appOf = (i: PaletteItem): AppId | undefined => i.app ?? (i.group === term.Many ? 'projects' : GROUP_APP[i.group]);
 const appName = (id: AppId) => APPS.find((a) => a.id === id)?.name ?? id;
 /** Apps that have something to search in them (the others open search across all apps). */
@@ -61,6 +62,9 @@ export const PALETTE_ICONS = { Brain, Building2, CalendarPlus, FileText, Hash, L
 export function CommandPalette({ items: all, onClose, queryActions, recentKey = 's2g-palette-recent', scope: startScope = null }: Props) {
   const [q, setQ] = useState('');
   const [recent] = useState<string[]>(() => loadRecent(recentKey));
+  // Phones (Gmail's search): your last searches before typing, Back on the left, no keyboard highlight on the first row.
+  const [phone] = useState(() => isPhone());
+  const [searches] = useState<string[]>(() => loadRecent(`${recentKey}:q`));
   const [hi, setHi] = useState(0);
   const list = useRef<HTMLUListElement>(null);
   const input = useRef<HTMLInputElement>(null);
@@ -81,6 +85,11 @@ export function CommandPalette({ items: all, onClose, queryActions, recentKey = 
       const recents = recent.map((id) => items.find((i) => i.id === id && i.group !== 'Needs you')).filter((i): i is PaletteItem => !!i).slice(0, 6).map((i) => ({ ...i, group: 'Recent' }));
       // Inside one app with little history yet: its latest things, so there's something to tap before typing.
       const latest = scope && recents.length < 3 ? items.filter((i) => i.group !== 'Actions' && i.group !== 'Needs you' && !recents.some((r) => r.id === i.id)).slice(0, 5 - recents.length).map((i) => ({ ...i, group: t('Latest in {app}', { app: appName(scope) }) })) : [];
+      // Phones: search is for finding (creating is each app's own button): recent searches, then recently opened.
+      if (phone) {
+        const past: PaletteItem[] = searches.slice(0, 5).map((w) => ({ id: `s-${w}`, group: 'Recent searches', title: w, icon: Clock, run: () => setQ(w) }));
+        return [...past, ...recents.slice(0, 5).map((i) => ({ ...i, group: 'Recently opened' })), ...latest];
+      }
       return [...needs, ...recents, ...latest, ...items.filter((i) => i.group === 'Actions')];
     }
     // Every word must match somewhere; titles that start with what you typed come first.
@@ -115,17 +124,20 @@ export function CommandPalette({ items: all, onClose, queryActions, recentKey = 
     for (const r of scored) if (!order.includes(head(r))) order.push(head(r));
     const grouped = order.flatMap((g) => scored.filter((r) => head(r) === g).slice(0, scope ? 12 : 6).map((r) => ({ ...r, group: g })));
     return [...grouped.slice(0, 40), ...(queryActions?.(q.trim()) ?? [])];
-  }, [q, items, recent, queryActions, scope, kind]);
+  }, [q, items, recent, queryActions, scope, kind, phone, searches]);
 
   useEffect(() => {
-    setHi(0);
-  }, [q]);
+    setHi(phone ? -1 : 0);
+  }, [q, phone]);
   useEffect(() => {
     list.current?.querySelector('.hi')?.scrollIntoView({ block: 'nearest' });
   }, [hi]);
 
   const run = (i: PaletteItem) => {
+    if (i.id.startsWith('s-')) return (i.run(), input.current?.focus()); // a recent search: search it again
     if (!i.id.startsWith('q-') && i.group !== 'Actions') saveRecent(recentKey, [i.id.replace(/^n-/, 't-'), ...recent.filter((x) => x !== i.id)].slice(0, 12));
+    const typed = q.trim();
+    if (typed) saveRecent(`${recentKey}:q`, [typed, ...searches.filter((x) => x !== typed)].slice(0, 8));
     onClose();
     i.run();
   };
@@ -135,13 +147,19 @@ export function CommandPalette({ items: all, onClose, queryActions, recentKey = 
     <div className="palette-scrim" onMouseDown={onClose}>
       <div className="palette" onMouseDown={(e) => e.stopPropagation()} role="dialog" aria-label={t('Search')}>
         <label className="palette-input">
-          <Search size={18} />
+          {phone ? (
+            <button type="button" className="icon-btn palette-back" onClick={onClose} aria-label={t('Back')}>
+              <ArrowLeft size={22} />
+            </button>
+          ) : (
+            <Search size={18} />
+          )}
           <input
             autoFocus
             value={q}
             onChange={(e) => setQ(e.target.value)}
             ref={input}
-            placeholder={scope ? t('Search {app}', { app: appName(scope) }) : kind ? t('Search {kind}', { kind: t(kind).toLowerCase() }) : t('Search or jump to an app, {project} or person', { project: term.one })}
+            placeholder={scope ? t('Search {app}', { app: appName(scope) }) : kind ? t('Search {kind}', { kind: t(kind).toLowerCase() }) : phone ? t('Search') : t('Search or jump to an app, {project} or person', { project: term.one })}
             onKeyDown={(e) => {
               if (e.key === 'ArrowDown') {
                 e.preventDefault();
@@ -150,26 +168,28 @@ export function CommandPalette({ items: all, onClose, queryActions, recentKey = 
                 e.preventDefault();
                 setHi((h) => Math.max(h - 1, 0));
               } else if (e.key === 'Enter' && results[hi]) {
-                run(results[hi]);
+                run(results[Math.max(0, hi)]);
               } else if (e.key === 'Escape') onClose();
             }}
           />
           <kbd>esc</kbd>
-          <button type="button" className="palette-close" onClick={onClose}>
-            {t('Cancel')}
-          </button>
-        </label>
-        <div className="palette-chips" role="toolbar" aria-label={t('Search in')}>
-          {startScope && (
-            <button type="button" className={scope === startScope && !kind ? 'on' : ''} aria-pressed={scope === startScope && !kind} onClick={() => narrow(startScope, null)}>
-              {scope === startScope && !kind && <Check size={13} />}
-              {appName(startScope)}
+          {phone && q && (
+            <button type="button" className="icon-btn palette-clear" onClick={() => (setQ(''), input.current?.focus())} aria-label={t('Clear')}>
+              <X size={20} />
             </button>
           )}
+        </label>
+        <div className="palette-chips" role="toolbar" aria-label={t('Search in')}>
           <button type="button" className={!scope && !kind ? 'on' : ''} aria-pressed={!scope && !kind} onClick={() => narrow(null, null)}>
             {!scope && !kind && <Check size={13} />}
             {t('All apps')}
           </button>
+          {startScope && (
+            <button type="button" className={`scope-chip${scope === startScope && !kind ? ' on' : ''}`} aria-pressed={scope === startScope && !kind} onClick={() => narrow(startScope, null)}>
+              {scope === startScope && !kind && <Check size={13} />}
+              {appName(startScope)}
+            </button>
+          )}
           {KINDS.map((k) => (
             <button key={k} type="button" className={kind === k ? 'on' : ''} aria-pressed={kind === k} onClick={() => narrow(null, kind === k ? null : k)}>
               {kind === k && <Check size={13} />}
@@ -199,7 +219,7 @@ export function CommandPalette({ items: all, onClose, queryActions, recentKey = 
                 <button className={idx === hi ? 'hi' : ''} onMouseEnter={() => setHi(idx)} onClick={() => run(r)}>
                   <r.icon size={16} />
                   <span className="pi-title">{r.title}</span>
-                  {r.sub && <span className="pi-sub">{r.sub}</span>}
+                  {(r.sub || (phone && appOf(r))) && <span className="pi-sub">{r.sub ?? appName(appOf(r)!)}</span>}
                 </button>
               </li>
             );

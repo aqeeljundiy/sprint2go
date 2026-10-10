@@ -378,6 +378,16 @@ const id: Record<string, string> = {
   // Mail list names (utils.ts)
   'To: {names}': 'Kepada: {names}',
   me: 'saya',
+
+  // The phone shell (MobileTop, CommandPalette, Notifications, the New sheet)
+  'Add a company': 'Tambah perusahaan',
+  Available: 'Tersedia',
+  Current: 'Saat ini',
+  'Recent searches': 'Pencarian terakhir',
+  'Recently opened': 'Baru dibuka',
+  'Type what’s on your mind; AI turns it into tasks': 'Tulis apa yang ada di pikiran; AI mengubahnya jadi tugas',
+  'When someone mentions you, it shows up here.': 'Saat seseorang menyebut Anda, muncul di sini.',
+  'Your account and companies': 'Akun dan perusahaan Anda',
 };
 
 export default id;

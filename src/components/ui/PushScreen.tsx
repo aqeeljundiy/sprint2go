@@ -1,6 +1,6 @@
 import { useEffect, useRef, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { ChevronLeft } from 'lucide-react';
+import { ArrowLeft, ChevronLeft } from 'lucide-react';
 import { useFocusedScreen } from '../../mobile/chrome';
 import { t } from '../../i18n';
 
@@ -19,6 +19,7 @@ export function PushScreen({
   footer,
   children,
   className = '',
+  iconBack = false,
 }: {
   title: ReactNode;
   onBack: () => void;
@@ -27,6 +28,7 @@ export function PushScreen({
   footer?: ReactNode; // the screen's own bottom bar
   children: ReactNode;
   className?: string;
+  iconBack?: boolean; // Gmail's back: an arrow alone (backLabel is still read out to screen readers)
 }) {
   useFocusedScreen(true);
   const ref = useRef<HTMLDivElement>(null);
@@ -114,9 +116,9 @@ export function PushScreen({
   return createPortal(
     <div ref={ref} className={`push-screen ${className}`} role="dialog" aria-modal="true" aria-label={typeof title === 'string' ? title : undefined}>
       <header className="push-head">
-        <button type="button" className="push-back" onClick={() => backRef.current()} aria-label={named ? t('Back to {screen}', { screen: named }) : t('Back')}>
-          <ChevronLeft size={22} />
-          {named && <span>{named}</span>}
+        <button type="button" className={`push-back${iconBack ? ' icon-only' : ''}`} onClick={() => backRef.current()} aria-label={named ? t('Back to {screen}', { screen: named }) : t('Back')}>
+          {iconBack ? <ArrowLeft size={22} /> : <ChevronLeft size={22} />}
+          {named && !iconBack && <span>{named}</span>}
         </button>
         <h1 className="push-title">{title}</h1>
         <div className="push-actions">{actions}</div>

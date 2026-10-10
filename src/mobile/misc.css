@@ -16,14 +16,7 @@
     padding: 0;
     border-radius: 50%;
   }
-  /* Five longer names than the team's (Messages, Approvals) next to the create button: a little more room each. */
-  .tabbar.guest-bar {
-    padding-left: 10px;
-    padding-right: 10px;
-  }
-  .guest-bar .tabbar-pill {
-    padding: 2px;
-  }
+  /* Five longer names than the team's (Messages, Approvals): a little tighter. */
   .guest-bar .tab-label {
     letter-spacing: -0.015em;
   }
@@ -341,35 +334,8 @@
   .client-app:has(.view-as-pill) .client-toast {
     bottom: calc(var(--bar-space) + 12px);
   }
-
-  /* News nobody asked for just now ("Found 3 to-dos in your email") drops over the top bar for a moment, like the
-     phone's own banners, instead of sitting on the list. Toasts that answer a tap stay above the bottom bar. */
-  .toast.quiet {
-    top: calc(env(safe-area-inset-top) + 6px);
-    bottom: auto;
-    animation: quietIn 0.24s cubic-bezier(0.2, 0.8, 0.2, 1);
-  }
-  .is-leaving.toast.quiet {
-    animation: quietOut 0.18s ease-in forwards !important; /* beats the shared toast exit, which drops downwards */
-  }
-}
-@keyframes quietIn {
-  from {
-    opacity: 0;
-    transform: translate(-50%, -16px);
-  }
-}
-@keyframes quietOut {
-  to {
-    opacity: 0;
-    transform: translate(-50%, -12px);
-  }
 }
 @media (prefers-reduced-motion: reduce) {
-  .toast.quiet,
-  .is-leaving.toast.quiet {
-    animation: none !important;
-  }
   .client-app .view-as-pill {
     animation: none;
   }
