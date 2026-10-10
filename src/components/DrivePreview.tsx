@@ -5,6 +5,7 @@ import { fmtSize } from '../data/drive';
 import { fullDate } from '../utils';
 import { FileIcon } from './FileIcon';
 import { t } from '../i18n';
+import { useFocusedScreen } from '../mobile/chrome';
 
 interface Props {
   item: DriveItem;
@@ -23,6 +24,7 @@ export function DrivePreview({ item, list, onNav, onClose, onStar, onTrash, onOp
   const next = idx >= 0 && idx < list.length - 1 ? list[idx + 1] : null;
   const fromEmail = item.id.startsWith('att:');
   const isBlob = item.thumb?.startsWith('blob:');
+  useFocusedScreen(true, onClose); // phones: the tab bar and the create button step aside under the viewer
 
   useEffect(() => {
     const key = (e: KeyboardEvent) => {

@@ -226,6 +226,7 @@ export function DriveView(props: Props) {
             { label: t('Move to trash'), icon: Trash2, danger: true, group: 'end', run: () => props.onTrash(i.id) },
           ]
         : [
+            { label: t('Open'), icon: Eye, run: () => props.onOpen(i, [i]) },
             ...(canLink ? [{ label: t('Share link'), icon: Link2, run: () => shareLink(i) }] : []),
             ...(i.url ? [{ label: t('Download'), icon: Download, run: () => download(i) }] : []),
             ...(own ? [{ label: i.starred ? t('Remove star') : t('Star'), icon: Star, run: () => props.onStar(i.id) }] : []),
@@ -519,7 +520,10 @@ const TYPE_WORDS: Record<DriveItem['kind'], string> = {
 function DrivePhone(props: Props & { live: DriveItem[]; q: string; query: string; setQuery: (q: string) => void; crumbs: DriveItem[]; sectionName: string; menuFor: (i: DriveItem) => () => SheetAction[]; onNew: () => void; open: (i: DriveItem, list: DriveItem[]) => void; meta: (i: DriveItem) => string }) {
   const { items, section, live, q, crumbs } = props;
   const [layout, setLayout] = usePersisted<'grid' | 'list'>('pm-drive-layout-phone', 'list');
-  const [sort, setSort] = usePersisted<Sort>('pm-drive-sort', { by: 'name', dir: 1 });
+  // Each place keeps its own order: My Drive and Starred by name, the rest newest first (Google Drive does the same).
+  const [sorts, setSorts] = usePersisted<Record<string, Sort>>('pm-drive-sorts', {});
+  const sort: Sort = sorts[section] ?? (section === 'my' || section === 'starred' ? { by: 'name', dir: 1 } : { by: 'modified', dir: -1 });
+  const setSort = (s: Sort) => setSorts((x) => ({ ...x, [section]: s }));
   const [sortOpen, setSortOpen] = useState(false);
 
   const listIn = (folder: string | null): DriveItem[] => {
@@ -528,20 +532,20 @@ function DrivePhone(props: Props & { live: DriveItem[]; q: string; query: string
       case 'my':
         return live.filter((i) => i.parentId === folder && !i.id.startsWith('att:')).sort(sorter(sort));
       case 'recent':
-        return live.filter((i) => i.kind !== 'folder').sort(byDate).slice(0, 30);
+        return live.filter((i) => i.kind !== 'folder').sort(byDate).slice(0, 30).sort(sorter(sort));
       case 'media':
-        return live.filter((i) => i.kind === 'image' || i.kind === 'video').sort(byDate);
+        return live.filter((i) => i.kind === 'image' || i.kind === 'video').sort(sorter(sort));
       case 'email':
-        return live.filter((i) => i.id.startsWith('att:')).sort(byDate);
+        return live.filter((i) => i.id.startsWith('att:')).sort(sorter(sort));
       case 'starred':
         return live.filter((i) => i.starred).sort(sorter(sort));
       case 'shared':
-        return live.filter(sharedWithMe).sort(byDate);
+        return live.filter(sharedWithMe).sort(sorter(sort));
       case 'trash':
         return items.filter((i) => i.trashed).sort(byDate);
     }
   };
-  const sortable = section === 'my' || section === 'starred' || !!q;
+  const sortable = section !== 'trash'; // every list can be ordered (Trash keeps its 30-day order)
 
   const icon = (i: DriveItem) =>
     i.thumb ? (
@@ -560,9 +564,21 @@ function DrivePhone(props: Props & { live: DriveItem[]; q: string; query: string
     if (!list.length)
       return (
         <EmptyState
-          icon={section === 'trash' ? <Trash2 size={40} /> : q ? <Search size={40} /> : <Folder size={48} />}
-          title={q ? t('No files found') : section === 'trash' ? t('Trash is empty') : section === 'my' ? t('This folder is empty') : t('Nothing here yet')}
-          text={q ? t('Nothing matches “{q}”.', { q: props.query.trim() }) : section === 'my' ? t('Files you upload and folders you make show here.') : ''}
+          icon={section === 'trash' ? <Trash2 size={24} /> : q ? <Search size={24} /> : section === 'starred' ? <Star size={24} /> : <Folder size={24} />}
+          title={q ? t('No files found') : section === 'trash' ? t('Trash is empty') : section === 'my' ? t('This folder is empty') : section === 'starred' ? t('No starred files') : t('Nothing here yet')}
+          text={
+            q
+              ? t('Nothing matches “{q}”.', { q: props.query.trim() })
+              : section === 'my'
+                ? t('Files you upload and folders you make live here. Files from chat and email stay in Home and Shared.')
+                : section === 'starred'
+                  ? t('Star a file from its … menu and it waits for you here.')
+                  : section === 'trash'
+                    ? t('Deleted files stay here for 30 days.')
+                    : section === 'shared'
+                      ? t('Files people send you in chat, by email or from a guest show here.')
+                      : t('Files you open, upload or get show here, newest first.')
+          }
         />
       );
     return (

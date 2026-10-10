@@ -3871,7 +3871,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       return {
         label: t('Drive'),
         value: driveSection,
-        options: DRIVE_SECTIONS.map((s) => ({ value: s.id, label: t(s.name) })),
+        // Drive: Recent is the Home tab on phones, so it's called Home here too; each place has its icon (Google Drive's drawer).
+        options: DRIVE_SECTIONS.map((s) => ({ value: s.id, label: s.id === 'recent' && isPhone() ? t('Home') : t(s.name), icon: <s.icon size={20} /> })),
         onChange: (v: string) => (setDriveSection(v as DriveSection), setDriveFolder(null)),
       };
     return undefined;
