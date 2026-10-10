@@ -62,10 +62,20 @@ function Inline({ text, names, short }: { text: string; names: string; short?: b
 export function Text({ text, users, short }: { text: string; users: User[]; short?: boolean }) {
   const names = useMemo(() => users.map((u) => esc(u.name.split(' ')[0])).filter(Boolean).join('|'), [users]);
   const lines = text.split('\n');
-  const blocks: { kind: 'p' | 'quote' | 'list'; lines: string[] }[] = [];
+  const blocks: { kind: 'p' | 'quote' | 'list' | 'ol' | 'pre'; lines: string[] }[] = [];
+  let fenced = false; // inside a ``` code block: lines as typed
   for (const l of lines) {
-    const kind = /^>\s?/.test(l) ? 'quote' : /^[-•]\s/.test(l) ? 'list' : 'p';
-    const body = kind === 'quote' ? l.replace(/^>\s?/, '') : kind === 'list' ? l.replace(/^[-•]\s/, '') : l;
+    if (l.trim() === '```') {
+      if (!fenced) blocks.push({ kind: 'pre', lines: [] });
+      fenced = !fenced;
+      continue;
+    }
+    if (fenced) {
+      blocks[blocks.length - 1].lines.push(l);
+      continue;
+    }
+    const kind = /^>\s?/.test(l) ? 'quote' : /^[-•]\s/.test(l) ? 'list' : /^\d+\.\s/.test(l) ? 'ol' : 'p';
+    const body = kind === 'quote' ? l.replace(/^>\s?/, '') : kind === 'list' ? l.replace(/^[-•]\s/, '') : kind === 'ol' ? l.replace(/^\d+\.\s/, '') : l;
     const last = blocks[blocks.length - 1];
     if (last && last.kind === kind && kind !== 'p') last.lines.push(body);
     else blocks.push({ kind, lines: [body] });
@@ -82,6 +92,18 @@ export function Text({ text, users, short }: { text: string; users: User[]; shor
               </Fragment>
             ))}
           </blockquote>
+        ) : b.kind === 'pre' ? (
+          <pre key={i} className="cm-pre">
+            {b.lines.join('\n')}
+          </pre>
+        ) : b.kind === 'ol' ? (
+          <ol key={i} className="cm-list">
+            {b.lines.map((l, j) => (
+              <li key={j}>
+                <Inline text={l} names={names} short={short} />
+              </li>
+            ))}
+          </ol>
         ) : b.kind === 'list' ? (
           <ul key={i} className="cm-list">
             {b.lines.map((l, j) => (

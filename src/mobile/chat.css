@@ -783,7 +783,12 @@
   }
   .chat-foot {
     display: grid;
-    padding: 6px 8px 8px;
+    padding: 0;
+  }
+  .chat-foot .shared-note,
+  .chat-foot .draft-note {
+    margin-left: 12px;
+    margin-right: 12px;
   }
   .chat-foot .shared-note,
   .chat-foot .sched-line {
@@ -937,53 +942,204 @@
     bottom: calc(var(--chat-foot, 104px) + var(--kb, 0px) + env(safe-area-inset-bottom) + 8px);
   }
 
-  /* The message box on phones: field on top, a row of tools, Send on the right; rides above the keyboard. */
+  /* The message box on phones (Slack): flat and full width with a hairline on top and a grab handle; the field, then
+     one row of tools (+ in a circle, Aa, emoji, @) and the split Send. No box, no focus ring. */
   .composer.is-phone {
     margin: 0;
-    border-radius: 20px;
+    padding: 10px 12px 2px;
+    border: 0;
+    border-top: 1px solid var(--border);
+    border-radius: 0;
+    background: var(--surface);
+    box-shadow: none;
+  }
+  .composer.is-phone:focus-within,
+  .composer.is-phone.is-editing {
+    border-color: var(--border);
+    box-shadow: none;
+  }
+  .cmp-grab {
+    position: absolute;
+    top: 0;
+    left: 50%;
+    width: 64px;
+    height: 16px;
+    margin-left: -32px;
+    touch-action: none;
+    cursor: grab;
+  }
+  .cmp-grab::after {
+    content: '';
+    position: absolute;
+    top: 6px;
+    left: 14px;
+    width: 36px;
+    height: 5px;
+    border-radius: 3px;
+    background: var(--border);
+    transition: background 0.15s;
+  }
+  .cmp-grab:active::after {
+    background: var(--text-3);
   }
   .composer.is-phone .cmp-field {
     min-height: 44px;
-    padding: 11px 14px 2px;
+    padding: 11px 4px;
+    font-size: 16px;
+    line-height: 22px;
+    transition: height 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
   }
   .composer.is-phone .cmp-tools {
-    padding: 0 4px 2px;
+    min-height: 44px;
+    padding: 0 0 2px;
     gap: 0;
   }
   .composer.is-phone .cmp-tools .icon-btn {
-    width: var(--tap);
+    width: 40px;
     height: var(--tap);
-    border-radius: 14px;
+    border-radius: 10px;
+    color: var(--text-2);
   }
-  .composer.is-phone .chat-send {
-    width: var(--tap);
-    height: var(--tap);
-    border-radius: 14px;
+  .composer.is-phone .cmp-tools .icon-btn.on {
+    background: none;
+    color: var(--accent-text, var(--accent));
   }
+  .composer.is-phone .cmp-tools .cmp-plus {
+    margin-left: -4px;
+  }
+  .cmp-plus-ring {
+    display: grid;
+    place-items: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: var(--hover);
+    color: var(--text);
+    transition: background 0.15s;
+  }
+  .cmp-plus.on .cmp-plus-ring {
+    background: var(--accent-soft);
+    color: var(--accent-text, var(--accent));
+  }
+  .cmp-aa-text {
+    font-size: 17px;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+  }
+  /* Split Send: 64 x 32, send on the left, the chevron schedules it. Grey until there's something to send. */
+  .cmp-split {
+    display: inline-flex;
+    height: 32px;
+    border-radius: 8px;
+    background: var(--hover);
+    color: var(--text-3);
+    overflow: hidden;
+    transition:
+      background 0.18s,
+      color 0.18s;
+  }
+  .cmp-split.ready {
+    background: var(--accent);
+    color: #fff;
+  }
+  .cmp-split > button {
+    display: grid;
+    place-items: center;
+    height: 32px;
+    color: inherit;
+    transition: background 0.15s;
+  }
+  .cmp-split > button:disabled {
+    opacity: 1;
+  }
+  .cmp-split-send {
+    width: 38px;
+  }
+  .cmp-split.single .cmp-split-send {
+    width: 48px;
+  }
+  .cmp-split-later {
+    width: 26px;
+    border-left: 1px solid color-mix(in srgb, currentColor 25%, transparent) !important;
+  }
+  .cmp-split.ready > button:active {
+    background: color-mix(in srgb, #000 12%, transparent);
+  }
+  /* Aa: Slack's formatting bar above the field, sideways, no box. */
   .composer.is-phone .cmp-fmt {
+    gap: 0;
+    padding: 0;
     overflow-x: auto;
     scrollbar-width: none;
+  }
+  .composer.is-phone .cmp-fmt::-webkit-scrollbar {
+    display: none;
   }
   .composer.is-phone .cmp-fmt .icon-btn {
     flex: none;
     width: var(--tap);
     height: var(--tap);
+    border-radius: 10px;
   }
+  /* @: a panel on top of the box, full width, 48 px rows. */
   .composer.is-phone .mention-pop {
     left: 0;
     right: 0;
+    bottom: 100%;
+    min-width: 0;
+    padding: 4px 0;
+    border-radius: 0;
+    border: 0;
+    border-top: 1px solid var(--border);
+    box-shadow: 0 -8px 20px rgba(16, 16, 30, 0.06);
+    animation: fade-in 0.15s ease-out backwards;
   }
   .composer.is-phone .mention-pop button {
-    min-height: var(--tap);
+    gap: 12px;
+    min-height: 48px;
+    padding: 0 16px;
+    border-radius: 0;
+    font-size: 16px;
   }
-  .composer.is-phone .cmp-also {
-    min-height: var(--tap);
+  .composer.is-phone .mention-pop button:first-child:not(:active) {
+    background: none;
+  }
+  .composer.is-phone .mention-pop button:active {
+    background: var(--hover);
+  }
+  .composer.is-phone .mention-pop .avatar {
+    border-radius: 7px;
+  }
+  /* Threads: "Also send to #channel" as a checkbox on its own row. */
+  .cmp-also.is-check {
+    gap: 10px;
+    min-height: 40px;
+    padding: 0 4px;
+    font-size: 14px;
+    color: var(--text-2);
+    text-align: left;
+  }
+  .cmp-check {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 20px;
+    height: 20px;
+    border-radius: 5px;
+    border: 1.5px solid var(--text-3);
+    color: transparent;
+    transition:
+      background 0.15s,
+      border-color 0.15s,
+      color 0.15s;
+  }
+  .cmp-also.on .cmp-check {
+    border-color: var(--accent);
+    background: var(--accent);
+    color: #fff;
   }
   .composer.is-phone .rec-bar {
     min-height: 60px;
-  }
-  .plus-tiles button {
-    min-height: 76px;
   }
   .emoji-grid button {
     height: var(--tap);
@@ -1005,11 +1161,12 @@
     padding: 8px 0 16px;
   }
   .thread-push .push-foot {
-    padding: 6px 8px calc(8px + env(safe-area-inset-bottom));
+    padding: 0 0 env(safe-area-inset-bottom);
     border-top: 0;
+    background: var(--surface);
   }
   .kb-open .thread-push .push-foot {
-    padding-bottom: 8px;
+    padding-bottom: 0;
   }
   .thread-push .push-body {
     padding-bottom: 0;

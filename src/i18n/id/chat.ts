@@ -709,6 +709,11 @@ const id: Record<string, string> = {
   '{name}, something new': '{name}, ada yang baru',
   '{n} you can join': '{n} bisa Anda ikuti',
 
+  'Code block': 'Blok kode',
+  'Make the message box bigger': 'Perbesar kotak pesan',
+  'Make the message box smaller': 'Perkecil kotak pesan',
+  'Schedule for later': 'Jadwalkan untuk nanti',
+  'Schedule message': 'Jadwalkan pesan',
   // (end of chat)
 };
 
