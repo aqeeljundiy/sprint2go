@@ -9,6 +9,8 @@ import { iceConfig, redacted } from '../ice';
 import { usePhone } from '../mobile/media';
 import { PushScreen } from './ui/PushScreen';
 import { useHuddleDock } from './chat/huddleDock';
+import { chanName } from './chat/Sheets';
+import { isGroupDm } from '../chatFollow';
 import { mark, t, tn } from '../i18n';
 import { fmtList, fmtNumber } from '../i18n/format';
 
@@ -356,7 +358,7 @@ export function Huddle({ channel, users, me, onLeave, onOpenChannel }: { channel
     }
   };
 
-  const name = channel.kind === 'dm' ? t('Direct message') : `#${channel.name}`;
+  const name = channel.kind === 'dm' ? (isGroupDm(channel) ? chanName(channel, users, me) : t('Direct message')) : `#${channel.name}`;
   const lineOf = (id: string): Line => lines[id] ?? 'connecting';
   const first = (id: string) => users.find((u) => u.id === id)?.name.split(' ')[0] ?? t('Someone');
   const names = (ids: string[]) => (ids.length <= 2 ? fmtList(ids.map(first)) : t('{name} and {n} others', { name: first(ids[0]), n: fmtNumber(ids.length - 1) }));

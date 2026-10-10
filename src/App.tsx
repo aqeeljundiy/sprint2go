@@ -73,7 +73,7 @@ import { TaskDrawer } from './components/TaskDrawer';
 import { TasksView, dueLabel, isBrief, type TaskScope } from './components/TasksView';
 import { TasksSidebar } from './components/TasksSidebar';
 import type { DumpResult } from './components/BrainDump';
-import { ChatSidebar, ChatView, NewMessageSheet, StatusPicker, statusText, fullLayout, sectionIdOf, sectionPeople, sectionTitle, type ChatPage, type Presence, type SendPayload } from './components/ChatApp';
+import { ChatSidebar, ChatView, NewMessageSheet, StatusPicker, statusText, fullLayout, sectionIdOf, sectionPeople, sectionTitle, type ChatPage, type GuestOption, type Presence, type Recipients, type SendPayload } from './components/ChatApp';
 import { ChatPages } from './components/chat/Pages';
 import { useDockRef } from './components/chat/huddleDock';
 import { ChatPrefsHost, isMutedValue } from './components/chat/chatPrefs';
@@ -1651,12 +1651,33 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const seesAllProjects = isAdmin || perms.seeAllProjects;
 
   /** The DM channel between me and someone (created on first use). */
-  const dmWith = (otherId: string) => {
-    const found = channels.find((c) => c.workspaceId === ws.id && c.kind === 'dm' && c.members.includes(user.id) && c.members.includes(otherId));
+  const dmWith = (otherId: string) => dmFor({ userIds: [otherId], guests: [] });
+  /**
+   * The direct or group message with exactly these people (and guests of one project), made on first use. The server
+   * checks who may be in it (server/chatRules.ts).
+   */
+  const dmFor = (to: Recipients) => {
+    const want = new Set([user.id, ...to.userIds]);
+    const mails = new Set(to.guests.map((g) => g.email.toLowerCase()));
+    const found = channels.find((c) => c.workspaceId === ws.id && c.kind === 'dm' && c.members.length === want.size && c.members.every((m) => want.has(m)) && (c.guests ?? []).length === mails.size && (c.guests ?? []).every((g) => mails.has(g.email.toLowerCase())));
     if (found) return found.id;
     const id = uid();
-    setChannels((cs) => [...cs, { id, workspaceId: ws.id, kind: 'dm', name: '', members: [user.id, otherId] }]);
+    const guests = to.guests.length ? { clientId: to.guests[0].clientId, guests: to.guests.map((g) => ({ email: g.email, name: g.name, status: 'joined' as const, invitedBy: user.id, at: nowIso() })) } : {};
+    setChannels((cs) => [...cs, { id, workspaceId: ws.id, kind: 'dm', name: '', members: [...want], createdAt: nowIso(), ...guests }]);
     return id;
+  };
+  /** Guests I may write to: people who joined a project where I may invite guests (the server's rule, chatRules.ts). */
+  const dmGuests: GuestOption[] = wsClients
+    .filter((c) => c.status !== 'ended' && (isAdmin || perms.inviteGuests || c.ownerId === user.id || (c.members ?? []).some((m) => m.userId === user.id && m.role === 'lead')))
+    .flatMap((c) => clientPeople(c, channels).filter((x) => x.status === 'joined').map((x) => ({ email: x.email, name: x.name, clientId: c.id, project: c.name })));
+  /** A group message becomes a private channel: the same people and history, more people may come in (Slack). */
+  const convertToChannel = (id: string, name: string, add: string[]) => {
+    const c = channels.find((x) => x.id === id);
+    if (!c) return;
+    setChannels((cs) => cs.map((x) => (x.id === id ? { ...x, kind: 'channel', private: true, name, members: [...new Set([...x.members, ...add])], ownerId: user.id, ...(x.guests?.length ? { category: 'shared' as const } : {}) } : x)));
+    // A system line, as when a channel is made (Message.tsx puts the author's name in front).
+    setMessages((ms) => [...ms, { id: uid(), channelId: id, userId: user.id, text: `made this a private channel, #${name}`, tr: phrase('{name} made this a private channel, #{channel}', { name: myFirst, channel: name }), at: nowIso(), kind: 'system' }]);
+    add.forEach((m) => notify(m, 'mention', msg('{name} added you to #{channel}', { name: myFirst, channel: name }), { app: 'chat', id }));
   };
 
   const postChat = (channelId: string, text: string, taskId?: string, fromId = user.id, tr?: Msg) =>
@@ -4061,7 +4082,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
               setSidebarOpen(false);
             }}
             onNewChannel={canStartChannels ? () => setChanDialog({}) : undefined}
-            onNewDm={(uidOther) => setChatId(dmWith(uidOther))}
+            onNewMessage={(to) => setChatId(dmFor(to))}
+            dmGuests={dmGuests}
             canManage={canManageChannel}
             onMove={moveChannel}
             onSettings={(id) => setChanDialog({ id })}
@@ -4172,7 +4194,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
                 setChatId(id);
               }}
               onNewChannel={canStartChannels ? () => setChanDialog({}) : undefined}
-              onNewDm={(uidOther) => setChatId(dmWith(uidOther))}
+              onNewMessage={(to) => setChatId(dmFor(to))}
+              dmGuests={dmGuests}
               dmIdFor={dmWith}
               onFollow={followThread}
               notices={myNotices.filter((n) => n.link?.app === 'chat')}
@@ -4516,6 +4539,14 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             onOpenRef={openChatRef}
             onOpenScheduled={() => setChatPage('drafts')}
             onLeave={() => chatId && leaveChannel(chatId)}
+            onNewGroup={(to) => setChatId(dmFor(to))}
+            onConvert={canStartChannels ? (name, add) => chatId && convertToChannel(chatId, name, add) : undefined}
+            onLeaveGroup={() => {
+              if (!chatId) return;
+              setChannels((cs) => cs.map((c) => (c.id === chatId ? { ...c, members: c.members.filter((m) => m !== user.id) } : c)));
+              setChatId(null);
+              showToast({ text: t('You left the group message') });
+            }}
             huddle={
               server.on && chatId
                 ? {
@@ -5257,7 +5288,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
           </div>
         </Sheet>
       )}
-      {newMessage && <NewMessageSheet users={members} me={user.id} onPick={(id) => openChannel(dmWith(id))} onNewChannel={canStartChannels ? () => setChanDialog({}) : undefined} onClose={() => setNewMessage(false)} />}
+      {newMessage && <NewMessageSheet users={members} me={user.id} guests={dmGuests} onPick={(to) => openChannel(dmFor(to))} onNewChannel={canStartChannels ? () => setChanDialog({}) : undefined} onClose={() => setNewMessage(false)} />}
       {ownSettings && (
         <PushScreen title={ownSettings.label} onBack={() => setPushed(null)}>
           {ownSettings.render()}

@@ -192,6 +192,8 @@ export function ChannelAbout(p: {
   onOpenTask: (id: string) => void;
   onOpenMail: (id: string) => void;
   onSettings: () => void;
+  /** A group message: Add people (a new group, or converting it to a private channel) instead of channel settings. */
+  onAddPeople?: () => void;
   only?: 'people' | 'about';
 }) {
   const { channel, client, team, other } = p;
@@ -350,8 +352,8 @@ export function ChannelAbout(p: {
               </a>
             </div>
           ))}
-          <button className="ghost-btn sm" onClick={p.onSettings}>
-            <Users size={14} /> {t('Add people or guests')}
+          <button className="ghost-btn sm" onClick={p.onAddPeople ?? p.onSettings}>
+            <Users size={14} /> {p.onAddPeople ? t('Add people') : t('Add people or guests')}
           </button>
         </div>
       )}

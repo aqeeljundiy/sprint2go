@@ -13,6 +13,8 @@ import { ConfirmSheet, WhenSheet, chanName } from './Sheets';
 import { authorOf, preview, Text } from './Message';
 import { dmOther, followedThreads, readFallback, TILE_NAMES, useChatState, whenText, type ChatState, type SavedItem } from './chatPrefs';
 import type { ChatPage } from '../ChatApp';
+import { GroupAvatar } from './GroupAvatar';
+import { isGroupDm } from '../../chatFollow';
 import { t, tn, tx } from '../../i18n';
 
 export interface PagesProps {
@@ -77,6 +79,7 @@ const nameOf = (p: PagesProps, channelId: string) => {
 };
 const ChanIcon = ({ c, users, me, size = 16 }: { c?: Channel; users: User[]; me: string; size?: number }) => {
   if (!c) return <Hash size={size} />;
+  if (c.kind === 'dm' && isGroupDm(c)) return <GroupAvatar c={c} users={users} me={me} size={size + 6} />;
   if (c.kind === 'dm') {
     const u = users.find((x) => x.id === dmOther(c, me));
     return u ? <Avatar person={u} size={size + 6} /> : <Hash size={size} />;

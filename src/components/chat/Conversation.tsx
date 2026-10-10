@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, ArrowLeft, Bell, BellOff, Bookmark, BookmarkMinus, ChevronRight, Clock, Copy, Forward, Handshake, Hash, Headphones, Link2, ListChecks, Lock, LogOut, MailOpen, Menu, MessageSquareReply, Pencil, Pin, Search, Settings, Sparkles, Trash2, WifiOff, X } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Bell, BellOff, MoreHorizontal, UserPlus, Users, Bookmark, BookmarkMinus, ChevronRight, Clock, Copy, Forward, Handshake, Hash, Headphones, Link2, ListChecks, Lock, LogOut, MailOpen, Menu, MessageSquareReply, Pencil, Pin, Search, Settings, Sparkles, Trash2, WifiOff, X } from 'lucide-react';
 import type { Channel, ChatFile, ChatMessage, Client, DriveItem, Role, Status, Team, Thread, Todo, User } from '../../types';
 import { localDay } from '../../utils';
 import { term } from '../../terms';
@@ -28,13 +28,19 @@ import { authorOf, DayLine, fmtSize, MONTHS, Msg, NewLine, preview, type MsgCtx 
 import { ConfirmSheet, EmojiGrid, EmojiSheet, ForwardSheet, ReactionRow, WhenSheet, WhoReactedSheet, chanName } from './Sheets';
 import { ChannelAbout, PinnedPane, SummaryPane, TasksPane } from './Details';
 import { draftKey, dmOther, shortTime, statusText, useChatState, whenText } from './chatPrefs';
-import { followsThread } from '../../chatFollow';
+import { followsThread, GROUP_MAX, isGroupDm } from '../../chatFollow';
+import { GroupAvatar } from './GroupAvatar';
+import { AddPeople, type Recipients } from '../ChatApp';
+import { useActionMenu } from '../ui/ActionSheet';
 import { msg, phrase, t, tn, type Msg as Words } from '../../i18n';
 import { tj } from '../../i18n/tj';
 import { fmtList, fmtNumber } from '../../i18n/format';
 import { useConnection, useUnsent } from './net';
 import { useDockRef } from './huddleDock';
 import './chat.css';
+
+/** A channel's name as it's saved: lower case, words joined by dashes (as ChannelDialog makes them). */
+const slug = (s: string) => s.trim().toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '').replace(/-+/g, '-').replace(/^-|-$/g, '').slice(0, 60);
 
 export interface SendPayload {
   text: string;
@@ -92,6 +98,10 @@ export interface ViewProps {
   onOpenRef?: (ref: NonNullable<ChatMessage['ref']>) => void;
   onOpenScheduled?: () => void; // Drafts and sent, Scheduled
   onLeave?: () => void;
+  /** Group messages: start a new one (Add people makes a new group, as in Slack), turn this one into a private channel, or leave it. */
+  onNewGroup?: (to: Recipients) => void;
+  onConvert?: (name: string, add: string[]) => void;
+  onLeaveGroup?: () => void;
   onSettings: () => void;
   onMenu: () => void;
   onBack?: () => void; // phones: back to the channel list
@@ -181,6 +191,18 @@ export function ChatView(p: ViewProps) {
   const [sub, setSub] = useState<Sub | null>(null);
   const [holdRead, setHoldRead] = useState(false);
   const [leaving, setLeaving] = useState(false);
+  const [leavingGroup, setLeavingGroup] = useState(false);
+  // Desktop: a group message's "…" (convert, leave).
+  const groupMore = useRef<HTMLButtonElement>(null);
+  const groupMenu = useActionMenu(() => [
+    ...(p.onConvert ? [{ label: t('Convert to a private channel'), icon: Lock, run: () => (setChanName2(''), setConverting({ add: [] })) }] : []),
+    ...(p.onLeaveGroup ? [{ label: t('Leave this group message'), icon: LogOut, danger: true, group: 'end' as const, run: () => setLeavingGroup(true) }] : []),
+  ]);
+  // Group messages: picking people to add, then choosing a new group or a private channel; naming the channel.
+  const [adding, setAdding] = useState(false);
+  const [addChoice, setAddChoice] = useState<string[] | null>(null);
+  const [converting, setConverting] = useState<{ add: string[] } | null>(null);
+  const [chanName2, setChanName2] = useState('');
   const [muteOpen, setMuteOpen] = useState(false);
   const scroll = useRef<HTMLDivElement>(null);
   const atBottom = useRef(true);
@@ -289,7 +311,9 @@ export function ChatView(p: ViewProps) {
       </section>
     );
 
-  const other = channel.kind === 'dm' ? person(dmOther(channel, me)) : undefined;
+  const group = isGroupDm(channel);
+  const other = channel.kind === 'dm' && !group ? person(dmOther(channel, me)) : undefined;
+  const groupNames = group ? fmtList([...channel.members.filter((id) => id !== me).map((id) => person(id)?.name ?? ''), ...(channel.guests ?? []).map((g) => g.name)].filter(Boolean)) : '';
   const title = chanName(channel, users, me);
   const chanFiles = p.messages.flatMap((m) => (m.files ?? []).map((f) => ({ f, m })));
   const chanTasks = p.tasks.filter((t) => t.kind !== 'brief' && (t.channelId === channel.id || (client && t.clientId === client.id) || (team && t.teamId === team.id)));
@@ -600,9 +624,9 @@ export function ChatView(p: ViewProps) {
       case 'pinned':
         return <PinnedPane pinned={pinned} render={(m) => <Msg key={m.id} m={m} grouped={false} ctx={ctx} />} />;
       case 'people':
-        return <ChannelAbout {...paneProps} client={client} team={team} other={other} only="people" />;
+        return <ChannelAbout {...paneProps} client={client} team={team} other={other} only="people" onAddPeople={group ? () => setAdding(true) : undefined} />;
       case 'about':
-        return <ChannelAbout {...paneProps} client={client} team={team} other={other} only={phone ? 'about' : undefined} />;
+        return group ? <ChannelAbout {...paneProps} client={client} team={team} only="people" onAddPeople={() => setAdding(true)} /> : <ChannelAbout {...paneProps} client={client} team={team} other={other} only={phone ? 'about' : undefined} />;
     }
   };
 
@@ -676,7 +700,7 @@ export function ChatView(p: ViewProps) {
       )}
       {sub?.kind === 'forward' && p.onForward && p.channels && <ForwardSheet m={sub.m} channels={p.channels} users={users} me={me} onForward={(to, note) => p.onForward?.(sub.m, to, note)} onClose={() => setSub(null)} />}
       {sub?.kind === 'who' && <WhoReactedSheet m={sub.m} first={sub.emoji ?? ''} users={users} me={me} channel={channel} onClose={() => setSub(null)} />}
-      {sub?.kind === 'delete' && <ConfirmSheet title={t('Delete this message?')} text={channel.kind === 'dm' ? t('It’s gone for both of you, with any replies in its thread.') : t('Everyone in {name} stops seeing it, with any replies in its thread.', { name: title })} yes={t('Delete')} onYes={() => p.onDelete(sub.m.id)} onClose={() => setSub(null)} />}
+      {sub?.kind === 'delete' && <ConfirmSheet title={t('Delete this message?')} text={group ? t('It’s gone for everyone in it, with any replies in its thread.') : channel.kind === 'dm' ? t('It’s gone for both of you, with any replies in its thread.') : t('Everyone in {name} stops seeing it, with any replies in its thread.', { name: title })} yes={t('Delete')} onYes={() => p.onDelete(sub.m.id)} onClose={() => setSub(null)} />}
       {kudos && (
         <Sheet
           title={t('🙌 Give kudos')}
@@ -696,6 +720,50 @@ export function ChatView(p: ViewProps) {
           </div>
         </Sheet>
       )}
+      {adding && (
+        <AddPeople
+          phone={phone}
+          users={users}
+          me={me}
+          members={channel.members}
+          onPick={(to) => to.userIds.length && setAddChoice(to.userIds)}
+          onClose={() => setAdding(false)}
+        />
+      )}
+      {addChoice && (
+        <ActionSheet
+          open
+          onClose={() => setAddChoice(null)}
+          title={t('Add {names}', { names: fmtList(addChoice.map((id) => person(id)?.name.split(' ')[0] ?? '')) })}
+          actions={[
+            ...(channel.members.length + (channel.guests?.length ?? 0) + addChoice.length <= GROUP_MAX
+              ? [{ label: t('Start a new group message'), hint: t('With everyone here too. This one stays as it is.'), icon: Users, run: () => p.onNewGroup?.({ userIds: [...channel.members.filter((id) => id !== me), ...addChoice], guests: (channel.guests ?? []).map((g) => ({ email: g.email, name: g.name, clientId: channel.clientId ?? '', project: '' })) }) }]
+              : []),
+            ...(p.onConvert ? [{ label: t('Convert to a private channel'), hint: t('Keeps the history, and everyone in it'), icon: Lock, run: () => (setChanName2(''), setConverting({ add: addChoice })) }] : []),
+          ]}
+        />
+      )}
+      {converting && p.onConvert && (
+        <Sheet
+          title={t('Convert to a private channel')}
+          onClose={() => setConverting(null)}
+          footer={
+            <button className="primary-btn" disabled={!slug(chanName2)} onClick={() => (p.onConvert!(slug(chanName2), converting.add), setConverting(null), setDetails(null))}>
+              {t('Convert')}
+            </button>
+          }
+        >
+          <p className="convert-note">{converting.add.length ? t('Everyone here stays, with the whole history, and {names} join. It can’t be a group message again.', { names: fmtList(converting.add.map((id) => person(id)?.name.split(' ')[0] ?? '')) }) : t('Everyone here stays, with the whole history. You can add more people after. It can’t be a group message again.')}</p>
+          <label className="convert-field">
+            <span>{t('Channel name')}</span>
+            <span className="cf-input">
+              <Hash size={16} aria-hidden />
+              <input autoFocus value={chanName2} onChange={(e) => setChanName2(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && slug(chanName2) && (p.onConvert!(slug(chanName2), converting.add), setConverting(null), setDetails(null))} placeholder={t('e.g. launch-crew')} aria-label={t('Channel name')} />
+            </span>
+          </label>
+        </Sheet>
+      )}
+      {leavingGroup && <ConfirmSheet title={t('Leave this group message?')} text={t('You stop getting its messages. To be in it again, someone starts a new one with you.')} yes={t('Leave')} onYes={() => p.onLeaveGroup?.()} onClose={() => setLeavingGroup(false)} />}
       {leaving && (
         <ConfirmSheet title={t('Leave {name}?', { name: title })} text={channel.private ? t('It’s private: someone in it has to add you back.') : t('You can join again from Browse channels.')} yes={t('Leave')} onYes={() => p.onLeave?.()} onClose={() => setLeaving(false)} />
       )}
@@ -711,7 +779,7 @@ export function ChatView(p: ViewProps) {
       ...(guest ? [] : [{ id: 'pinned' as const, label: t('Pinned'), hint: pinned.length ? undefined : t('Nothing yet') }]),
       ...(guest ? [] : [{ id: 'tasks' as const, label: t('Tasks'), hint: lateTasks ? tn(lateTasks, '{n} late', '{n} late') : undefined }]),
       ...(guest ? [] : [{ id: 'summary' as const, label: t('Summaries') }]),
-      ...(guest ? [] : [{ id: 'about' as const, label: other ? t('Profile') : t('About') }]),
+      ...(guest || group ? [] : [{ id: 'about' as const, label: other ? t('Profile') : t('About') }]),
     ];
     const paneTitle: Record<string, string> = { people: t('People'), materials: t('Files and links'), pinned: t('Pinned'), tasks: t('Tasks'), summary: t('Summaries'), about: other ? t('Profile') : t('About') };
     return (
@@ -725,6 +793,8 @@ export function ChatView(p: ViewProps) {
                 <Avatar person={other} size={28} />
                 <i className={`presence ${p.presence(other.id)}`} />
               </span>
+            ) : group ? (
+              <GroupAvatar c={channel} users={users} me={me} size={32} />
             ) : null}
             <span className="ctb-text">
               <span className="ctb-name">
@@ -768,8 +838,10 @@ export function ChatView(p: ViewProps) {
           <PushScreen title={t('Details')} backLabel={title.length > 14 ? t('Back') : title} onBack={() => setDetails(null)} className="chat-details">
             <div className="cd-hero">
               {other && <Avatar person={other} size={64} />}
-              <strong>{other ? other.name : title}</strong>
-              {(other ? other.title : (channel.topic ?? (client ? t('{name} {project} channel', { name: client.name, project: term.one }) : ''))) && <span className="cd-topic">{other ? other.title : (channel.topic ?? (client ? t('{name} {project} channel', { name: client.name, project: term.one }) : ''))}</span>}
+              {group && <GroupAvatar c={channel} users={users} me={me} size={56} />}
+              <strong>{other ? other.name : group ? t('Group message') : title}</strong>
+              {group && <span className="cd-topic">{groupNames}</span>}
+              {!group && (other ? other.title : (channel.topic ?? (client ? t('{name} {project} channel', { name: client.name, project: term.one }) : ''))) && <span className="cd-topic">{other ? other.title : (channel.topic ?? (client ? t('{name} {project} channel', { name: client.name, project: term.one }) : ''))}</span>}
             </div>
             {/* Slack: plain buttons, an icon over a word. */}
             <div className="cdt-actions">
@@ -800,6 +872,21 @@ export function ChatView(p: ViewProps) {
                   <ChevronRight size={16} className="cd-chev" />
                 </button>
               ))}
+              {group && !guest && (
+                <>
+                  <button type="button" className="cd-row" onClick={() => setAdding(true)}>
+                    <span className="cd-label">{t('Add people')}</span>
+                    <span className="cd-hint">{t('Starts a new group')}</span>
+                    <ChevronRight size={16} className="cd-chev" />
+                  </button>
+                  {p.onConvert && (
+                    <button type="button" className="cd-row" onClick={() => (setChanName2(''), setConverting({ add: [] }))}>
+                      <span className="cd-label">{t('Convert to a private channel')}</span>
+                      <ChevronRight size={16} className="cd-chev" />
+                    </button>
+                  )}
+                </>
+              )}
               {channel.kind === 'channel' && (
                 <button type="button" className="cd-row" onClick={p.onSettings}>
                   <span className="cd-label">{t('Settings')}</span>
@@ -807,6 +894,12 @@ export function ChatView(p: ViewProps) {
                 </button>
               )}
             </div>
+            {group && p.onLeaveGroup && (
+              <button type="button" className="cd-row danger" onClick={() => setLeavingGroup(true)}>
+                <LogOut size={17} />
+                <span className="cd-label">{t('Leave this group message')}</span>
+              </button>
+            )}
             {channel.kind === 'channel' && p.onLeave && !channel.teamId && (
               <button type="button" className="cd-row danger" onClick={() => setLeaving(true)}>
                 <LogOut size={17} />
@@ -920,6 +1013,7 @@ export function ChatView(p: ViewProps) {
               <i className={`presence ${p.presence(other.id)}`} />
             </span>
           )}
+          {group && <GroupAvatar c={channel} users={users} me={me} size={32} />}
           <div className="th-text">
             <h1>
               {channel.category === 'shared' && !other ? <Handshake size={16} /> : channel.private && !other && <Lock size={15} />} {title}
@@ -927,7 +1021,7 @@ export function ChatView(p: ViewProps) {
               {muted && <BellOff size={14} className="ctb-muted" aria-label={muted === 'always' ? t('Muted') : t('Muted until {when}', { when: whenText(muted) })} />}
             </h1>
             <p>
-              {other ? (p.statuses[other.id] ? statusText(p.statuses[other.id]) : other.title) : (channel.topic ?? (client ? t('{name} {project} channel', { name: client.name, project: term.one }) : ''))}
+              {other ? (p.statuses[other.id] ? statusText(p.statuses[other.id]) : other.title) : group ? groupNames : (channel.topic ?? (client ? t('{name} {project} channel', { name: client.name, project: term.one }) : ''))}
               {channel.guests?.length ? ` · ${tn(channel.guests.length, '{n} guest', '{n} guests')}` : ''}
               {channel.sharedWith ? ` · ${channel.sharedWith.status === 'pending' ? t('shared with {name} (waiting)', { name: channel.sharedWith.workspaceName }) : t('shared with {name}', { name: channel.sharedWith.workspaceName })}` : ''}
             </p>
@@ -937,6 +1031,17 @@ export function ChatView(p: ViewProps) {
               <Headphones size={14} />
               <span className="lbl">{p.huddle.joined ? t('In the huddle') : channel.huddle?.members.length ? t('Join huddle · {n}', { n: fmtNumber(channel.huddle.members.length) }) : t('Huddle')}</span>
             </button>
+          )}
+          {group && !guest && (
+            <>
+              <button className="icon-btn sm" onClick={() => setAdding(true)} title={t('Add people')} aria-label={t('Add people')}>
+                <UserPlus size={16} />
+              </button>
+              <button ref={groupMore} className="icon-btn sm" onClick={() => groupMenu.openFrom(groupMore)} title={t('More')} aria-label={t('More for this group message')}>
+                <MoreHorizontal size={16} />
+              </button>
+              {groupMenu.menu}
+            </>
           )}
           {channel.kind === 'channel' && !guest && (
             <button className="chat-members" onClick={p.onSettings} title={t('People and settings')}>
@@ -965,7 +1070,7 @@ export function ChatView(p: ViewProps) {
               ['tasks', t('Tasks'), lateTasks], // late only
               ['pinned', t('Pinned'), null],
               ['summary', t('Summary'), null],
-              ['about', other ? t('Profile') : t('About'), null],
+              ['about', other ? t('Profile') : group ? t('People') : t('About'), null],
             ] as const
           )
             .filter(([id]) => !guest || id === 'messages' || id === 'materials')

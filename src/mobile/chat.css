@@ -617,20 +617,29 @@
   /* New message (and Start a huddle): "To:" on top, people then channels. */
   .nm-to {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
-    gap: 8px;
+    gap: 4px 8px;
     min-height: 48px;
-    padding: 0 16px;
+    padding: 4px 16px;
     border-bottom: 1px solid var(--border);
   }
-  .nm-to span {
+  .nm-to-label {
     font-size: var(--fs-body);
     color: var(--text-3);
   }
+  /* The people picked so far, as pills in the "To:" field; tap one to take it out. */
+  .nm-chip {
+    gap: 4px;
+    height: 32px;
+    padding: 0 8px 0 4px;
+    font-size: var(--fs-secondary);
+    font-weight: 600;
+  }
   .nm-to input {
     flex: 1;
-    min-width: 0;
-    height: 44px;
+    min-width: 96px;
+    height: 40px;
     border: 0;
     background: none;
     font-size: var(--fs-field);
@@ -679,12 +688,59 @@
     font-size: var(--fs-body);
   }
   .nm-sub {
+    flex: 1;
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
     font-size: var(--fs-secondary);
     color: var(--text-3);
+  }
+  .nm-row {
+    border-radius: 0;
+  }
+  .nm-check {
+    width: 24px;
+    height: 24px;
+    border-width: 2px;
+  }
+  .nm-full {
+    margin: 8px 16px 0;
+    padding: 8px 12px;
+    border-radius: var(--r-tile);
+    font-size: var(--fs-secondary);
+  }
+  .nm-group {
+    padding: 16px 16px 4px;
+  }
+  /* The button under the list: "Message Rizky" or "Start a group message". */
+  .nm-foot {
+    padding: 8px 16px;
+  }
+  .nm-go {
+    flex: 1;
+    min-height: 48px;
+    border-radius: var(--r-pill);
+    font: var(--t-label);
+  }
+  .convert-note {
+    font-size: var(--fs-body);
+    line-height: var(--lh-para);
+  }
+  .convert-field {
+    gap: 8px;
+    font-size: var(--fs-secondary);
+  }
+  .convert-field .cf-input {
+    height: 48px;
+    border-radius: var(--r-tile);
+  }
+  .convert-field input {
+    font-size: var(--fs-field);
+  }
+  .group-av.is-count {
+    border-radius: 6px; /* system: Slack's group picture is a rounded square at row size */
+    font-size: var(--fs-caption);
   }
   .sheet-field {
     margin: 0 8px 8px;
