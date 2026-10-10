@@ -499,6 +499,7 @@ const id: Record<string, string> = {
   'Photo and colour': 'Foto dan warna',
   'Shown when there’s no photo.': 'Ditampilkan saat tidak ada foto.',
   'Their email is deleted on arrival. Unblock to get it in your inbox again.': 'Email mereka dihapus saat tiba. Buka blokir agar masuk ke kotak masuk Anda lagi.',
+  'The order of the apps on your launcher, and the ones you hide.': 'Urutan aplikasi di layar aplikasi Anda, dan yang Anda sembunyikan.',
 };
 
 export default id;

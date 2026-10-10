@@ -786,6 +786,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     setSelectedEventId(null);
     setSidebarOpen(false);
     if (mode === 'settings') setMode(lastMode);
+    if (isPhone()) setLauncherState(true); // phones: the new company opens on its launcher
   };
 
   /* ---------------- The demo company (src/sandbox.ts, server/sandbox.ts) ---------------- */
@@ -4138,7 +4139,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       case 'chat':
         return chatId ?? undefined;
       case 'mail':
-        return mailId(view);
+        return readerOpen && selectedId ? `thread/${selectedId}` : mailId(view);
       case 'notes':
         return noteId ?? undefined;
       case 'projects':
@@ -4176,6 +4177,10 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         if (!channels.some((c) => c.id === id)) return false;
         return (setChatId(id), setChatPage(null), true);
       case 'mail': {
+        if (id.startsWith('thread/')) {
+          if (!threads.some((x) => x.id === id.slice(7))) return false;
+          return (openThread(id.slice(7)), true);
+        }
         const [kind, rest] = id.includes('/') ? [id.slice(0, id.indexOf('/')), id.slice(id.indexOf('/') + 1)] : ['folder', id];
         setView((kind === 'label' || kind === 'category' || kind === 'project' ? { kind, id: rest } : kind === 'folder' && (rest === 'todos' || rest === 'tracking') ? { kind: rest, id: rest } : { kind: 'folder', id: rest }) as View);
         return true;
@@ -4223,6 +4228,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     setLauncherState(false);
     const sec = r.section ?? (SECTIONS_OF[m]?.[0] as string | undefined);
     if (sec === 'search' && m === 'mail') setTimeout(mailSearch, 300);
+    else if (sec === 'search' && m === 'notes') setTimeout(() => dispatchEvent(new Event('s2g:notes-search')), 300);
     else if (sec === 'search' && SEARCH_SECTIONS[m]) openSearch(SEARCH_SECTIONS[m]);
     else if (sec && sec !== sectionNow(m)) setSectionFor(m, sec);
     return setItemFor(m, r.id, clear);
@@ -4262,7 +4268,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         return bar([
           { id: 'notes', label: t('Notes'), icon: NotebookPen },
           { id: 'shared', label: t('Shared'), icon: Users },
-          { id: 'search', label: t('Search'), icon: SearchIcon, run: () => openSearch('notes') },
+          { id: 'search', label: t('Search'), icon: SearchIcon, run: () => (noteId && setNoteId(null), dispatchEvent(new Event('s2g:notes-search'))) },
         ]);
       case 'drive':
         return bar([
@@ -4310,10 +4316,11 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const fromPop = useRef(false);
   const bootPending = useRef<Route | null>(boot.launcher ? null : boot);
   // A link opened before its data came: try again as things load, for a few seconds.
+  const justApplied = useRef(false); // the state it set shows on the next render: the URL waits for it
   useEffect(() => {
     const r = bootPending.current;
     if (!r) return;
-    if (applyRoute(r, false)) bootPending.current = null;
+    if (applyRoute(r, false)) (bootPending.current = null), (justApplied.current = true), setTimeout(() => (justApplied.current = false), 100);
   }, [todos.length, notes.length, channels.length, clients.length, tables.length, meetings.length, teams.length]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     const t = setTimeout(() => (bootPending.current = null), 5000);
@@ -4321,6 +4328,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   }, []);
   useEffect(() => {
     if (bootPending.current) return;
+    if (justApplied.current) return void (justApplied.current = false);
     const cur = pathNow();
     if (pathWanted === cur.replace(/\/$/, '') || (pathWanted === '/' && cur === '/')) return;
     if (fromPop.current) return void ((fromPop.current = false), setPath(pathWanted, 'replace'));
@@ -4349,7 +4357,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       fromPop.current = true;
       bootPending.current = null;
       applyRef.current(parseRoute(path, isPhone()), true);
-      setTimeout(() => (fromPop.current = false), 0);
+      setTimeout(() => (fromPop.current = false), 120);
     };
     addEventListener('popstate', pop);
     return () => removeEventListener('popstate', pop);

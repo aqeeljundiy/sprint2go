@@ -429,6 +429,7 @@ const id: Record<string, string> = {
   '{when}. More options': '{when}. Opsi lainnya',
   // Month: a day with more than fits ("+3 more" opens the day)
   '+{n} more': '+{n} lagi',
+  'Calendars and views': 'Kalender dan tampilan',
 };
 
 export default id;

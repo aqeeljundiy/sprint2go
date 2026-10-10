@@ -307,6 +307,9 @@ const id: Record<string, string> = {
   'The notetaker will join. Tap so it doesn’t': 'Notulis akan bergabung. Ketuk agar tidak',
   'The notetaker won’t join. Tap so it does': 'Notulis tidak akan bergabung. Ketuk agar bergabung',
   '{n} to file': '{n} perlu diarsipkan',
+  'The notetaker is in this meeting': 'Notulis sedang ada di rapat ini',
+  '{n} meeting': '{n} rapat',
+  '{n} meetings': '{n} rapat',
 };
 
 export default id;

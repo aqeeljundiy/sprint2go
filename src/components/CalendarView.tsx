@@ -349,6 +349,7 @@ export function CalendarView(props: Props) {
       {phone && (
         <TopBar
           app="calendar"
+          search={false}
           title={
             <button type="button" className={`cal-title mt-cal-title${drop ? ' open' : ''}`} onClick={() => setDrop((o) => !o)} aria-expanded={drop} aria-label={t('{title}. Pick a date', { title: barTitle })}>
               <span className="mt-cal-text">{barTitle}</span>

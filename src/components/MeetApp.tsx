@@ -218,12 +218,12 @@ export function MeetView(p: MeetProps & { part?: 'meetings' | 'notes'; embedded?
   const pg = p.page;
   const phone = usePhone();
   // Phones: Google Meet's "Take notes" (send the notetaker to a call). Embedded (Calendar's Meetings) leaves Calendar's own.
-  useCreateAction(p.embedded ? 'calendar' : 'meet', !p.embedded && p.canSendBot !== false && (phone ? { label: t('Take notes'), icon: Mic, run: p.onSend } : { label: t('Send the notetaker'), icon: Bot, run: p.onSend }));
+  useCreateAction(p.embedded ? 'calendar' : 'meet', p.canSendBot !== false && (phone ? { label: t('Take notes'), icon: Mic, run: p.onSend } : { label: t('Send the notetaker'), icon: Bot, run: p.onSend }));
+  const [settingsOpen, setSettingsOpen] = useState(false);
   // Calendar's Meetings section: the same list as Meet's Meetings.
   if (p.embedded) return <MeetComing {...p} />;
   // Phones: Meetings, Notes and Folders are the app's own bar (App's useAppSections); a folder is a sub-screen.
   const sub = phone && (pg.kind === 'folder' || pg.kind === 'unfiled' || pg.kind === 'tasks');
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const phoneChrome = phone && pg.kind !== 'meeting' && (
     <TopBar
       app="meet"

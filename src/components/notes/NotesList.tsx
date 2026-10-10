@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronRight, ListTodo, Lock, MoreHorizontal, Pin, PinOff, Plus, RotateCcw, Search, SquarePen, Trash2, Users, X } from 'lucide-react';
 import type { Note } from '../../types';
 import { term } from '../../terms';
@@ -147,6 +147,13 @@ export function NotesList({
 
   const trashView = <RecentlyDeleted notes={deleted} api={api} onOpen={(id) => onOpen(id)} />;
 
+  // The Search tab in Notes' own bar (App's useAppSections) puts the cursor in this search.
+  const phoneRoot = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const on = () => phoneRoot.current?.querySelector<HTMLInputElement>('.nl-search input')?.focus();
+    addEventListener('s2g:notes-search', on);
+    return () => removeEventListener('s2g:notes-search', on);
+  }, []);
   if (!phone)
     return (
       <>
@@ -231,7 +238,7 @@ export function NotesList({
   ];
   const same = (a: Facet | null, b: Facet) => !!a && a.kind === b.kind && ('id' in a ? a.id : '') === ('id' in b ? b.id : '');
   return (
-    <section className={`notes-phone view-enter${searching || looking ? ' searching' : ''}`}>
+    <section ref={phoneRoot} className={`notes-phone view-enter${searching || looking ? ' searching' : ''}`}>
       <div className={`nl-scroll${shown.length || looking ? '' : ' is-empty'}`}>{phoneList}</div>
       <div className="nl-search-dock">
         <div className={`fold${searching && !query ? ' open' : ''}`}>
