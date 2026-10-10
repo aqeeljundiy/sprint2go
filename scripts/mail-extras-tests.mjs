@@ -182,7 +182,7 @@ try {
 
   /* ---------- 1. Cc stays Cc ---------- */
   const s1 = `cc in ${id()}`;
-  await smtp.sendMail({ from: 'Client <client@outside-extras.example>', to: 'Aqeel <aqeel@pixelandprofits.com>', cc: 'Other <other@outside-extras.example>', replyTo: 'Desk <desk@outside-extras.example>', subject: s1, text: 'Hello with a Cc.', html: '<p>Hello with a Cc.</p><script>alert(1)</script><img src="https://pics.example/logo.png"><table><tr><td>cell</td></tr></table>', headers: { Importance: 'high' } });
+  await smtp.sendMail({ from: 'Client <client@outside-extras.example>', to: 'Aqeel <aqeel@pixelandprofits.com>', cc: 'Other <other@outside-extras.example>', replyTo: 'Desk <desk@outside-extras.example>', subject: s1, text: 'Hello with a Cc.', html: '<p>Hello with a Cc.</p><script>alert(1)</script><img src="https://pics.example/logo.png"><img src="https://pixel.example/p.gif" width="1" height="1"><table><tr><td>cell</td></tr></table>', headers: { Importance: 'high' } });
   const t1 = await waitFor(() => threadsWith(s1).find((t) => t.accountId === 'pnp-aqeel'));
   const m1 = t1?.messages?.[0];
   check(m1?.to?.length === 1 && m1.to[0].email === 'aqeel@pixelandprofits.com' && m1.cc?.[0]?.email === 'other@outside-extras.example', 'received mail keeps To and Cc apart');
@@ -304,7 +304,7 @@ try {
   const csp = pr.headers.get('content-security-policy') ?? '';
   check(pr.ok && /text\/html/.test(pr.headers.get('content-type') ?? '') && prText.includes(s1) && prText.includes('Hello with a Cc.') && prText.includes('<td>cell</td>'), 'print gives a page of its own with the email as it was sent');
   check(!/alert\(1\)/.test(prText) && /script-src 'nonce-/.test(csp) && /print\(\)/.test(prText) && pr.headers.get('x-frame-options') === 'SAMEORIGIN', 'no script from the email; only our own print call runs; the app can frame it');
-  check(prText.includes('/api/mail/img?u=https%3A%2F%2Fpics.example%2Flogo.png') && /Cc: .*other@outside-extras\.example/.test(prText), 'its pictures go through our proxy, and Cc is printed');
+  check(prText.includes('/api/mail/img?u=https%3A%2F%2Fpics.example%2Flogo.png') && !prText.includes('pixel.example') && /Cc: .*other@outside-extras\.example/.test(prText), 'its pictures go through our proxy (tracking pixels never), and Cc is printed');
   const prC = await R.get(`/api/mail/print?thread=${in3?.id}`);
   check(prC.ok && /Printing is turned off/.test(await prC.text()), 'a confidential email someone sent here doesn’t print');
   check((await D.get(`/api/mail/print?thread=${t1?.id}`)).status === 404, 'nobody else can print it');

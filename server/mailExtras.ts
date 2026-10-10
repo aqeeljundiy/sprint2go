@@ -130,6 +130,8 @@ async function original(ctx: Ctx, url: URL, res: ServerResponse) {
 export function printableHtml(html: string) {
   return confidential
     .cleanHtml(html)
+    // Tracking pixels never load, here either.
+    .replace(/<img\b[^>]*\b(width|height)\s*=\s*["']?[01]["'\s/>][^>]*>/gi, '')
     .replace(/\s(src)\s*=\s*("|')(https?:[^"']+)\2/gi, (_m, a, q, u) => ` ${a}=${q}/api/mail/img?u=${encodeURIComponent(u.replace(/&amp;/g, '&'))}${q}`)
     .replace(/\s(background)\s*=\s*("|')[^"']*\2/gi, '')
     .replace(/url\s*\(/gi, 'url-off(');

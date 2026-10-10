@@ -5,6 +5,7 @@ import type { Settings } from '../../settings';
 import type { Workspace } from '../../types';
 import { RichEditor } from '../RichEditor';
 import { Select } from '../ui/Select';
+import { SmoothHeight } from '../ui/Smooth';
 import { EditScreen, GRow, Group, ChoiceRow, SwitchRow } from '../ui/Grouped';
 import { sendersOf } from './composeExtras';
 import { t } from '../../i18n';
@@ -42,6 +43,7 @@ export function SignaturesDesktop({ s, update, ws, me }: { s: Settings; update: 
           <Select value={addr} onChange={setAddr} label={t('Signature for')} className="sel-flat" width={320} options={[{ value: '', label: t('Every address (default)') }, ...addresses.map((a) => ({ value: a, label: a, hint: own(s, a) !== undefined ? t('Own signature') : undefined }))]} />
         </div>
       )}
+      <SmoothHeight>
       {addr && mine === undefined ? (
         <div className="set-row sig-default">
           <span>
@@ -62,6 +64,7 @@ export function SignaturesDesktop({ s, update, ws, me }: { s: Settings; update: 
           {t('Use the default signature for {address}', { address: addr })}
         </button>
       )}
+      </SmoothHeight>
     </>
   );
 }
@@ -124,7 +127,7 @@ function SignatureEdit({ s, addr, onSave, onBack }: { s: Settings; addr: string;
   const before = addr ? own(s, addr) : s.signature;
   const after = useDefault ? undefined : v;
   return (
-    <EditScreen title={addr || t('Default signature')} onBack={onBack} canSave={after !== before} onSave={() => onSave(after)}>
+    <EditScreen title={addr ? t('Signature') : t('Default signature')} onBack={onBack} canSave={after !== before} onSave={() => onSave(after)}>
       {addr && (
         <Group>
           <SwitchRow label={t('Use the default signature')} on={useDefault} onChange={setUseDefault} />
