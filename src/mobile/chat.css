@@ -708,7 +708,7 @@
     align-items: center;
     gap: 4px;
     min-width: 0;
-    font-size: 16.5px;
+    font-size: 17px;
     font-weight: 700;
     letter-spacing: -0.01em;
     white-space: nowrap;
@@ -726,13 +726,20 @@
     gap: 2px;
     min-width: 0;
     font-size: 12.5px;
+    font-weight: 400;
     color: var(--text-3);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
   .chat-push .push-actions .icon-btn {
-    color: var(--text-2);
+    width: var(--tap);
+    height: var(--tap);
+    color: var(--text);
+  }
+  /* Back is the text colour, not the brand's (Slack). */
+  :is(.chat-push, .thread-push, .chat-details, .chat-pane-screen, .newmsg-push) > .push-head .push-back {
+    color: var(--text);
   }
   .huddle-icon.live {
     color: var(--ok, #0f9d6b);
@@ -785,43 +792,144 @@
   .chat-foot .chat-locked {
     margin: 0;
   }
-  .chat-push .chat-msg {
-    padding: 6px 14px;
+  /* Messages at Slack's scale: 36 px rounded-square avatars, 16 px bold names with the clock time, 16/22 text. */
+  .push-screen .chat-msg {
+    gap: 8px;
+    padding: 5px 16px;
     border-radius: 0;
   }
+  .push-screen .chat-msg.grouped {
+    padding-top: 0;
+    padding-bottom: 2px;
+  }
+  .push-screen .chat-msg > .avatar {
+    border-radius: 9px;
+  }
+  .push-screen .cm-gutter {
+    width: 36px;
+  }
+  .push-screen .cm-head {
+    gap: 6px;
+    min-height: 22px;
+  }
+  .push-screen .cm-head strong {
+    font-size: 16px;
+    font-weight: 700;
+  }
+  .push-screen .cm-head time {
+    font-size: 12.5px;
+    color: var(--text-3);
+  }
+  .push-screen .cm-text {
+    font-size: 16px;
+    line-height: 22px;
+  }
+  .push-screen .cm-text a {
+    color: var(--link, #1d6fd8);
+    text-decoration: none;
+  }
   /* No hover look left behind by a tap. */
-  .chat-push .chat-msg:hover:not(.is-saved) {
+  .push-screen .chat-msg:hover:not(.is-saved) {
     background: none;
   }
-  .chat-push .chat-msg:active:not(.lp-lifted) {
+  .push-screen .chat-msg:active:not(.lp-lifted) {
     background: var(--hover);
   }
-  .chat-push .chat-msg.lp-lifted {
+  .push-screen .chat-msg.lp-lifted {
     background: var(--surface);
     border-radius: 14px;
   }
   .chat-push .chat-day {
     margin: 12px 0 4px;
   }
-  .chat-push .reaction {
-    min-height: 32px;
+  /* Reactions: grey pills with no border; yours tinted with a thin accent line. Add-reaction is always there. */
+  .push-screen .reactions {
+    gap: 6px;
+    margin-top: 6px;
+  }
+  .push-screen .reaction {
+    height: 28px;
+    min-height: 28px;
     padding: 0 10px;
+    gap: 5px;
+    border-radius: 14px;
+    border: 1px solid transparent;
+    background: var(--hover);
+    font-size: 16px;
+    transition:
+      background 0.15s,
+      border-color 0.15s;
   }
-  .chat-push .thread-link {
-    min-height: 36px;
+  .push-screen .reaction b {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-2);
   }
-  .chat-push .thread-link {
+  .push-screen .reaction.on {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+  }
+  .push-screen .reaction.on b {
+    color: var(--accent-text, var(--accent));
+  }
+  .push-screen .reaction.add {
+    opacity: 1;
+    width: 40px;
+    justify-content: center;
+    padding: 0;
+    color: var(--text-2);
+  }
+  .push-screen .reaction.add svg {
+    width: 17px;
+    height: 17px;
+  }
+  /* Under a message with replies: faces, "2 replies" and the last reply's time. No box. */
+  .push-screen .thread-link {
     flex-wrap: nowrap;
+    gap: 8px;
     max-width: 100%;
+    min-height: 32px;
+    margin-top: 4px;
+    padding: 0;
+    border-radius: 0;
+    font-size: 13px;
   }
-  .chat-push .thread-link .muted {
+  .push-screen .thread-link:hover {
+    background: none;
+    box-shadow: none;
+  }
+  .push-screen .tl-avs .avatar {
+    border-radius: 5px;
+  }
+  .push-screen .tl-avs .avatar + .avatar {
+    margin-left: 2px;
+    box-shadow: none;
+  }
+  .push-screen .thread-link b {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--accent-text, var(--accent));
+    white-space: nowrap;
+  }
+  .push-screen .thread-link .muted {
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    color: var(--text-3);
   }
-  .chat-push .thread-link b {
-    white-space: nowrap;
+  /* Files, voice clips, shared things: a plain card with a hairline, no fill. */
+  .push-screen :is(.chat-file, .voice, .cm-task, .poll) {
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: none;
+  }
+  .push-screen .chat-file {
+    max-width: none;
+  }
+  .push-screen .cf-text strong {
+    font-size: 15px;
+    font-weight: 600;
   }
 
   /* In a conversation the bottom belongs to the message box: toasts sit just above it. */

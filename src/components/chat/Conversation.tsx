@@ -717,14 +717,15 @@ export function ChatView(p: ViewProps) {
         }
         actions={
           <>
-            {p.huddle && !guest && (
-              <button type="button" className={`icon-btn huddle-icon${channel.huddle?.members.length ? ' live' : ''}${p.huddle.joined ? ' on' : ''}`} onClick={p.huddle.joined ? p.huddle.onOpen : p.huddle.onJoin} aria-label={p.huddle.joined ? t('Open the huddle') : channel.huddle?.members.length ? t('Join the huddle') : t('Start a huddle')}>
-                <Headphones size={20} />
-              </button>
-            )}
+            {/* Slack's order: the AI summary, then the huddle. */}
             {!guest && (
               <button type="button" className="icon-btn" onClick={() => (setCatchUp(true), !sinceText && !summarizing && !p.summaryOff && void summarize('since'))} aria-label={t('Catch me up: what I missed here')}>
-                <Sparkles size={19} />
+                <Sparkles size={22} />
+              </button>
+            )}
+            {p.huddle && !guest && (
+              <button type="button" className={`icon-btn huddle-icon${channel.huddle?.members.length ? ' live' : ''}${p.huddle.joined ? ' on' : ''}`} onClick={p.huddle.joined ? p.huddle.onOpen : p.huddle.onJoin} aria-label={p.huddle.joined ? t('Open the huddle') : channel.huddle?.members.length ? t('Join the huddle') : t('Start a huddle')}>
+                <Headphones size={22} />
               </button>
             )}
           </>

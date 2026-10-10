@@ -7,9 +7,9 @@ import { stageName, stageOf } from '../../stages';
 import { Avatar } from '../Avatar';
 import { Badge } from '../ui/Person';
 import { useLongPress } from '../ui/useLongPress';
-import { statusText, whenText, type SavedItem } from './chatPrefs';
+import { shortTime, statusText, whenText, type SavedItem } from './chatPrefs';
 import { t, textOf, tn } from '../../i18n';
-import { fmtDate, fmtMonth, fmtNumber, fmtWeekdayLong } from '../../i18n/format';
+import { fmtDate, fmtMonth, fmtNumber, fmtTime, fmtWeekdayLong } from '../../i18n/format';
 
 const one = (n: number) => fmtNumber(n, { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 /** "1.5 MB" / "1,5 MB". */
@@ -17,8 +17,20 @@ export const fmtSize = (b: number) => (b > 1e9 ? `${one(b / 1e9)} GB` : b > 1e6 
 export const fmtSecs = (s: number) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`;
 const esc = (s: string) => s.replace(/[.*+?^$()|[\]\\{}]/g, '\\$&');
 
+/** A link as people read it on a phone: the site and its path, without https:// or www, cut short when long. */
+export function shortUrl(href: string) {
+  try {
+    const u = new URL(href);
+    const path = u.pathname === '/' ? '' : u.pathname.replace(/\/$/, '');
+    const s = u.host.replace(/^www\./, '') + path + (u.search && path.length < 24 ? u.search : '');
+    return s.length > 42 ? `${s.slice(0, 40)}…` : s;
+  } catch {
+    return href;
+  }
+}
+
 /** One line of a message: @mentions, links, `code`, *bold*, _italic_ and ~struck~ words. Never HTML. */
-function Inline({ text, names }: { text: string; names: string }) {
+function Inline({ text, names, short }: { text: string; names: string; short?: boolean }) {
   const re = new RegExp(`(${names ? `@(?:${names})\\b|` : ''}https?://[^\\s<]+|\`[^\`\\n]+\`|\\*[^*\\s][^*\\n]*\\*|\\b_[^_\\n]+_\\b|~[^~\\s][^~\\n]*~)`, 'g');
   return (
     <>
@@ -33,8 +45,8 @@ function Inline({ text, names }: { text: string; names: string }) {
           );
         if (/^https?:\/\//.test(p))
           return (
-            <a key={i} href={p} target="_blank" rel="noreferrer">
-              {p}
+            <a key={i} href={p} target="_blank" rel="noreferrer" title={short ? p : undefined}>
+              {short ? shortUrl(p) : p}
             </a>
           );
         if (p.startsWith('`')) return <code key={i}>{p.slice(1, -1)}</code>;
@@ -47,7 +59,7 @@ function Inline({ text, names }: { text: string; names: string }) {
 }
 
 /** A message's words: lines starting with "> " are a quote, "- " a list; the rest as written. */
-export function Text({ text, users }: { text: string; users: User[] }) {
+export function Text({ text, users, short }: { text: string; users: User[]; short?: boolean }) {
   const names = useMemo(() => users.map((u) => esc(u.name.split(' ')[0])).filter(Boolean).join('|'), [users]);
   const lines = text.split('\n');
   const blocks: { kind: 'p' | 'quote' | 'list'; lines: string[] }[] = [];
@@ -66,7 +78,7 @@ export function Text({ text, users }: { text: string; users: User[] }) {
             {b.lines.map((l, j) => (
               <Fragment key={j}>
                 {j > 0 && <br />}
-                <Inline text={l} names={names} />
+                <Inline text={l} names={names} short={short} />
               </Fragment>
             ))}
           </blockquote>
@@ -74,14 +86,14 @@ export function Text({ text, users }: { text: string; users: User[] }) {
           <ul key={i} className="cm-list">
             {b.lines.map((l, j) => (
               <li key={j}>
-                <Inline text={l} names={names} />
+                <Inline text={l} names={names} short={short} />
               </li>
             ))}
           </ul>
         ) : (
           <Fragment key={i}>
             {i > 0 && blocks[i - 1].kind === 'p' && '\n'}
-            <Inline text={b.lines[0]} names={names} />
+            <Inline text={b.lines[0]} names={names} short={short} />
           </Fragment>
         ),
       )}
@@ -211,7 +223,7 @@ export function Msg({ m, grouped, inThread = false, ctx }: { m: ChatMessage; gro
         ctx.onMenu(m, { x: e.clientX, y: e.clientY });
       }}
     >
-      {grouped ? <span className="cm-gutter" /> : a.person ? <Avatar person={a.person} size={34} /> : <span className="cm-gutter" />}
+      {grouped ? <span className="cm-gutter" /> : a.person ? <Avatar person={a.person} size={ctx.phone ? 36 : 34} /> : <span className="cm-gutter" />}
       <div className="cm-body">
         {saved && (
           <div className="cm-saved">
@@ -236,7 +248,10 @@ export function Msg({ m, grouped, inThread = false, ctx }: { m: ChatMessage; gro
                 {st.emoji}
               </span>
             )}
-            <time dateTime={m.at}>{relative(m.at)}</time>
+            {/* Phones: the clock time, like Slack ("09:08"); how long ago is in the tooltip. */}
+            <time dateTime={m.at} title={ctx.phone ? relative(m.at) : undefined}>
+              {ctx.phone ? fmtTime(m.at) : relative(m.at)}
+            </time>
             {m.parentId && m.alsoInChannel && !inThread && <span className="muted small">{t('replied in a thread')}</span>}
           </div>
         )}
@@ -245,7 +260,7 @@ export function Msg({ m, grouped, inThread = false, ctx }: { m: ChatMessage; gro
             <span className="cm-fwd-head">
               <Forward size={12} aria-hidden /> {t('{who} in {where}', { who: m.forwarded.userId === ctx.me ? t('You') : t(m.forwarded.who), where: m.forwarded.where })}
             </span>
-            <Text text={m.forwarded.text} users={ctx.users} />
+            <Text text={m.forwarded.text} users={ctx.users} short={ctx.phone} />
           </div>
         )}
         {m.kind === 'kudos' ? (
@@ -259,7 +274,7 @@ export function Msg({ m, grouped, inThread = false, ctx }: { m: ChatMessage; gro
         ) : (
           m.text && (
             <div className="cm-text">
-              <Text text={msgText(m)} users={ctx.users} />
+              <Text text={msgText(m)} users={ctx.users} short={ctx.phone} />
               {m.edited && <span className="cm-edited"> {t('(edited)')}</span>}
             </div>
           )
@@ -331,9 +346,9 @@ export function Msg({ m, grouped, inThread = false, ctx }: { m: ChatMessage; gro
           <button className="thread-link" onClick={() => ctx.onOpenThread(m.id)}>
             {reps.length > 0 ? (
               <>
-                <span className="tl-avs">{[...new Set(reps.map((r) => r.userId))].slice(0, 3).map((u) => person(u) && <Avatar key={u} person={person(u)!} size={18} />)}</span>
+                <span className="tl-avs">{[...new Set(reps.map((r) => r.userId))].slice(0, ctx.phone ? 4 : 3).map((u) => person(u) && <Avatar key={u} person={person(u)!} size={ctx.phone ? 20 : 18} />)}</span>
                 <b>{tn(reps.length, '{n} reply', '{n} replies')}</b>
-                <span className="muted">{t('Last reply {when}', { when: relative(reps[reps.length - 1].at) })}</span>
+                <span className="muted">{t('Last reply {when}', { when: ctx.phone ? shortTime(reps[reps.length - 1].at) : relative(reps[reps.length - 1].at) })}</span>
               </>
             ) : (
               <b>{t('Reply in thread')}</b>
