@@ -40,7 +40,6 @@ const id: Record<string, string> = {
   'Answer the quote “{title}”': 'Jawab penawaran “{title}”',
   'Approve “{title}”': 'Setujui “{title}”',
   'Your request “{title}” is waiting on you': 'Permintaan Anda “{title}” menunggu tanggapan Anda',
-  'Nothing waiting on you. 🎉': 'Tidak ada yang menunggu Anda. 🎉',
   'Your requests': 'Permintaan Anda',
   'Need something? Send a request and the team picks it up.': 'Butuh sesuatu? Kirim permintaan, tim akan menanganinya.',
   'New request': 'Permintaan baru',

@@ -20,21 +20,25 @@ function dtf(opts: Intl.DateTimeFormatOptions): Intl.DateTimeFormat {
 }
 
 /** Any date with Intl options, in the active language. The named helpers below cover most needs. */
-export const fmtDate = (d: DateIn, opts: Intl.DateTimeFormatOptions) => dtf(opts).format(toDate(d));
+export const fmtDate = (d: DateIn, opts: Intl.DateTimeFormatOptions) => {
+  const x = toDate(d);
+  // A date we can't read ("Friday", "", a typo in old data) is shown as written instead of throwing "Invalid time value".
+  return Number.isNaN(x.getTime()) ? (d instanceof Date ? '' : String(d ?? '')) : dtf(opts).format(x);
+};
 
 const thisYear = (d: Date) => d.getFullYear() === new Date().getFullYear();
 
 /** "8 Oct" / "8 Okt", with the year when it isn't this one ("8 Oct 2025"). */
 export const fmtDay = (d: DateIn) => {
   const x = toDate(d);
-  return fmtDate(x, thisYear(x) ? { day: 'numeric', month: 'short' } : { day: 'numeric', month: 'short', year: 'numeric' });
+  return fmtDate(d, thisYear(x) ? { day: 'numeric', month: 'short' } : { day: 'numeric', month: 'short', year: 'numeric' });
 };
 /** "8 October 2026" / "8 Oktober 2026". */
 export const fmtDayLong = (d: DateIn) => fmtDate(d, { day: 'numeric', month: 'long', year: 'numeric' });
 /** "Thu 8 Oct" / "Kam, 8 Okt" (with the year when it isn't this one). */
 export const fmtWeekday = (d: DateIn) => {
   const x = toDate(d);
-  return fmtDate(x, thisYear(x) ? { weekday: 'short', day: 'numeric', month: 'short' } : { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+  return fmtDate(d, thisYear(x) ? { weekday: 'short', day: 'numeric', month: 'short' } : { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
 };
 /** "Thursday 8 October" / "Kamis, 8 Oktober": a heading for a day. */
 export const fmtWeekdayLong = (d: DateIn) => fmtDate(d, { weekday: 'long', day: 'numeric', month: 'long' });
@@ -45,7 +49,7 @@ export const fmtTime = (d: DateIn) => fmtDate(d, { hour: '2-digit', minute: '2-d
 /** "Thu 8 Oct, 14:30" / "Kam, 8 Okt, 14.30". */
 export const fmtDateTime = (d: DateIn) => {
   const x = toDate(d);
-  return fmtDate(x, { weekday: 'short', day: 'numeric', month: 'short', ...(thisYear(x) ? {} : { year: 'numeric' }), hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+  return fmtDate(d, { weekday: 'short', day: 'numeric', month: 'short', ...(thisYear(x) ? {} : { year: 'numeric' }), hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
 };
 
 /**
