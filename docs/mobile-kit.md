@@ -41,35 +41,85 @@ wins over the old ones with the same selector, so it never needs `!important`.
 - `var(--bar-space)`: how much of the bottom the tab bar takes right now (bar plus home bar; just the home bar on a
   focused screen; the keyboard's height while typing). `.app` already keeps it free. Use it for anything you fix to the
   bottom of the screen (a docked pill, a toast, a bulk bar): `bottom: calc(var(--bar-space) + 12px)`.
-- `var(--fab-space)`: 0, or 72 px on tiny phones where the create button floats. Add it to the bottom padding of your
-  list's scroll area if it's not one of `.rows`, `.home-scroll`, `.drive-scroll`, `.tracking-scroll`, `.mobile-list`.
+- `var(--fab-space)`: 88 px on every phone, the room a list keeps at its end so its last row scrolls clear of the
+  floating create button. Add it to the bottom padding of your list's scroll area if it's not one of `.rows`,
+  `.home-scroll`, `.drive-scroll`, `.tracking-scroll`, `.mobile-list`.
 
 ## 3. The shell: what your app tells it
 
-All from `src/mobile/chrome.ts`. Call them in your app's own component, before any early `return`. Registrations last
-while the component is mounted; the shell shows the ones for the app on screen.
+The shell (10 Oct 2026, docs/mobile-fix-plan.md Step 0) copies Teams and Gmail:
 
-**Create button** (round, at the end of the bar row; it hides on focused screens and while typing):
+- **Bottom bar**: a plain full-width bar, 56 px plus the home bar, five labelled tabs (four apps and More), 24 px icons,
+  a 56 x 30 pill behind the selected icon that slides between tabs. Red counts on Mail and Chat only; Home gets a dot
+  when something in Needs you is new since you last looked. Long-press the bar to edit it.
+- **Create button**: floats 16 px above the bar at the right, 56 px, owned by the app on screen (below).
+- **Top bar**: one row, 52 px plus the status bar: the company logo with your avatar on its corner (you, your status,
+  your companies with a tick on this one, Add a company, Settings), the title (22 px), search. No line under it until
+  the content scrolls under it. An app can take over parts of it (below).
+- **Toasts** sit at the bottom, above the bar and above the create button when it shows; never over the top bar or a
+  sheet's header. Quiet ones (`quiet: true`) last 4 s.
+- **More** is Teams' drawer: Edit at the top right, the other apps in their colours in four columns, Ask AI, Settings.
+  No search, no New row: search is in the top bar and creating is each app's button.
+- **Notifications**: Home's Needs you and Updates, and "All notifications" opens a full screen (All, Unread, Mentions).
+
+All the hooks are in `src/mobile/chrome.ts`, the components in `src/mobile/TopBar.tsx`. Call them in your app's own
+component, before any early `return`. Registrations last while the component is mounted; the shell shows the ones for
+the app on screen. Apps that register nothing keep the default bar and no create button.
+
+**Create button**:
 
 ```tsx
-useCreateAction('tasks', canAdd && { label: 'New task', icon: Plus, run: openQuickAdd, more: [{ label: 'Brain dump', icon: Sparkles, run: dump }] });
+useCreateAction('tasks', canAdd && { label: t('New task'), icon: Plus, run: openQuickAdd, more: [{ label: t('Brain dump'), icon: Sparkles, run: dump }] });
+useCreateAction('mail', { label: t('Compose'), icon: PenLine, run: compose, extended: true });   // Gmail's Compose
+useCreateAction('mail', { …, hidden: selecting });                                               // out of sight for now
 ```
 
-Pass `null`/`false` when there's none. `more` is what a long-press (or right-click) on the button offers. Every app
-already registers one (Home Brain dump, Mail Compose, Chat New message, Tasks New task, Calendar New event, Drive Upload,
-Notes New note, Projects New project, Tables New table, Meet Send the notetaker); change yours freely. If `run` must
-focus a field, focus it during the tap (see TasksView's `openAdd` with `flushSync`): iPhone only opens the keyboard for
-focus given in the tap itself.
+Pass `null`/`false` when there's none. Round with the icon by default (Teams, Slack, Things); `extended` shows the
+label too and shrinks to the round form while a list scrolls down, growing back on the way up and at the top (Gmail);
+`hidden` scales it away without unregistering. `more` is what a long-press (or right-click) offers. It steps aside on
+focused screens, with the keyboard and while More is open. Lists keep `var(--fab-space)` (88 px) at their end. If `run`
+must focus a field, focus it during the tap (see TasksView's `openAdd` with `flushSync`): iPhone only opens the keyboard
+for focus given in the tap itself.
 
-**Title switcher** (the screen title, with a chevron, opens a sheet):
+**The top bar's parts** (`<TopBar>`): render it anywhere in your app's tree; what it holds stays live with your state.
+Parts you leave out keep the default.
+
+```tsx
+// Calendar: ☰ and the month instead of the logo and the title, Today after search.
+<TopBar app="calendar" lead={<TopBarButton icon={Menu} label={t('Menu')} onClick={openDrawer} />} title={<MonthButton />} actions={<TodayButton />} />
+// Mail: the whole row is Gmail's search pill (the shell keeps the safe area, the sticky position and the hairline).
+<TopBar app="mail" replace={<MailSearchPill />} />
+// Tasks: back to Browse ("‹ Tasks"), the title stays the default; no search button.
+<TopBar app="tasks" lead={<TopBarBack label={t('Tasks')} onClick={toBrowse} />} search={false} />
+```
+
+`lead` replaces the logo (or a focused screen's Back), `title` the title, `actions` sit before search, `search={false}`
+drops search, `replace` takes the whole row. `TopBarButton` (a 44 px icon button) and `TopBarBack` (the chevron, with
+or without the screen's name) are ready-made parts. The company sheet stays reachable: put it in your drawer's header
+(Calendar) or behind your own avatar (Mail's pill) with the shell's `CompanySheet` (`src/components/MobileTop.tsx`).
+
+**A large title** (Apple's; Home's greeting, a Tasks list's name):
+
+```tsx
+<LargeTitle app="tasks"><h1 className="tv-title">{t('Today')}</h1></LargeTitle>
+```
+
+While it's on screen the bar's title is tucked away; once it scrolls under the bar the app's name fades into the bar at
+17 px. Use one per screen, at the top of the scrolling list.
+
+**A left drawer**: Mail opens the desktop `Sidebar` as a drawer with `useSidebarDrawer(phone)` and App's `sidebarOpen`
+(the shell gives `.sidebar.open` the drawer look, scrim and motion on phones only while this is on). Any other app uses
+`SideDrawer` and `useEdgeSwipe` (section 4).
+
+**Title switcher** (the screen title, with a chevron, opens a sheet). For apps that haven't moved to a drawer or their
+own title yet:
 
 ```tsx
 useTitleMenu('calendar', { label: 'Calendars', value: view, options: [{ value: 'week', label: 'Week', group: 'View' }, …], onChange: setView });
 ```
 
-Options are the `Select` options (`group`, `hint`, `icon`). More than 10 get a search field. Mail, Tasks, Meet,
-Projects and Drive still get theirs from `mobileSwitcher` in `App.tsx`; a registered menu wins over it, so move yours
-into your app when you redo the switcher.
+Options are the `Select` options (`group`, `hint`, `icon`). More than 10 get a search field. Meet, Projects and Drive
+still get theirs from `mobileSwitcher` in `App.tsx`; a registered menu wins over it. Home has none.
 
 **Settings at the bottom of the title switcher** (opened full screen over the app; Back returns to it):
 
@@ -77,8 +127,8 @@ into your app when you redo the switcher.
 useAppSettings('tasks', { id: 'swipes', label: 'Swipe actions', hint: 'What a swipe right and left do', render: () => <SwipeSettings /> });
 ```
 
-The company sections an app has (`appSettingsLinks` in `AppSettings.tsx`: Mail's Email delivery and Mail & signature,
-Task stages…) are listed there already and open the same Settings section over the app.
+The company sections an app has (`appSettingsLinks` in `AppSettings.tsx`) are listed there already. An app that drops
+its title switcher puts these in its drawer's or its "…" menu's Settings row instead.
 
 **Focused screens** (a mail, a channel, a note, a record, a project): the tab bar and create button step aside.
 
@@ -90,13 +140,9 @@ useFocusedScreen(open, () => close());     // no Back of its own: one appears in
 Wired today: mail reader (App.tsx), chat channel (ChatView), note editor (NoteEditor), table record (RecordDrawer),
 project page (App.tsx, with Back), and every PushScreen.
 
-**Badges**: Home, Mail and Chat (`barBadge` in App.tsx). Home counts its "Needs you" list (`src/needsYou.ts`, the same
-rules as the AI connector's needs_me). Chat counts direct messages and mentions. More's grid shows the same counts and a
-green dot with a word when something is live (Meet: Recording).
-
-**Notifications on phones** live on Home: the ones that ask something of you are in Needs you, the rest in Updates, with
-"All notifications" for the full list. More has no Notifications row (`MoreSheet` still takes `onNotices` for a screen
-without Home); the guest portal keeps its own bell.
+**Badges**: Mail and Chat count (`barBadge` in App.tsx); Home has a dot, never a number (its list is on screen when you
+open it). Chat counts direct messages and mentions. More's grid shows counts and a green dot with a word when something
+is live (Meet: Recording).
 
 **Toasts with two actions**: `toast({ text, action, also })` shows a second button (Quick Add's Undo and Open).
 
@@ -168,6 +214,25 @@ The tab bar steps aside while it's open.
 {details && <PushScreen title="Channel details" onBack={() => setDetails(false)} actions={<button className="icon-btn">…</button>}>…</PushScreen>}
 ```
 
+`iconBack` makes Back Gmail's arrow alone (the mail reader, Notifications); `backLabel` is then only read out.
+
+**SideDrawer**: a modal drawer from the left (Gmail's folders, Google Calendar's views and calendars): over a dimmed page
+and the bar, closed by a tap on the page, Escape or a swipe to the left that follows the finger; it slides out on close.
+Open it from the top bar's left button and, on a list, with a swipe in from the left edge.
+
+```tsx
+const [drawer, setDrawer] = useState(false);
+useEdgeSwipe(() => setDrawer(true), !readerOpen);   // not where the edge swipe means Back
+<TopBar app="calendar" lead={<TopBarButton icon={Menu} label={t('Menu')} onClick={() => setDrawer(true)} />} />
+{drawer && <SideDrawer label={t('Calendars')} onClose={() => setDrawer(false)}>…</SideDrawer>}
+```
+
+Rows inside: 48 px, icon in a 56 px column, the current one on an `--accent-soft` pill (see the Mail and Calendar specs).
+
+**Dropdown menus on phones**: actions open as a sheet on phones, except a short overflow list from a button (Gmail's
+"⋮" in the reader): `useActionMenu(actions, { menu: true })` and `menu.openFrom(button)` drop a menu by the button,
+right-aligned. `<Popover menu>` does the same for a popover. Long-press still opens the sheet.
+
 `footer` is the screen's own bottom bar (it rides above the keyboard). Phones only: on desktop keep side panels and
 dialogs.
 
@@ -182,9 +247,12 @@ toast (App.tsx listens). Use them in shared pieces that aren't handed `showToast
 
 The top bar's search opens scoped to the app on screen (`SEARCHABLE` in `CommandPalette.tsx`) with an "All apps" chip;
 People, Projects, Files and Notes chips narrow by kind. Results are grouped by app. A `PaletteItem` belongs to an app
-by its group (`GROUP_APP`), or set `app` on it. Pulling a list down from its top opens the same search
-(`usePullToSearch`, lists: `.mobile-list`, `.home-scroll`, `.tracking-scroll`, `.drive-scroll`, `.meet-list`; Mail's list
-pulls to refresh instead).
+by its group (`GROUP_APP`), or set `app` on it. On phones it's Gmail's search: Back on the left, a short placeholder
+("Search", "Search Mail"), recent searches and recently opened before typing (no create actions: each app has its own
+button), 56 px rows with a second line, and no highlight on the first row. Pulling a list down from its top opens the
+same search (`usePullToSearch`, lists: `.mobile-list`, `.home-scroll`, `.tracking-scroll`, `.drive-scroll`,
+`.meet-list`; Mail's list pulls to refresh instead). An app with its own search screen (Mail's) can open it from its
+own top bar and call the shared one only for "All apps".
 
 ## 6. Things that bit us
 

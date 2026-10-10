@@ -37,7 +37,8 @@ Every change has to pass this bar before it's called done. It isn't optional pol
 - Swipes on rows: `SwipeRow` (src/components/ui/SwipeRow.tsx). Up to two actions per side, Undo toast, folds away with `useLeaving`.
 - Long-press: `useLongPress` (src/components/ui/useLongPress.ts). 350 ms hold, a small lift and a tick; moving first always scrolls; hold then move drags.
 - A screen pushed over another on phones: `PushScreen` (src/components/ui/PushScreen.tsx). Back, swipe from the left edge, slides both ways.
-- The phone shell: `useCreateAction`, `useTitleMenu`, `useAppSettings`, `useFocusedScreen` (src/mobile/chrome.ts); the keyboard: `useKeyboard` and `var(--kb)` (src/mobile/keyboard.ts). How to use all of these: docs/mobile-kit.md.
+- A drawer from the left on phones: `SideDrawer` and `useEdgeSwipe` (src/components/ui/SideDrawer.tsx).
+- The phone shell: `useCreateAction`, `useTitleMenu`, `useAppSettings`, `useFocusedScreen`, `useSidebarDrawer` (src/mobile/chrome.ts); an app's own parts of the top bar and large titles: `TopBar`, `LargeTitle` (src/mobile/TopBar.tsx); the keyboard: `useKeyboard` and `var(--kb)` (src/mobile/keyboard.ts). How to use all of these: docs/mobile-kit.md.
 - The shared styles live in src/system.css. The phone layer, src/mobile/ (one file per area), loads after it.
 
 ## Which surface
