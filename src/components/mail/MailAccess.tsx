@@ -84,7 +84,7 @@ export function MailAccess({ ws, users, me, isAdmin, onImport, toast }: { ws: Wo
             <section className="set-block">
               <h3>{t('Export and import')}</h3>
               {d!.mailboxes
-                .filter((m) => m.mine || isAdmin)
+                .filter((m) => m.mine || (isAdmin && m.kind === 'shared'))
                 .map((m) => (
                   <div key={m.id} className="set-row">
                     <span>
@@ -166,7 +166,7 @@ function Delegates({ ws, users, me, box, multiple, onSaved, toast }: { ws: Works
         {team.length > 0 && (
           <div className="acct-row mx-add-row">
             <Plus size={16} className="mx-add-icon" />
-            <PersonSelect value={null} users={team} me={me} onChange={(id) => void save([...box.delegates.map((y) => ({ userId: y.userId, send: y.send })), { userId: id, send: 'as' }], t('{name} can now open your mailbox', { name: name(id) }))} label={t('Give a teammate access')} placeholder={t('Give a teammate access')} className="mx-add-person" />
+            <PersonSelect value={null} users={team} me={me} onChange={(id) => void save([...box.delegates.map((y) => ({ userId: y.userId, send: y.send })), { userId: id, send: 'as' }], t('{name} can now open your mailbox', { name: name(id) }))} label={t('Give a teammate access')} placeholder={t('Give a teammate access')} className="mx-add-person sel-flat" />
           </div>
         )}
       </div>

@@ -45,12 +45,13 @@ export const policyOf = (ws: Ws | undefined | null): MailPolicy => (ws?.mailPoli
 
 /** The people on hold in a company. */
 export const heldPeople = (ws: Ws | undefined | null) => new Set((policyOf(ws).holds ?? []).map((h) => h.userId));
-/** Whether a mailbox keeps everything: one of the people on it is on hold. */
+/** Whether a mailbox keeps everything: it's the own mailbox of someone on hold. */
 export function mailboxHeld(ws: Ws | undefined | null, accountId: string) {
   const held = heldPeople(ws);
   if (!held.size) return false;
   const a = (ws?.accounts ?? []).find((x) => x.id === accountId);
-  return !!a && (a.users ?? []).some((u) => held.has(u));
+  // Someone's own mailboxes (shared inboxes are the team's, held on their own terms, like Google Groups).
+  return !!a && a.kind !== 'shared' && (a.users ?? []).some((u) => held.has(u));
 }
 /** The company a mailbox belongs to (for checks that only have a thread). */
 export function wsOfAccount(accountId: string): Ws | undefined {

@@ -314,7 +314,7 @@ export const MessageList = forwardRef<HTMLInputElement, Props>(function MessageL
             <span className={`list-sync ${props.offline ? 'off' : ''}`}>
               {(updated || props.offline) && (
                 <small key={props.offline ? 'off' : 'on'} title={props.offline ? t('New mail isn’t arriving by itself right now. Refresh to reconnect.') : undefined}>
-                  {refreshing ? t('Checking for mail…') : props.offline ? (updated ? t('Connection lost. Updated {when}', { when: updated }) : t('Connection lost')) : t('Updated {when}', { when: updated ?? '' })}
+                  {refreshing ? t('Checking for mail…') : props.offline === 'device' ? (updated ? t('Offline. Mail as of {when}', { when: updated }) : t('Offline')) : props.offline ? (updated ? t('Connection lost. Updated {when}', { when: updated }) : t('Connection lost')) : t('Updated {when}', { when: updated ?? '' })}
                 </small>
               )}
               <button type="button" className="icon-btn sm" onClick={() => void refresh()} disabled={refreshing} title={t('Check for new mail')} aria-label={t('Check for new mail')}>
@@ -354,7 +354,7 @@ export const MessageList = forwardRef<HTMLInputElement, Props>(function MessageL
         </div>
       </header>
       {props.notice}
-      {props.offline && <div className="list-offline">{props.offline === 'device' ? t('You’re offline. Recent mail kept on this device is here, and what you send goes out once you’re back online.') : t('Connection lost. Pull down to check for mail.')}</div>}
+      {props.offline && <div className={`list-offline${props.offline === 'device' ? ' device' : ''}`}>{props.offline === 'device' ? t('You’re offline. Recent mail kept on this device is here, and what you send goes out once you’re back online.') : t('Connection lost. Pull down to check for mail.')}</div>}
       {props.onRefresh && (
         <div className={`pull-mark ${pull ? 'on' : ''} ${dragging ? 'dragging' : ''} ${refreshing ? 'busy' : ''} ${pull >= PULL_AT ? 'ready' : ''}`} style={{ ['--pull' as string]: `${pull}px` }} aria-hidden>
           <RefreshCw size={16} className={refreshing ? 'spin' : ''} style={refreshing ? undefined : { transform: `rotate(${pull * 3}deg)` }} />

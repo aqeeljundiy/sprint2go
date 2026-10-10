@@ -2034,4 +2034,95 @@
   .mx-tabs {
     width: 100%;
   }
+  .settings-push .mx-sections .set-block > .mx-tabs {
+    margin: 0 0 8px;
+    border-radius: var(--r-pill);
+    background: var(--hover);
+  }
+  .settings-push .mx-row-icon > svg {
+    display: none; /* iOS rows here carry no icon; the title says it */
+  }
+  .settings-push .mx-clean-row .link-btn {
+    display: none; /* the row itself is the choice on a phone; Open stays on bigger screens */
+  }
+  /* Hints and errors sit under the card on the grey, like iOS footers, not in a card of their own. */
+  .settings-push .mx-sections .set-block > .set-hint,
+  .settings-push .mx-sections .set-block > .smooth-h,
+  .settings-push .mx-sections .set-block > .mx-note {
+    background: none;
+    box-shadow: none;
+  }
+  .settings-push .mx-sections .set-block > .set-hint {
+    margin: 8px 16px 0;
+    font: var(--t-secondary);
+  }
+  /* A choice in a row: the value in grey on the right, no box (iOS). */
+  .settings-push .mx-sections .set-block .set-row .sel:not(.sel-flat),
+  .settings-push .mx-sections .set-block .mx-person-tools .sel:not(.sel-flat),
+  .settings-push .mx-sections .set-block .mx-rule .sel:not(.sel-flat),
+  .settings-push .mx-sections .set-block .mx-add-row .sel:not(.sel-flat),
+  .settings-push .mx-sections .set-block .mx-hold-add .sel:not(.sel-flat) {
+    width: auto;
+    min-height: var(--tap);
+    max-width: 60vw;
+    padding: 0 4px;
+    border: 0;
+    background: none;
+    box-shadow: none;
+    color: var(--text-3);
+    font-size: var(--fs-body);
+  }
+  .settings-push .mx-sections .set-row:not(.mx-switch) {
+    flex-wrap: wrap;
+    gap: 4px 12px;
+  }
+  /* A delegate: who on the first line, how they send and Take back under it. */
+  .settings-push .mx-sections .acct-list .mx-person,
+  .settings-push .mx-sections .acct-list .mx-address,
+  .settings-push .mx-sections .acct-list .mx-rule,
+  .settings-push .mx-sections .acct-list .mx-hold-add,
+  .settings-push .mx-sections .acct-list .mx-rule-add {
+    flex-wrap: wrap;
+    gap: 4px 12px;
+  }
+  .settings-push .mx-person .person-cell {
+    flex: 1 1 100%;
+  }
+  .settings-push .mx-person-tools {
+    flex: 1 1 100%;
+    justify-content: space-between;
+    padding-left: 48px; /* past the 32 avatar and its gap */
+  }
+  .settings-push .mx-add-row .person-sel {
+    min-height: var(--tap);
+    background: none;
+  }
+  /* A forwarding address waiting for its code: the address, then the code field and its buttons. */
+  .settings-push .mx-address .acct-info {
+    flex: 1 1 calc(100% - 48px);
+  }
+  .settings-push .mx-code {
+    flex: 1 1 100%;
+    order: 3;
+  }
+  .settings-push .mx-code input {
+    flex: 1 1 96px;
+    min-height: var(--tap);
+  }
+  .settings-push .mx-code .link-btn {
+    flex: 1 1 100%;
+    min-height: var(--tap);
+    text-align: left;
+  }
+  .settings-push .mx-add-address input,
+  .settings-push .mx-hold-add input {
+    min-height: var(--tap);
+  }
+  .settings-push .mx-hold-add {
+    flex-wrap: wrap;
+  }
+  .settings-push .mx-hold-add .person-sel,
+  .settings-push .mx-hold-add input {
+    flex: 1 1 100%;
+  }
 }

@@ -84,8 +84,8 @@ function saveWs(wsId: string, patch: (latest: Ws) => Ws, by: string) {
   deps.broadcast('workspaces', [next], []);
   return next;
 }
-/** Mailboxes someone may change forwarding for: their own; shared inboxes and anyone's for admins. */
-const mayForward = (ws: Ws, a: any, me: string) => !!a && (!a.provider || a.provider === 'sprint2go') && !a.temp && (((a.users ?? []).includes(me) && a.kind === 'personal') || isAdmin(ws, me));
+/** Mailboxes someone may change forwarding for: their own; shared inboxes for admins (never someone else's own). */
+const mayForward = (ws: Ws, a: any, me: string) => !!a && (!a.provider || a.provider === 'sprint2go') && !a.temp && (a.kind === 'personal' ? (a.users ?? []).includes(me) : isAdmin(ws, me));
 const errWords = (e: unknown, fallback: string) => (e instanceof Error ? ((e as Error & { words?: Said }).words ?? e.message) : fallback);
 
 export async function handleApi(

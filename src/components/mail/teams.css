@@ -59,6 +59,15 @@
 }
 .mx-address {
   flex-wrap: wrap;
+  row-gap: 8px;
+}
+/* The address and its state on the first line (Remove at the right), the code under it. */
+.mx-address .acct-info {
+  flex: 1 1 calc(100% - 48px);
+}
+.mx-address .mx-code {
+  order: 3;
+  flex: 1 1 100%;
 }
 .mx-address .acct-info strong {
   display: flex;
@@ -589,4 +598,15 @@
   .mx-meter span {
     transition: none;
   }
+}
+
+/* Mail offline (src/components/mail/offline.ts): the line under the list's header says it on every screen size. */
+.list-offline.device {
+  display: block;
+  padding: 8px 16px;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--warn);
+  background: var(--warn-soft);
+  animation: mx-row-in 0.2s ease-out backwards;
 }

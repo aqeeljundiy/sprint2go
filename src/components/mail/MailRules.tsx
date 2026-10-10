@@ -59,7 +59,7 @@ export function MailRules({ ws, users, me, toast }: { ws: Workspace; users: User
   const days = draft.retention?.days ?? 0;
   const perBox = draft.retention?.mailboxes ?? {};
   const setRetention = (r: { days?: number; mailboxes?: Record<string, number> }) => set({ retention: { ...(draft.retention ?? { days: 0 }), ...r } });
-  const periodOptions = (withCompany: boolean): Option[] => [...(withCompany ? [{ value: 'company', label: t('As the company: {period}', { period: periodWords(days) }) }] : []), ...PERIODS.map((n) => ({ value: String(n), label: periodWords(n) }))];
+  const periodOptions = (withCompany: boolean): Option[] => [...(withCompany ? [{ value: 'company', label: t('As the company'), hint: periodWords(days) }] : []), ...PERIODS.map((n) => ({ value: String(n), label: periodWords(n) }))];
   const save = async () => {
     setBusy(true);
     setError('');
@@ -150,7 +150,7 @@ export function MailRules({ ws, users, me, toast }: { ws: Workspace; users: User
                     setHoldWhy('');
                   }}
                 >
-                  <PersonSelect value={holdWho} users={team.filter((u) => !(draft.holds ?? []).some((h) => h.userId === u.id))} me={me} onChange={setHoldWho} label={t('Put someone on hold')} placeholder={t('Put someone on hold')} />
+                  <PersonSelect value={holdWho} users={team.filter((u) => !(draft.holds ?? []).some((h) => h.userId === u.id))} me={me} onChange={setHoldWho} label={t('Put someone on hold')} placeholder={t('Put someone on hold')} className="sel-flat" />
                   <input value={holdWhy} maxLength={200} placeholder={t('Why (for the log)')} aria-label={t('Why (for the log)')} onChange={(e) => setHoldWhy(e.target.value)} />
                   <button type="submit" className="ghost-btn outline sm" disabled={!holdWho}>
                     <Plus size={14} /> {t('Add')}
