@@ -28,7 +28,7 @@ db.db.exec(`
 /* ---------- what threads look like here ---------- */
 
 export type P = { name: string; email: string };
-export type Msg = { id: string; mid?: string; from: P; to: P[]; bcc?: P[]; date: string; body?: string; html?: string; attachments?: { name: string; size?: string; url?: string }[]; delivery?: { state?: string } };
+export type Msg = { id: string; mid?: string; from: P; to: P[]; cc?: P[]; bcc?: P[]; replyTo?: P[]; priority?: 'high' | 'low'; date: string; body?: string; html?: string; attachments?: { name: string; size?: string; url?: string }[]; delivery?: { state?: string } };
 export type Thread = { id: string; accountId: string; workspaceId?: string; subject: string; location: string; starred?: boolean; unread?: boolean; labels?: string[]; messages: Msg[]; snoozedUntil?: string; sendAt?: string };
 
 /** A mailbox someone may open in a mail app, as this file needs it. */
@@ -129,7 +129,7 @@ function leadOf(t: Thread, mb: Mailbox): Msg | undefined {
 }
 
 /** What a draft says, so a draft changed in sprint2go becomes a new message in the mail app (IMAP messages never change). */
-const fingerprint = (t: Thread, m: Msg) => createHash('sha256').update(JSON.stringify([t.subject, m.from, m.to, m.bcc, m.body, m.html, (m.attachments ?? []).map((a) => [a.name, a.url])])).digest('hex').slice(0, 16);
+const fingerprint = (t: Thread, m: Msg) => createHash('sha256').update(JSON.stringify([t.subject, m.from, m.to, ...(m.cc?.length ? [m.cc] : []), m.bcc, m.body, m.html, (m.attachments ?? []).map((a) => [a.name, a.url])])).digest('hex').slice(0, 16);
 
 function keyOf(t: Thread, m: Msg, kept: Map<string, { kind: string }>) {
   const base = `${t.id} ${m.id}`;
@@ -258,6 +258,8 @@ export async function source(t: Thread, m: Msg, mb: Mailbox): Promise<Buffer> {
   const built: Buffer = await new MailComposer({
     from: { name: m.from?.name ?? '', address: m.from?.email ?? '' },
     to: (m.to ?? []).map((p) => ({ name: p.name ?? '', address: p.email })),
+    cc: m.cc?.length ? m.cc.map((p) => ({ name: p.name ?? '', address: p.email })) : undefined,
+    replyTo: m.replyTo?.length ? m.replyTo.map((p) => ({ name: p.name ?? '', address: p.email })) : undefined,
     bcc: m.bcc?.length ? m.bcc.map((p) => ({ name: p.name ?? '', address: p.email })) : undefined,
     subject: subject || '(no subject)',
     text: m.body ?? '',
@@ -471,7 +473,8 @@ export async function append(w: Writer, userId: string, f: Folder, ctx: Ctx, raw
     id: newId('m-'),
     mid: r.mid ?? `<${randomBytes(12).toString('hex')}@sprint2go>`,
     from: r.from.email ? r.from : { name: mb.name, email: mb.email },
-    to: [...r.to, ...r.cc],
+    to: r.to,
+    ...(r.cc.length ? { cc: r.cc } : {}),
     ...(r.bcc.length ? { bcc: r.bcc } : {}),
     date: (date ?? r.parsed.date ?? new Date()).toISOString(),
     body: (r.parsed.text ?? '').trim(),

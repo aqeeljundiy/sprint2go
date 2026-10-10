@@ -23,6 +23,7 @@ import { overRoom, overRoomWhy } from './billing.ts';
 import * as whitelist from './whitelist.ts';
 import * as track from './readTracking.ts';
 import { keepRaw } from './mailRaw.ts';
+import * as confidential from './mailConfidential.ts';
 import { msg } from '../src/i18n/index.ts';
 import type { Said } from './lang.ts';
 export { domainKey };
@@ -396,6 +397,17 @@ export function arcVerdict(arc: unknown): { trusted: boolean; sealer: string; re
   return { trusted: result === 'pass' && known && passed && aar.dmarc?.result !== 'fail', sealer, result };
 }
 
+/** The Importance / X-Priority / Priority header, as 'high' or 'low' (normal is left out). */
+export function priorityOf(parsed: Pick<ParsedMail, 'headers'>): { priority?: 'high' | 'low' } {
+  const h = (k: string) => String(parsed.headers.get(k) ?? '').toLowerCase();
+  const x = h('x-priority').match(/^\s*(\d)/)?.[1];
+  const v = h('importance') || h('priority') || (x ? (Number(x) <= 2 ? 'high' : Number(x) >= 4 ? 'low' : '') : '');
+  return /high|urgent/.test(v) ? { priority: 'high' } : /low|non-urgent/.test(v) ? { priority: 'low' } : {};
+}
+
+/** The headers that carry a priority: Importance (Outlook), X-Priority (most others) and Priority. */
+export const priorityHeaders = (p?: 'high' | 'low'): Record<string, string> => (p === 'high' ? { Importance: 'high', 'X-Priority': '1 (Highest)', Priority: 'urgent' } : p === 'low' ? { Importance: 'low', 'X-Priority': '5 (Lowest)', Priority: 'non-urgent' } : {});
+
 async function receive(raw: Buffer, session: SMTPServerSession) {
   const parsed = await simpleParser(raw);
   const sender = session.envelope.mailFrom ? session.envelope.mailFrom.address : '';
@@ -456,13 +468,21 @@ async function receive(raw: Buffer, session: SMTPServerSession) {
     const attachments = cal.attachments.map((a) => {
       const id = randomBytes(16).toString('hex');
       db.saveFile({ id, workspaceId: ws.id, by: 'mail', name: a.filename ?? 'attachment', type: a.contentType ?? 'application/octet-stream', size: a.size }, a.content);
-      return { name: a.filename ?? 'attachment', size: fmtSize(a.size), url: `/api/files/${id}` };
+      // A picture shown inside the HTML keeps its Content-ID, so the reader can put it back in place (cid:).
+      const cid = a.related && a.contentId ? a.contentId.replace(/^<|>$/g, '') : '';
+      return { name: a.filename ?? 'attachment', size: fmtSize(a.size), url: `/api/files/${id}`, ...(cid ? { cid } : {}) };
     });
+    const cc = addrs(parsed.cc);
+    const replyTo = addrs(parsed.replyTo).filter((p) => p.email && p.email !== lower(person(parsed.from?.value?.[0]).email));
     const msg = {
       id: 'm-' + randomBytes(6).toString('hex'),
       mid,
       from: person(parsed.from?.value?.[0]),
-      to: [...addrs(parsed.to), ...addrs(parsed.cc)],
+      // To and Cc stay apart, as they were sent (src/mailPeople.ts).
+      to: addrs(parsed.to),
+      ...(cc.length ? { cc } : {}),
+      ...(replyTo.length ? { replyTo } : {}),
+      ...priorityOf(parsed),
       date: (parsed.date ?? new Date()).toISOString(),
       body: (parsed.text ?? '').trim(),
       html,
@@ -516,6 +536,10 @@ export interface Outgoing {
    * `remindDays`: "Remind me if no reply", told to the sender after that many days if nobody wrote back.
    */
   tracking?: { opens: boolean; clicks: boolean; notify: boolean; by: string | null; remindDays?: number };
+  replyTo?: Person[]; // the Reply-To header
+  priority?: 'high' | 'low'; // Importance and X-Priority headers
+  /** Confidential mode (server/mailConfidential.ts): until when, whether outside people need an emailed code, who sent it. */
+  confidential?: { expiresAt: string; passcode: boolean; by: string | null };
 }
 
 /** An attachment's content: one of this company's files (never another company's, whatever the address), or inline data. */
@@ -593,19 +617,23 @@ export async function queueSend(o: Outgoing): Promise<{ mid: string; queued: num
       db.writeDocs('workspaces', [{ ...(ws as any), mailCreditsNotified: true }], [], null);
     }
   }
+  // Confidential mode: what leaves (and what our own mailboxes keep) is a notice with a link; the words stay on this
+  // server until they expire or the sender removes access (server/mailConfidential.ts).
+  const secret = o.confidential ? confidential.prepare(o, { mid, local: local.map((p) => p.email), remote: remote.map((p) => p.email) }) : null;
   const message = {
     from: { name: o.from.name, address: o.from.email },
     to: o.to.map((p) => ({ name: p.name, address: p.email })),
     cc: o.cc.length ? o.cc.map((p) => ({ name: p.name, address: p.email })) : undefined,
+    replyTo: o.replyTo?.length ? o.replyTo.map((p) => ({ name: p.name, address: p.email })) : undefined,
     subject: o.subject,
-    text: o.text,
-    html: o.html,
+    text: secret ? secret.text : o.text,
+    html: secret ? secret.html : o.html,
     messageId: mid,
     inReplyTo: o.inReplyTo,
     references: o.references,
-    attachments: o.files.map((f) => ({ filename: f.name, content: fileBuffer(f.url, ws.id) ?? Buffer.alloc(0), ...(f.cid ? { cid: f.cid } : {}) })),
+    attachments: secret ? [] : o.files.map((f) => ({ filename: f.name, content: fileBuffer(f.url, ws.id) ?? Buffer.alloc(0), ...(f.cid ? { cid: f.cid } : {}) })),
     icalEvent: o.ical ? { method: o.ical.method, content: o.ical.content, filename: 'invite.ics' } : undefined,
-    headers: { 'X-Mailer': 'sprint2go', ...(o.headers ?? {}) },
+    headers: { 'X-Mailer': 'sprint2go', ...priorityHeaders(o.priority), ...(o.headers ?? {}) },
   };
   /** Builds the message with this HTML and signs it: every copy that leaves is signed on its own. */
   const build = async (html: string | undefined) => {
@@ -613,7 +641,11 @@ export async function queueSend(o: Outgoing): Promise<{ mid: string; queued: num
     // Every copy our own engine sends is signed: a company domain with its key, our own name with the platform's.
     return route === 'own' && domain ? signFor(raw, domain, ws.id) : raw;
   };
-  const raw = await build(o.html);
+  const buildWith = async (body: { html: string; text: string }) => {
+    const r: Buffer = await new MailComposer({ ...message, html: body.html, text: body.text }).compile().build();
+    return route === 'own' && domain ? signFor(r, domain, ws.id) : r;
+  };
+  const raw = await build(message.html);
   // The sender's copy as it went out (with its Bcc line, which only the sender sees), for mail apps over IMAP. A copy
   // a mail app already gave us (SMTP submission, APPEND) stays as it is.
   keepRaw(o.threadId, o.messageId, o.bcc?.length ? await new MailComposer({ ...message, bcc: o.bcc.map((p) => ({ name: p.name, address: p.email })), keepBcc: true } as ConstructorParameters<typeof MailComposer>[0]).compile().build() : raw);
@@ -635,11 +667,18 @@ export async function queueSend(o: Outgoing): Promise<{ mid: string; queued: num
     const sizes = parsed.attachments.filter((a) => !(inline && a.related && a.contentId) && !/^(text\/calendar|application\/ics)\b/i.test(a.contentType ?? ''));
     // A calendar invite (one a teammate sent from their calendar, or an answer to one): read as mail from outside is.
     const cal = o.ical ? readInvite(parsed.attachments, [lower(hit.account.email)]) : null;
-    const msg = { id: 'm-' + randomBytes(6).toString('hex'), mid, from: o.from, to: shown, date: now(), body: o.text, html: inline ? parsed.html || o.html : o.html, attachments: listed.length && sizes.length ? listed.map((f, i) => ({ name: f.name, size: fmtSize(sizes[i]?.size ?? 0), url: f.url })) : undefined, ...(cal?.invite ? { invite: cal.invite } : {}) };
+    // To and Cc stay apart (src/mailPeople.ts); Bcc never shows.
+    const shownCc = shown.filter((p) => o.cc.some((x) => lower(x.email) === p.email) && !o.to.some((x) => lower(x.email) === p.email));
+    const shownTo = shown.filter((p) => !shownCc.includes(p));
+    const extras = { ...(shownCc.length ? { cc: shownCc } : {}), ...(o.replyTo?.length ? { replyTo: o.replyTo } : {}), ...(o.priority ? { priority: o.priority } : {}) };
+    const msg = secret
+      ? { id: 'm-' + randomBytes(6).toString('hex'), mid, from: o.from, to: shownTo, ...extras, date: now(), body: secret.text, html: secret.html, confidential: secret.meta }
+      : { id: 'm-' + randomBytes(6).toString('hex'), mid, from: o.from, to: shownTo, ...extras, date: now(), body: o.text, html: inline ? parsed.html || o.html : o.html, attachments: listed.length && sizes.length ? listed.map((f, i) => ({ name: f.name, size: fmtSize(sizes[i]?.size ?? 0), url: f.url })) : undefined, ...(cal?.invite ? { invite: cal.invite } : {}) };
     const thread = { id: 't-' + randomBytes(6).toString('hex'), accountId: hit.account.id, subject: o.subject || '(no subject)', location: 'inbox', starred: false, unread: true, labels: [], messages: [msg], workspaceId: hit.ws.id };
     keepRaw(thread.id, msg.id, raw);
     db.writeDocs('threads', [thread], [], null);
     deps.broadcast('threads', [thread], []);
+    if (secret) confidential.deliveredTo(secret.meta.id, hit.account.id, thread.id);
     localCount++;
     // An update or cancellation moves or removes events people here answered; an answer lands on the event it's for.
     if (cal?.invite) applyInbound(hit.ws, hit.account, cal.invite, thread.id, deps.broadcast, deps.notify);
@@ -650,14 +689,20 @@ export async function queueSend(o: Outgoing): Promise<{ mid: string; queued: num
   const holdLocal = route === 'own' && remote.length > 0 && keepsMailLocal();
   // Read tracking: each tracked outside recipient gets a copy of their own (their picture, their links); everyone else,
   // teammates included, gets the plain one. Nothing to track when nobody outside gets it.
-  const tracked = o.tracking && !holdLocal ? track.prepare({ ws, accountId: o.accountId, threadId: o.threadId, messageId: o.messageId, by: o.tracking.by, html: o.html, recipients: remote.map((p) => p.email), opens: o.tracking.opens, clicks: o.tracking.clicks, notify: o.tracking.notify }) : null;
+  const tracked = o.tracking && !holdLocal && !secret ? track.prepare({ ws, accountId: o.accountId, threadId: o.threadId, messageId: o.messageId, by: o.tracking.by, html: o.html, recipients: remote.map((p) => p.email), opens: o.tracking.opens, clicks: o.tracking.clicks, notify: o.tracking.notify }) : null;
   const copies = new Map<string, Buffer>();
   for (const [email, html] of tracked ?? []) copies.set(email, await build(html));
+  // Confidential: each outside recipient gets their own link.
+  if (secret) for (const p of remote) {
+    const own = secret.forRemote(p.email);
+    if (own) copies.set(p.email, await buildWith(own));
+  }
   const ins = db.db.prepare('INSERT INTO outbox (id, workspace_id, account_id, thread_id, message_id, route, from_addr, to_addr, raw, attempts, next_at, state, error, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, NULL, ?)');
   if (holdLocal) {
     const keep = db.db.prepare("INSERT INTO outbox (id, workspace_id, account_id, thread_id, message_id, route, from_addr, to_addr, raw, attempts, next_at, state, error, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, x'', 0, ?, 'local', ?, ?)");
     for (const p of remote) keep.run(randomBytes(8).toString('hex'), ws.id, o.accountId, o.threadId, o.messageId, route, lower(o.from.email), p.email, now(), LOCAL_ONLY, now());
     markDelivery(o.threadId, o.messageId, mid, 'local', undefined, undefined, remote.map((p) => p.email));
+    if (secret) confidential.markSender(o.threadId, o.messageId, secret.meta);
     deps?.log(`[mail] held on this computer (not production, no relay): ${remote.map((p) => p.email).join(', ')}`);
     return { mid, queued: 0, local: localCount, route, held: remote.map((p) => p.email) };
   }
@@ -668,6 +713,7 @@ export async function queueSend(o: Outgoing): Promise<{ mid: string; queued: num
     deps.broadcast('workspaces', [db.getDoc('workspaces', ws.id)!], []);
   }
   markDelivery(o.threadId, o.messageId, mid, remote.length ? 'sending' : 'sent');
+  if (secret) confidential.markSender(o.threadId, o.messageId, secret.meta);
   if (o.tracking) track.syncMessage(o.threadId, o.messageId, true);
   if (o.tracking?.remindDays) track.planReminder({ workspaceId: ws.id, accountId: o.accountId, threadId: o.threadId, messageId: o.messageId, by: o.tracking.by, days: o.tracking.remindDays });
   void pump();

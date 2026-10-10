@@ -68,7 +68,7 @@ export function MailSearch(p: {
     for (const th of p.threads)
       for (const m of th.messages) {
         if (!isMine(m.from.email)) from.set(m.from.email.toLowerCase(), { p: m.from, n: (from.get(m.from.email.toLowerCase())?.n ?? 0) + 1 });
-        for (const r of m.to) if (!isMine(r.email)) to.set(r.email.toLowerCase(), { p: r, n: (to.get(r.email.toLowerCase())?.n ?? 0) + 1 });
+        for (const r of [...m.to, ...(m.cc ?? [])]) if (!isMine(r.email)) to.set(r.email.toLowerCase(), { p: r, n: (to.get(r.email.toLowerCase())?.n ?? 0) + 1 });
       }
     const sort = (m: Map<string, { p: Person; n: number }>) => [...m.values()].sort((a, b) => b.n - a.n).map((x) => x.p);
     return { from: sort(from), to: sort(to) };
@@ -86,7 +86,7 @@ export function MailSearch(p: {
           (!f.files || th.messages.some((m) => m.attachments?.length)) &&
           (!f.assigned || th.assignee === p.meId) &&
           (!f.from || th.messages.some((m) => has([m.from], f.from!))) &&
-          (!f.to || th.messages.some((m) => has(m.to, f.to!))) &&
+          (!f.to || th.messages.some((m) => has([...m.to, ...(m.cc ?? [])], f.to!))) &&
           (!since || lastMessage(th).date >= since) &&
           (!words || words.split(/\s+/).every((w) => th.subject.toLowerCase().includes(w) || th.messages.some((m) => m.from.name.toLowerCase().includes(w) || m.from.email.toLowerCase().includes(w) || m.body.toLowerCase().includes(w)))),
       )

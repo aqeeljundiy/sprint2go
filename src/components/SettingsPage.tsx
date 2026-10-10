@@ -19,7 +19,6 @@ import { Badge, PersonCell } from './ui/Person';
 import { BrandFields } from './WorkspaceForms';
 import { WorkspaceLogo } from './WorkspaceLogo';
 import type { SettingsSection } from './AccountMenu';
-import { RichEditor } from './RichEditor';
 import { PhotoPicker } from './PhotoPicker';
 import { ClientAccessForm } from './admin/ClientAccessForm';
 import { accessFor } from '../clientView';
@@ -45,6 +44,7 @@ import { MAIL_APPS_SECTION, PhoneMailApps } from './PhoneMailApps';
 import { Avatar } from './Avatar';
 import { ChoiceRow, Group, GRow, type GColor } from './ui/Grouped';
 import { AccountPhone, DeleteAccountPhone, MailPhone, MailboxesPhone, MembersPhone, PasswordPhone, WorkspacePhone } from './SettingsPhone';
+import { SignaturesDesktop, WritingDesktop } from './mail/MailWriting';
 import { fmtSize } from '../data/drive';
 import { planName } from '../data/pricing';
 import { LANGS, getLang, mark, t, tn, type Lang, tx } from '../i18n';
@@ -722,14 +722,14 @@ export function SettingsPage({ email, settings: s, update, section, onSection, u
               <p className="set-intro">{t('Added to the end of every new email and reply.')}</p>
               {onPhone ? (
                 <div className="set-rows">
-                  <MailPhone s={s} update={update} ws={ws} canManage={canManage} blocked={blocked} onUnblock={onUnblock} onSecurity={() => onSection('security')} extras={mailExtras} />
+                  <MailPhone s={s} update={update} ws={ws} me={me} canManage={canManage} blocked={blocked} onUnblock={onUnblock} onSecurity={() => onSection('security')} extras={mailExtras} />
                 </div>
               ) : (
               <>
-              <div className="signature-box">
-                <RichEditor initialHtml={s.signature} placeholder={t('Your signature')} onChange={(html) => update({ signature: html })} />
-              </div>
+              {/* A signature per address you send from (src/components/mail/MailWriting.tsx). */}
+              <SignaturesDesktop s={s} update={update} ws={ws} me={me} />
               {mailExtras}
+              <WritingDesktop s={s} update={update} />
               <h3>{t('Undo send')}</h3>
               {/* The mail engine keeps each email this long before anything leaves (server/mailer.ts, holdSend). */}
               <div className="segmented">

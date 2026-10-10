@@ -1099,14 +1099,15 @@ class Session {
         case 'FROM':
           return text((h) => people([h.m.from]));
         case 'TO':
-        case 'CC':
           return text((h) => people(h.m.to));
+        case 'CC':
+          return text((h) => people(h.m.cc));
         case 'BCC':
           return text((h) => people(h.m.bcc));
         case 'BODY':
           return text((h) => `${h.m.body ?? ''} ${plain(h.m.html)}`);
         case 'TEXT':
-          return text((h) => `${h.t.subject} ${people([h.m.from])} ${people(h.m.to)} ${h.m.body ?? ''} ${plain(h.m.html)}`);
+          return text((h) => `${h.t.subject} ${people([h.m.from])} ${people(h.m.to)} ${people(h.m.cc)} ${h.m.body ?? ''} ${plain(h.m.html)}`);
         case 'SUBJECT': {
           const v = utf8Of(arg());
           return async (c) => {

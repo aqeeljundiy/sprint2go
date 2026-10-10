@@ -53,7 +53,7 @@ export function TrackingDashboard({ threads, me, onOpenThread, onNudge, onMenu }
         if (!isMine(m.from.email) || !m.tracking) continue;
         const sum = summarize(m.tracking);
         const opts = m.trackOptions ?? DEFAULT_TRACK_OPTIONS;
-        const people = Object.keys(m.tracking).map((e) => m.to.find((p) => p.email === e) ?? { name: e, email: e });
+        const people = Object.keys(m.tracking).map((e) => [...m.to, ...(m.cc ?? []), ...(m.bcc ?? [])].find((p) => p.email === e) ?? { name: e, email: e });
         const replied: Person[] = [];
         const waiting: Person[] = [];
         let last: string | undefined = sum.lastOpen;

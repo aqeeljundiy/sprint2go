@@ -731,6 +731,7 @@ export function registerTools(server: McpServer, deps: ToolDeps, ctx: ToolCtx) {
           id: m.id,
           from: m.from ? `${m.from.name || m.from.email} <${m.from.email}>` : undefined,
           to: (m.to ?? []).map((p: Doc) => (p.name && p.name !== p.email ? `${p.name} <${p.email}>` : p.email)),
+          ...(m.cc?.length ? { cc: m.cc.map((p: Doc) => (p.name && p.name !== p.email ? `${p.name} <${p.email}>` : p.email)) } : {}),
           date: v.when(m.date),
           text: clip(m.body || htmlToText(m.html ?? ''), i === shown.length - 1 ? 12_000 : 4000),
           ...(m.attachments?.length ? { attachments: m.attachments.map((x: Doc) => x.name) } : {}),
@@ -1513,7 +1514,7 @@ export function registerTools(server: McpServer, deps: ToolDeps, ctx: ToolCtx) {
       const last = [...msgs].reverse().find((m) => m.from) ?? no('That conversation has no message to reply to.');
       const ours = (e: string) => v.mine(e) || lower(e) === lower(box.email);
       const base = ours(last.from.email) ? (last.to ?? []) : [last.from];
-      const all = a.reply_all ? [...base, ...(last.to ?? [])] : base;
+      const all = a.reply_all ? [...base, ...(last.to ?? []), ...(last.cc ?? [])] : base;
       const to: { name: string; email: string }[] = all.filter((p: Doc, i: number) => p?.email && !ours(p.email) && all.findIndex((x: Doc) => lower(x.email) === lower(p.email)) === i).map((p: Doc) => ({ name: p.name || p.email, email: lower(p.email) }));
       if (!to.length) no('There’s nobody outside your own mailboxes to reply to.');
       const subject = /^re:/i.test(t.subject) ? t.subject : `Re: ${t.subject}`;

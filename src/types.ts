@@ -18,13 +18,22 @@ export interface Attachment {
   name: string;
   size: string;
   url?: string; // where the file is (uploaded or received by the mail engine)
+  cid?: string; // a picture shown inside the email's HTML (cid:...), kept as a file too
 }
 
 export interface Message {
   id: string;
   from: Person;
   to: Person[];
+  cc?: Person[]; // kept apart from To, as it was sent (older mail folded Cc into To)
   bcc?: Person[]; // the sender's own copy only: who got it without the others seeing
+  replyTo?: Person[]; // the Reply-To header: replies go there instead of to the sender
+  priority?: 'high' | 'low'; // the Importance / X-Priority header
+  /** Confidential mode (server/mailConfidential.ts): set by the server. The sender's copy keeps its words; a recipient's holds a notice and opens the words from the server while access lasts. */
+  confidential?: ConfidentialMeta;
+  plain?: boolean; // written in plain text mode
+  /** A draft's choices for when it's sent (scheduled ones too): an alias as From, Reply-To, priority, confidential mode. */
+  sendOptions?: { fromAddress?: string; replyTo?: Person[]; priority?: 'high' | 'low'; confidential?: { expiresAt: string; passcode: boolean } };
   date: string; // ISO
   body: string; // plain-text version (used for snippets and search)
   html?: string; // rich version, when the message was written with formatting
@@ -41,6 +50,15 @@ export interface Message {
   delivery?: { state: 'held' | 'sending' | 'sent' | 'failed' | 'local'; at: string; error?: string; until?: string; kept?: string[] }; // set by the mail engine for mail you sent (held: waiting out the Undo window until `until`; local: a local server kept it on this computer, `kept` are the outside addresses)
   auth?: string; // what the checks said about a received message (spf, dkim, dmarc)
   invite?: MailInvite; // a calendar invite in this email (Google Calendar, Outlook...), read by the mail engine
+}
+
+/** A confidential email: until when it can be opened, whether a code is needed, and whether its sender removed access. */
+export interface ConfidentialMeta {
+  id: string;
+  expiresAt: string; // ISO
+  passcode: boolean; // people outside sprint2go get a code by email before it opens
+  revokedAt?: string;
+  sender?: boolean; // this is the sender's own copy
 }
 
 export type RsvpStatus = 'accepted' | 'tentative' | 'declined';

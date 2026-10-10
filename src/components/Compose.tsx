@@ -17,7 +17,10 @@ import { useLongPress } from './ui/useLongPress';
 import { SendLaterPicker } from './mail/MailPickers';
 import { TemplatesPicker } from './mail/Templates';
 import { startAtTop } from './mail/caret';
-import { t, tx } from '../i18n';
+import { t, tx, getLang } from '../i18n';
+import { ConfidentialSheet, OptionChips, defaultSpell, moreOptions, sendersOf, swapSignature, type SendExtras, type SpellLang } from './mail/composeExtras';
+import { suggestNext } from './mail/smartCompose';
+import type { Workspace } from '../types';
 
 export interface OutgoingFile {
   name: string;
@@ -25,7 +28,7 @@ export interface OutgoingFile {
   url: string;
 }
 
-export interface Outgoing {
+export interface Outgoing extends SendExtras {
   to: Person[];
   cc: Person[];
   bcc?: Person[]; // they get it; nobody sees them
@@ -43,6 +46,16 @@ export interface Outgoing {
 interface Props {
   contacts: Person[];
   signature: string;
+  /** Each address's own signature (Settings, Mail); switching From switches it. Missing: `signature` for all. */
+  signatureFor?: (address: string) => string;
+  /** The company: its aliases are offered as From under the mailbox they deliver into. */
+  workspace?: Pick<Workspace, 'id' | 'domains' | 'mailAliases'>;
+  /** Smart compose: on (Settings, Mail), and whether the company's AI writes it (else everyday phrases do). */
+  smartCompose?: boolean;
+  aiOn?: boolean;
+  myName?: string;
+  /** A reply popped out of the reader: it goes into that conversation (the title says so). */
+  replying?: boolean;
   trackByDefault: boolean;
   /** Read tracking is offered: the company hasn't switched it off (the mail engine tracks for real, the demo pretends). */
   canTrack?: boolean;
@@ -63,19 +76,49 @@ interface Props {
 
 type WinState = 'normal' | 'min' | 'max';
 
-export function Compose({ contacts, signature, trackByDefault, canTrack = true, accounts, defaultFrom, userId, initial, onSend, onClose, parked = false, onPark, snapshot }: Props) {
+export function Compose({ contacts, signature: baseSignature, signatureFor, workspace, smartCompose = true, aiOn = false, myName, replying = false, trackByDefault, canTrack = true, accounts, defaultFrom, userId, initial, onSend, onClose, parked = false, onPark, snapshot }: Props) {
   const phone = usePhone();
+  // From: a mailbox, or one of its aliases (sent as that address, with that address's signature).
+  const startFrom = initial?.fromId && accounts.some((a) => a.id === initial.fromId) ? initial.fromId : defaultFrom;
+  const addressOf = (id: string) => accounts.find((a) => a.id === id)?.email.toLowerCase() ?? '';
+  const [fromAddress, setFromAddress] = useState(initial?.fromAddress?.toLowerCase() || addressOf(startFrom));
+  const sigOf = (address: string) => (signatureFor ? signatureFor(address) : baseSignature);
+  const signature = sigOf(fromAddress);
+  const [extras, setExtras] = useState<SendExtras>({ replyTo: initial?.replyTo, priority: initial?.priority, confidential: initial?.confidential, plain: initial?.plain });
+  const setX = (patch: Partial<SendExtras>) => setExtras((x) => ({ ...x, ...patch }));
+  const [showReplyTo, setShowReplyTo] = useState(!!initial?.replyTo?.length);
+  const [spell, setSpell] = usePersisted<SpellLang | ''>('s2g-mail-spell', '');
+  const spellLang: SpellLang = spell || defaultSpell();
+  const [confOpen, setConfOpen] = useState(false);
+  const [deskMore, setDeskMore] = useState(false);
+  const deskMoreBtn = useRef<HTMLButtonElement>(null);
   const [to, setTo] = useState<Person[]>(initial?.to ?? []);
   const [cc, setCc] = useState<Person[]>(initial?.cc ?? []);
   const [bcc, setBcc] = useState<Person[]>(initial?.bcc ?? []);
   const [showCc, setShowCc] = useState(!!initial?.cc.length || !!initial?.bcc?.length);
   const [subject, setSubject] = useState(initial?.subject ?? '');
   const [body, setBody] = useState(initial ? { html: initial.html, text: initial.text } : { html: signature ? `<p><br></p>${signature}` : '', text: '' });
+  const bodyRef = useRef(body);
+  bodyRef.current = body;
   const [files, setFiles] = useState<OutgoingFile[]>(initial?.files ?? []);
   const [trackChoice, setTrackChoice] = useState<boolean | null>(initial ? initial.track : null);
   const [opts, setOpts] = useState<TrackOptions>(initial?.trackOptions ?? DEFAULT_TRACK_OPTIONS);
   const [optsOpen, setOptsOpen] = useState(false);
-  const [fromId, setFromId] = useState(initial?.fromId && accounts.some((a) => a.id === initial.fromId) ? initial.fromId : defaultFrom);
+  const [fromId, setFromId] = useState(startFrom);
+  /** Picking another From: the signature in the body becomes that address's. */
+  const pickFrom = (value: string) => {
+    const [id, address] = value.split('|');
+    const next = address || addressOf(id);
+    const was = signature;
+    setFromId(id);
+    setFromAddress(next);
+    const now = sigOf(next);
+    if (now !== was) editor.current?.setHtml(swapSignature(bodyRef.current.html, was, now));
+  };
+  const fromChoices = accounts.flatMap((a) => {
+    const all = workspace ? sendersOf(workspace, a) : [a.email.toLowerCase()];
+    return all.map((address, i) => ({ value: `${a.id}|${address}`, label: i === 0 ? `${a.name} <${a.email}>` : `${a.name} <${address}>`, hint: i ? t('Alias') : a.kind === 'shared' ? t('Shared inbox') : undefined, group: all.length > 1 ? a.email : undefined }));
+  });
   const [deskWin, setWin] = useState<WinState>('normal');
   // Phones: one full-screen compose (Gmail's); closing keeps a draft, Drafts is in the drawer. No parked pill.
   const win: WinState = phone ? 'normal' : deskWin;
@@ -102,7 +145,7 @@ export function Compose({ contacts, signature, trackByDefault, canTrack = true, 
   const external = [...to, ...cc, ...bcc].filter((p) => !isTeam(p.email));
   // Follows the default until you flip it yourself.
   const track = canTrack && external.length > 0 && (trackChoice ?? trackByDefault);
-  const message = (): Outgoing => ({ to, cc, bcc, subject: subject.trim(), html: body.html, text: body.text, files, track, trackOptions: opts, fromId });
+  const message = (): Outgoing => ({ to, cc, bcc, subject: subject.trim(), html: body.html, text: body.text, files, track: track && !extras.confidential, trackOptions: opts, fromId, ...extras, replyTo: showReplyTo && extras.replyTo?.length ? extras.replyTo : undefined, ...(fromAddress && fromAddress !== addressOf(fromId) ? { fromAddress } : {}) });
   const typed = hasOwnText(body.text, signature);
   const hasContent = to.length > 0 || cc.length > 0 || bcc.length > 0 || !!subject.trim() || typed || files.length > 0;
   const valid = to.length + cc.length + bcc.length > 0 && (typed || files.length > 0);
@@ -145,7 +188,22 @@ export function Compose({ contacts, signature, trackByDefault, canTrack = true, 
     addEventListener('pointerup', up);
   };
 
-  const title = subject.trim() || t('New message');
+  const title = subject.trim() || (replying ? t('Reply') : t('New message'));
+  /** Plain text mode: the formatting goes, the words stay. */
+  const setPlain = (on: boolean) => {
+    if (on) editor.current?.setHtml(textToHtml(bodyRef.current.text));
+    setX({ plain: on });
+  };
+  const setXs = (patch: Partial<SendExtras>) => ('plain' in patch ? setPlain(!!patch.plain) : setX(patch));
+  const more = () =>
+    moreOptions(extras, setXs, {
+      showReplyTo,
+      onReplyTo: () => setShowReplyTo((v) => !v),
+      onConfidential: () => setConfOpen(true),
+      spell: spellLang,
+      onSpell: (l) => setSpell(l),
+    });
+  const suggest = smartCompose ? (before: string) => suggestNext(before, { aiOn, workspaceId: workspace?.id ?? '', subject, to: to[0]?.name || to[0]?.email, me: myName, lang: getLang() === 'id' ? 'Indonesian' : undefined }) : undefined;
   const discard = () => {
     setClosing(true);
     setTimeout(() => onClose(null), 160);
@@ -226,10 +284,10 @@ export function Compose({ contacts, signature, trackByDefault, canTrack = true, 
         )}
 
         <div className="compose-main">
-          {accounts.length > 1 && (
+          {fromChoices.length > 1 && (
             <label className="compose-field from-field">
               <span>{tx('mail', 'From')}</span>
-              <Select value={fromId} onChange={setFromId} label={tx('mail', 'From')} className="sel-flat from-sel" width={340} options={accounts.map((a) => ({ value: a.id, label: `${a.name} <${a.email}>`, hint: a.kind === 'shared' ? t('Shared inbox') : undefined }))} />
+              <Select value={`${fromId}|${fromAddress}`} onChange={pickFrom} label={tx('mail', 'From')} className="sel-flat from-sel" width={340} options={fromChoices} />
             </label>
           )}
           <RecipientInput
@@ -257,13 +315,15 @@ export function Compose({ contacts, signature, trackByDefault, canTrack = true, 
               <RecipientInput label="Bcc" value={bcc} contacts={contacts} onChange={setBcc} />
             </div>
           )}
+          {showReplyTo && <RecipientInput label={t('Reply to')} value={extras.replyTo ?? []} contacts={contacts} autoFocus={!extras.replyTo?.length} onChange={(v) => setX({ replyTo: v })} />}
           <label className="compose-field">
             <span>{t('Subject')}</span>
             <input value={subject} onChange={(e) => setSubject(e.target.value)} placeholder={phone ? t('Subject') : t('What’s this about?')} />
           </label>
+          <OptionChips x={extras} set={setXs} onConfidential={() => setConfOpen(true)} />
 
           <div className="compose-body" onClick={(e) => startAtTop(e, typed)}>
-            <RichEditor ref={editor} autoFocus={to.length > 0} initialHtml={body.html} placeholder={phone ? t('Compose email') : t('Write something great…')} onChange={(html, text) => setBody({ html, text })} onSubmit={send} />
+            <RichEditor ref={editor} autoFocus={to.length > 0} initialHtml={body.html} placeholder={phone ? t('Compose email') : t('Write something great…')} onChange={(html, text) => setBody({ html, text })} onSubmit={send} spellLang={spellLang} plain={!!extras.plain} suggest={suggest} />
           </div>
 
           {files.length > 0 && (
@@ -329,7 +389,10 @@ export function Compose({ contacts, signature, trackByDefault, canTrack = true, 
             <button ref={tplBtn} className={`icon-btn ${tplOpen ? 'on' : ''}`} title={t('Templates')} onClick={() => setTplOpen((o) => !o)}>
               <FileText size={17} />
             </button>
-            {canTrack && (
+            <button ref={deskMoreBtn} className={`icon-btn ${deskMore ? 'on' : ''}`} title={t('More options')} aria-label={t('More options')} onClick={() => setDeskMore((o) => !o)}>
+              <MoreVertical size={17} />
+            </button>
+            {canTrack && !extras.confidential && (
               <div className="track-split">
                 <button className={`track-toggle ${track ? 'on' : ''}`} disabled={!external.length} onClick={() => setTrackChoice(!track)} title={trackTitle}>
                   {track ? <Eye size={15} /> : <EyeOff size={15} />}
@@ -395,11 +458,14 @@ export function Compose({ contacts, signature, trackByDefault, canTrack = true, 
           actions={[
             { label: t('Send later'), icon: Clock, disabled: !valid, run: () => setLaterOpen(true) },
             { label: t('Templates'), icon: FileText, run: () => setTplOpen(true) },
-            ...(canTrack ? [{ label: t('Read tracking'), icon: track ? Eye : EyeOff, checked: track, disabled: !external.length, hint: external.length ? undefined : t('Your team’s mail is never tracked'), run: () => setTrackChoice(!track) }] : []),
+            ...(canTrack && !extras.confidential ? [{ label: t('Read tracking'), icon: track ? Eye : EyeOff, checked: track, disabled: !external.length, hint: external.length ? undefined : t('Your team’s mail is never tracked'), run: () => setTrackChoice(!track) }] : []),
+            ...more(),
             { label: t('Discard'), icon: Trash2, danger: true, group: 'end', run: discard },
           ]}
         />
       )}
+      {!phone && <ActionSheet open={deskMore} onClose={() => setDeskMore(false)} anchor={deskMoreBtn} title={t('More options')} width={280} actions={deskMore ? more() : []} />}
+      {confOpen && <ConfidentialSheet value={extras.confidential} onSave={(c) => setX({ confidential: c })} onClose={() => setConfOpen(false)} />}
       <SendLaterPicker open={laterOpen} onClose={() => setLaterOpen(false)} anchor={phone ? undefined : laterBtn} onPick={(at) => close(true, at)} />
       <TemplatesPicker open={tplOpen} onClose={() => setTplOpen(false)} anchor={phone ? undefined : tplBtn} userId={userId} current={ownText} onInsert={insertTemplate} />
     </>
