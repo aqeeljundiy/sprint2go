@@ -2086,7 +2086,7 @@ createServer(async (req, res) => {
       const text = String(b.body ?? '').trim();
       if (!subject || !text) return json(res, 400, { error: mark('Tell us what it’s about and what happened.') });
       const ws = (memberOf(me).find((w: any) => w.id === b.workspaceId) ?? memberOf(me)[0]) as any;
-      const paying = ws ? admin.mrrOf(ws, ws.members.length).state === 'paying' : false;
+      const paying = ws ? ['paying', 'unlimited'].includes(admin.mrrOf(ws, ws.members.length).state) : false; // Unlimited gets paying customers' support
       const attachments = ticketFiles(b.attachments, me);
       const t = support.createTicket({
         subject,
@@ -2099,7 +2099,7 @@ createServer(async (req, res) => {
         paying,
         priority: b.urgent ? 'urgent' : undefined,
         tags: b.channel === 'crash' ? ['crash'] : [],
-        context: b.context && typeof b.context === 'object' ? { ...b.context, plan: ws?.plan ? `${ws.plan.tier} ${ws.plan.track}` : 'none', company: ws?.name ?? null } : undefined,
+        context: b.context && typeof b.context === 'object' ? { ...b.context, plan: ws?.plan ? (ws.plan.unlimited ? 'unlimited' : `${ws.plan.tier} ${ws.plan.track}`) : 'none', company: ws?.name ?? null } : undefined,
         attachments,
       });
       supportNotify(t, msg('New ticket #{number} from {name}: {subject}', { number: t.number, name: meDoc?.name ?? meDoc?.email ?? '', subject: t.subject.slice(0, 70) }));
@@ -2148,7 +2148,7 @@ createServer(async (req, res) => {
         if (a.audience === 'list') return mine.some((w) => a.companies.includes(w.id));
         if (a.audience === 'owners') return mine.some((w) => w.members.some((m: any) => m.userId === me && m.role === 'owner'));
         const states = mine.map((w) => admin.mrrOf(w, w.members.length).state);
-        return a.audience === 'paying' ? states.includes('paying') : states.includes('trial');
+        return a.audience === 'paying' ? states.includes('paying') || states.includes('unlimited') : states.includes('trial');
       });
       return json(res, 200, { announcements: list.map((a) => ({ id: a.id, text: a.text, link: a.link, kind: a.kind })) });
     }
@@ -3625,7 +3625,7 @@ mailer.onSupportMail(async ({ to, parsed, mid, refs, spam, attachments }) => {
   const u = (db.allDocs('users') as any[]).find((x) => String(x.email ?? '').toLowerCase() === email && !x.deletedAt);
   const ws = u ? (memberOf(u.id)[0] as any) : null;
   const tag = to.startsWith('abuse@') ? 'abuse' : to.startsWith('postmaster@') ? 'postmaster' : null;
-  const t = support.createTicket({ subject: subject.replace(/^\s*((re|fwd?)\s*:\s*)+/i, '') || '(no subject)', body: text || '(empty)', channel: 'email', email, name: from?.name || u?.name || null, userId: u?.id ?? null, workspaceId: ws?.id ?? null, paying: ws ? admin.mrrOf(ws, ws.members.length).state === 'paying' : false, priority: tag === 'abuse' ? 'high' : undefined, tags: tag ? [tag] : [], attachments, mid });
+  const t = support.createTicket({ subject: subject.replace(/^\s*((re|fwd?)\s*:\s*)+/i, '') || '(no subject)', body: text || '(empty)', channel: 'email', email, name: from?.name || u?.name || null, userId: u?.id ?? null, workspaceId: ws?.id ?? null, paying: ws ? ['paying', 'unlimited'].includes(admin.mrrOf(ws, ws.members.length).state) : false, priority: tag === 'abuse' ? 'high' : undefined, tags: tag ? [tag] : [], attachments, mid });
   supportNotify(t, msg('New ticket #{number} by email from {name}: {subject}', { number: t.number, name: from?.name || email, subject: t.subject.slice(0, 70) }));
   // A short receipt so they know it arrived (not for auto-replies).
   if (!parsed.headers.get('auto-submitted') && !/no-?reply|mailer-daemon/i.test(email))
