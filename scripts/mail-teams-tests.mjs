@@ -180,6 +180,16 @@ try {
     w.mailReady = ready(w.accounts);
     put('workspaces', w);
   };
+  // A send, with the test's "ready to send" state put back first: the server's own background mail check can overwrite it
+  // a moment earlier (this test company has no real DNS), which made the data loss checks fail now and then.
+  const sendReady = async (who, body) => {
+    for (let i = 0; i < 3; i++) {
+      canSend();
+      const r = await who.json('POST', '/api/mail/send', body);
+      if (!(r.status === 409 && !r.dlp && /set up/.test(r.error ?? ''))) return r;
+    }
+    return who.json('POST', '/api/mail/send', body);
+  };
   const laura = { name: 'Laura Client', email: 'laura@client.test' };
   const aliceP = { name: 'Alice Martin', email: 'alice@acme.test' };
   put('threads', { id: 'th-a1', accountId: 'a-alice', workspaceId: 'w-acme', subject: 'Mango launch', location: 'inbox', starred: false, unread: true, labels: [], messages: [{ id: 'm1', from: laura, to: [aliceP], date: ago(2), body: 'Can we launch the mango on Friday?', mid: '<mango1@client.test>' }, { id: 'm2', from: aliceP, to: [laura], date: ago(1), body: 'Friday works.', mid: '<mango2@acme.test>' }] });
@@ -317,10 +327,10 @@ try {
   /* ---------- 4. data loss rules ---------- */
   await alice.json('POST', '/api/mail/policy', { workspaceId: 'w-acme', policy: { dlp: [{ name: 'Card numbers', kind: 'card', action: 'block', on: true }, { name: 'KTP numbers', kind: 'nik', action: 'warn', on: true }] } });
   canSend();
-  const card = await alice.json('POST', '/api/mail/send', { workspaceId: 'w-acme', accountId: 'a-alice', threadId: 'th-dlp1', messageId: 'md1', to: [laura], cc: [], subject: 'Payment', text: 'My card is 4111 1111 1111 1111', files: [] });
-  check(card.status === 409 && card.dlp?.action === 'block', 'an email with a card number is blocked');
-  const nik = await alice.json('POST', '/api/mail/send', { workspaceId: 'w-acme', accountId: 'a-alice', threadId: 'th-dlp2', messageId: 'md2', to: [laura], cc: [], subject: 'KTP', text: 'NIK 3201234508900001', files: [] });
-  const nikOk = await alice.json('POST', '/api/mail/send', { workspaceId: 'w-acme', accountId: 'a-alice', threadId: 'th-dlp2', messageId: 'md2', to: [laura], cc: [], subject: 'KTP', text: 'NIK 3201234508900001', files: [], dlpAck: true });
+  const card = await sendReady(alice, { workspaceId: 'w-acme', accountId: 'a-alice', threadId: 'th-dlp1', messageId: 'md1', to: [laura], cc: [], subject: 'Payment', text: 'My card is 4111 1111 1111 1111', files: [] });
+  check(card.status === 409 && card.dlp?.action === 'block', 'an email with a card number is blocked' + (card.status === 409 && card.dlp ? '' : ` (got ${card.status} ${card.error ?? ''})`));
+  const nik = await sendReady(alice, { workspaceId: 'w-acme', accountId: 'a-alice', threadId: 'th-dlp2', messageId: 'md2', to: [laura], cc: [], subject: 'KTP', text: 'NIK 3201234508900001', files: [] });
+  const nikOk = await sendReady(alice, { workspaceId: 'w-acme', accountId: 'a-alice', threadId: 'th-dlp2', messageId: 'md2', to: [laura], cc: [], subject: 'KTP', text: 'NIK 3201234508900001', files: [], dlpAck: true });
   check(nik.status === 409 && nik.dlp?.action === 'warn' && nikOk.status === 200, 'one with a NIK warns, and goes once the sender confirms');
   const plog = await alice.json('GET', '/api/mail/policy?ws=w-acme');
   check(['dlp.block', 'dlp.warn', 'dlp.warn-sent'].every((a) => plog.log.some((l) => l.action === a)) && !JSON.stringify(plog.log).includes('4111'), 'all three are in the company’s mail log, without the numbers');
