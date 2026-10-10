@@ -28,9 +28,12 @@ Nothing running. The 10 Oct local build (below) is on local main, not pushed or 
 - **Company logo in Gmail (BIMI)**: the upload and record are built; Gmail also needs a VMC or CMC certificate (12 months of logo use or a registered trademark) and DMARC at quarantine or reject.
 - **Still English on purpose**: the demo company's content, audit and activity logs, meeting logs, "Re:"/"Fwd:", and the reply email to an outside organiser.
 - **Not checkable without real traffic or keys**: Outlook.com's image proxy detection; model lists with real SumoPod, Anthropic and Gemini keys (Bedrock needs `bedrock:ListFoundationModels`).
-- **Huddles**: audio only; camera and screen share aren't built.
+- **Calendar Day and Week**: multi-day all-day events still show once per day, not as one bar.
+- **Task stages at 768 px**: the stage list overflows the Settings pane on the right.
 
 ## Done
+
+**10 Oct, afternoon, live:** the sprint2go system on every phone screen (one type scale, spacing, rows, top bar; drift check in CI); the Whitelist (operator console, Customers: unlimited companies with monthly AI and Boosted limits, 80% alerts, per-person shares, out of revenue numbers); group DMs, following threads, camera and screen share in huddles; multi-day bars in Month and an end date in the editor; files on task comments; every Settings section in the iOS pattern on phones; Home greeting with the name when it fits; fixes from Aqeel's review (chat jump, tab highlight, task panel alignment, Tasks calendar days and actions row, the brand font's digits, sidebar titles).
 
 **10 Oct, the phone fix (docs/mobile-fix-plan.md), local only:** every phone screen rebuilt to copy one reference app, checked side by side (research/mobile/fix/*/after/): the shell (plain bar, floating create button, app-owned top bars, left drawers, toasts at the bottom) and Home with its greeting; Mail as Gmail; Chat as Slack; Tasks and Projects as Todoist; Calendar and Meet as Google; Vault as Apple Passwords, Drive as Google Drive, Notes as Apple Notes, Tables as Notion, Settings as iOS Settings, Teams as Slack's people list. Known gaps: group DMs, per-thread follow, Compose button colour, Settings sections other than General still restyled rather than rebuilt, multi-day bars in Month, a Back button inside an open table.
 
