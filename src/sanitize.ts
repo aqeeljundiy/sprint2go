@@ -8,13 +8,22 @@ DOMPurify.addHook('afterSanitizeAttributes', (node) => {
     node.setAttribute('target', '_blank');
     node.setAttribute('rel', 'noopener noreferrer');
   }
+  // Pictures: only our own files (a picture pasted into an email, or one an email carried inside it, kept by the mail
+  // engine) and inline data. Nothing from other sites, so no tracking and no remote loads (server/mailFiles.ts).
+  if (node.tagName === 'IMG') {
+    const src = node.getAttribute('src') ?? '';
+    if (!/^\/api\/files\/[a-f0-9]{32}$/.test(src) && !/^data:image\/(png|jpe?g|gif|webp);base64,[a-z0-9+/=\s]+$/i.test(src)) {
+      node.removeAttribute('src');
+      node.setAttribute('hidden', '');
+    } else node.setAttribute('loading', 'lazy');
+  }
 });
 
 export function sanitize(html: string) {
   html = html.replace(/url\s*\(/gi, 'url-off(');
   return DOMPurify.sanitize(html, {
-    ALLOWED_TAGS: ['p', 'br', 'div', 'span', 'b', 'strong', 'i', 'em', 'u', 's', 'strike', 'a', 'ul', 'ol', 'li', 'blockquote', 'h1', 'h2', 'h3', 'font', 'code', 'pre', 'hr'],
-    ALLOWED_ATTR: ['href', 'style', 'color', 'size'],
+    ALLOWED_TAGS: ['p', 'br', 'div', 'span', 'b', 'strong', 'i', 'em', 'u', 's', 'strike', 'a', 'ul', 'ol', 'li', 'blockquote', 'h1', 'h2', 'h3', 'font', 'code', 'pre', 'hr', 'img'],
+    ALLOWED_ATTR: ['href', 'style', 'color', 'size', 'src', 'alt', 'width', 'height'],
     FORBID_ATTR: ['srcset'],
   });
 }

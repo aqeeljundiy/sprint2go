@@ -8,7 +8,7 @@ export type FolderId = 'inbox' | 'starred' | 'sent' | 'drafts' | 'archive' | 'sp
 /** Where a thread physically lives. "starred" and "sent" are views, not locations. */
 export type Location = 'inbox' | 'drafts' | 'archive' | 'spam' | 'trash';
 
-export type View = { kind: 'folder'; id: FolderId } | { kind: 'label'; id: string } | { kind: 'tracking'; id: 'tracking' } | { kind: 'todos'; id: 'todos' } | { kind: 'project'; id: string } | { kind: 'category'; id: 'primary' | 'promotions' | 'social' | 'updates' | 'forums' } | { kind: 'contacts'; id: 'contacts' }; // category: an inbox tab (src/components/mail/sortPrefs.ts); contacts: Mail's Contacts (src/components/mail/Contacts.tsx)
+export type View = { kind: 'folder'; id: FolderId } | { kind: 'label'; id: string } | { kind: 'tracking'; id: 'tracking' } | { kind: 'todos'; id: 'todos' } | { kind: 'project'; id: string } | { kind: 'category'; id: 'primary' | 'promotions' | 'social' | 'updates' | 'forums' } | { kind: 'contacts'; id: 'contacts' } | { kind: 'files'; id: 'files' }; // files: every attachment (src/components/mail/FilesView.tsx); category: an inbox tab (src/components/mail/sortPrefs.ts)
 
 export interface Person {
   name: string;
@@ -19,6 +19,14 @@ export interface Attachment {
   name: string;
   size: string;
   url?: string; // where the file is (uploaded or received by the mail engine)
+  // Attachments round (src/mailAttachments.ts, server/mailFiles.ts):
+  type?: string; // its media type, as the sender said
+  /** A picture that sits inside the email's words (a cid image): shown in place, not listed with the files. */
+  inline?: boolean;
+  /** Checked for viruses on arrival: 'clean', or 'unscanned' when no scanner runs here (CLAMD_HOST unset or down). */
+  scan?: 'clean' | 'unscanned';
+  /** Refused on arrival (a type Gmail refuses, one inside a zip, or a virus): why, and the file isn't kept. */
+  blocked?: string;
   cid?: string; // a picture shown inside the email's HTML (cid:...), kept as a file too
 }
 

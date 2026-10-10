@@ -66,6 +66,8 @@ purify.addHook('afterSanitizeAttributes', (node) => {
     return;
   }
   if (/^data:image\//i.test(src)) return;
+  // Our own files (a picture pasted into an email written here, server/mailFiles.ts): same origin, no tracking.
+  if (/^\/api\/files\/[a-f0-9]{32}$/.test(src)) return;
   if (/^https?:/i.test(src)) {
     if (current.images) el.setAttribute('src', current.proxy ? proxied(src) : src);
     else {

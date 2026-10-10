@@ -9,6 +9,9 @@ import { TemplatesPicker } from './Templates';
 import { startAtTop } from './caret';
 import { hasOwnText, htmlToText, textToHtml } from '../../sanitize';
 import { t } from '../../i18n';
+import { AttachButton, DraftFilesList, useDraftFiles, type OutFile } from './DraftFiles';
+import { uploadForMail } from './attachApi';
+import { toast } from '../../toast';
 import { RecipientInput } from '../RecipientInput';
 import type { ReplyOpts } from './composeExtras';
 
@@ -33,6 +36,7 @@ export function QuickReply({
   onSend,
   onKeep,
   onClose,
+  initialFiles,
 }: {
   to: Person[];
   cc?: Person[];
@@ -52,6 +56,8 @@ export function QuickReply({
   onSend: (html: string, text: string, opts?: ReplyOpts) => void;
   onKeep: (draft: { html: string; text: string } | null) => void; // closed without sending: what's written, or null
   onClose: () => void;
+  /** Files of a reply that came back (not sent, or Undo). */
+  initialFiles?: OutFile[];
 }) {
   const [body, setBody] = useState({ html: initialHtml, text: htmlToText(initialHtml) });
   const [format, setFormat] = useState(false);
@@ -63,7 +69,11 @@ export function QuickReply({
   const moreBtn = useRef<HTMLButtonElement>(null);
   const latest = useRef(body);
   latest.current = body;
-  const typed = hasOwnText(body.text, signature);
+  // Files: uploaded when added, big ones as Drive links (DraftFiles.tsx).
+  const files = useDraftFiles(initialFiles ?? [], body.html.length);
+  const typed = hasOwnText(body.text, signature) || files.files.length > 0;
+  const ready = typed && !files.busy;
+  const inlineImages = (pics: File[]) => Promise.all(pics.map((f) => uploadForMail(f).then((up) => ({ url: up.url, name: f.name }), (e: Error) => (toast({ text: e.message }), null))));
   const sigText = signature ? htmlToText(signature) : '';
   const own = (sigText ? body.text.replace(sigText, '') : body.text).trim();
   const reStart = /^re:/i.test(subject) ? subject : `Re: ${subject}`;
@@ -79,9 +89,10 @@ export function QuickReply({
   };
   const close = () => leave(() => (onKeep(hasOwnText(latest.current.text, signature) ? latest.current : null), onClose()));
   const send = () => {
-    if (!typed) return;
+    if (!ready) return;
     if (!to.length && !cc.length) return;
-    leave(() => (onSend(latest.current.html, latest.current.text, changed()), onKeep(null), onClose()));
+    const out = files.out();
+    leave(() => (onSend(latest.current.html, latest.current.text, { ...changed(), ...(out.length ? { files: out } : {}) }), onKeep(null), onClose()));
   };
   const insert = (text: string) => {
     editor.current?.setHtml(textToHtml(text) + (signature ? `<p><br></p>${signature}` : ''));
@@ -100,7 +111,8 @@ export function QuickReply({
             <X size={22} />
           </button>
           <span className="compose-title">{all ? t('Reply all') : t('Reply')}</span>
-          <button type="button" className={`icon-btn compose-send-icon${typed ? ' ready' : ''}`} onClick={send} aria-disabled={!typed} aria-label={t('Send the reply')} title={t('Send')}>
+          <AttachButton onFiles={(f) => files.add(f)} size={22} />
+          <button type="button" className={`icon-btn compose-send-icon${ready ? ' ready' : ''}`} onClick={send} aria-disabled={!ready} aria-label={t('Send the reply')} title={files.busy ? t('Wait for the files to finish uploading') : t('Send')}>
             <SendHorizontal size={22} />
           </button>
           <button type="button" ref={moreBtn} className="icon-btn" onClick={() => setMore(true)} aria-label={t('More')} title={t('More')}>
@@ -115,8 +127,9 @@ export function QuickReply({
             <input value={re} onChange={(e) => setRe(e.target.value)} />
           </label>
           <div className="compose-body" onClick={(e) => startAtTop(e, typed)}>
-            <RichEditor ref={editor} autoFocus initialHtml={initialHtml} placeholder={t('Compose email')} onChange={(html, text) => setBody({ html, text })} onSubmit={send} spellLang={spellLang} suggest={suggest} />
+            <RichEditor ref={editor} autoFocus initialHtml={initialHtml} placeholder={t('Compose email')} onChange={(html, text) => setBody({ html, text })} onSubmit={send} spellLang={spellLang} suggest={suggest} onImages={inlineImages} />
           </div>
+          <DraftFilesList state={files} />
         </div>
         {aiOpen && <AIWriter hasText={!!own} currentText={own} me={myName} to={to[0]?.name} subject={re} onClose={() => setAiOpen(false)} onResult={(text) => (insert(text), setAiOpen(false))} />}
         <footer className="compose-foot kb-bar" onMouseDown={(e) => e.preventDefault()}>

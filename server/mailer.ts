@@ -24,6 +24,7 @@ import * as whitelist from './whitelist.ts';
 import * as track from './readTracking.ts';
 import { crlf, keepRaw } from './mailRaw.ts';
 import * as mailFilters from './mailFilters.ts';
+import { checkOutgoing, inlineForSend, storeIncoming } from './mailFiles.ts';
 import * as confidential from './mailConfidential.ts';
 import * as smart from './mailSmart.ts';
 // Groups, forwarding and data loss rules (Mail for teams: server/mailGroups.ts, mailForwarding.ts, mailCompliance.ts).
@@ -481,13 +482,9 @@ async function receive(raw: Buffer, session: SMTPServerSession) {
     const { ws, account } = hit;
     // A calendar invite: read it, and list its .ics once (calendars attach it twice).
     const cal = readInvite(parsed.attachments, [lower(rcpt.address), lower(account.email)]);
-    const attachments = cal.attachments.map((a) => {
-      const id = randomBytes(16).toString('hex');
-      db.saveFile({ id, workspaceId: ws.id, by: 'mail', name: a.filename ?? 'attachment', type: a.contentType ?? 'application/octet-stream', size: a.size }, a.content);
-      // A picture shown inside the HTML keeps its Content-ID, so the reader can put it back in place (cid:).
-      const cid = a.related && a.contentId ? a.contentId.replace(/^<|>$/g, '') : '';
-      return { name: a.filename ?? 'attachment', size: fmtSize(a.size), url: `/api/files/${id}`, ...(cid ? { cid } : {}) };
-    });
+    // Each file checked (refused types, also in zips; viruses when ClamAV runs) and kept; pictures inside shown in place.
+    const stored = await storeIncoming(raw, parsed, ws.id, cal.attachments);
+    const attachments = stored.attachments;
     const cc = addrs(parsed.cc);
     const replyTo = addrs(parsed.replyTo).filter((p) => p.email && p.email !== lower(person(parsed.from?.value?.[0]).email));
     const msg = {
@@ -501,7 +498,7 @@ async function receive(raw: Buffer, session: SMTPServerSession) {
       ...priorityOf(parsed),
       date: (parsed.date ?? new Date()).toISOString(),
       body: (parsed.text ?? '').trim(),
-      html,
+      html: stored.html ?? html,
       attachments: attachments.length ? attachments : undefined,
       trackersBlocked: trackers || undefined,
       listUnsubscribe: unsubUrl ? { url: unsubUrl, oneClick: unsubOneClick } : undefined,
@@ -523,8 +520,9 @@ async function receive(raw: Buffer, session: SMTPServerSession) {
     // Forwarding (server/mailForwarding.ts): a copy goes on to the mailbox's verified address, and what happens to
     // the copy here (kept, read, archived, in Trash) changes the thread before it's saved. Spam isn't forwarded.
     if (!inSpam && deliveredHook) Object.assign(thread, deliveredHook({ ws, account, threadId: thread.id, raw }) ?? {});
-    // The source as it arrived, for mail apps over IMAP (server/imap.ts).
-    keepRaw(thread.id, msg.id, raw);
+    // The source as it arrived, for mail apps over IMAP (server/imap.ts). With a refused file in it, mail apps get the
+    // copy rebuilt from what's kept instead (server/imapStore.ts), so the refused file never reaches them either.
+    if (!attachments.some((a) => a.blocked)) keepRaw(thread.id, msg.id, raw);
     db.writeDocs('threads', [thread], [], null);
     deps.broadcast('threads', [thread], []);
     filtered.after();
@@ -614,6 +612,13 @@ export async function queueSend(o: Outgoing): Promise<{ mid: string; queued: num
   if (blocked) {
     markDelivery(o.threadId, o.messageId, null, 'failed', blocked);
     throw new Error(blocked);
+  }
+  // Pictures pasted into the email go inside it as cid images; refused files and mail over 25 MB don't go at all.
+  o = { ...o, ...inlineForSend(o.html, o.files, ws.id) };
+  const badFiles = await checkOutgoing(o.files.filter((f) => !f.cid), ws.id, (o.html ?? o.text ?? '').length);
+  if (badFiles) {
+    markDelivery(o.threadId, o.messageId, null, 'failed', badFiles);
+    throw new Error(badFiles);
   }
   // Data loss rules (server/mailCompliance.ts): a rule that blocks stops it everywhere (scheduled mail, mail apps);
   // a warning was already put to the sender by /api/mail/send, so only blocks count here.
@@ -705,10 +710,10 @@ export async function queueSend(o: Outgoing): Promise<{ mid: string; queued: num
     if (hit.account.id === o.accountId) continue;
     if (refusedGroups.size && local.some((p) => refusedGroups.has(p.email) && (mine.get(p.email)!.alias?.accounts ?? [mine.get(p.email)!.account]).some((a) => a.id === hit.account.id)) && !local.some((p) => !refusedGroups.has(p.email) && (mine.get(p.email)!.alias?.accounts ?? [mine.get(p.email)!.account]).some((a) => a.id === hit.account.id))) continue;
     const parsed = await simpleParser(raw);
-    // Pictures inside the HTML (from a mail app) arrive as part of it, as in received mail, not as attachments.
-    const inline = o.files.some((f) => f.cid);
-    const listed = o.files.filter((f) => !f.cid);
-    const sizes = parsed.attachments.filter((a) => !(inline && a.related && a.contentId) && !/^(text\/calendar|application\/ics)\b/i.test(a.contentType ?? ''));
+    // The files arrive as in mail from outside: the recipient's company's own copies (checked and scanned), and pictures
+    // inside the HTML shown in place, not listed as attachments.
+    const files = parsed.attachments.filter((a) => !/^(text\/calendar|application\/ics)\b/i.test(a.contentType ?? ''));
+    const stored = files.length ? await storeIncoming(raw, parsed, hit.ws.id, files) : { attachments: [], html: undefined };
     // A calendar invite (one a teammate sent from their calendar, or an answer to one): read as mail from outside is.
     const cal = o.ical ? readInvite(parsed.attachments, [lower(hit.account.email)]) : null;
     // To and Cc stay apart (src/mailPeople.ts); Bcc never shows.
@@ -717,7 +722,7 @@ export async function queueSend(o: Outgoing): Promise<{ mid: string; queued: num
     const extras = { ...(shownCc.length ? { cc: shownCc } : {}), ...(o.replyTo?.length ? { replyTo: o.replyTo } : {}), ...(o.priority ? { priority: o.priority } : {}) };
     const msg = secret
       ? { id: 'm-' + randomBytes(6).toString('hex'), mid, from: o.from, to: shownTo, ...extras, date: now(), body: secret.text, html: secret.html, confidential: secret.meta }
-      : { id: 'm-' + randomBytes(6).toString('hex'), mid, from: o.from, to: shownTo, ...extras, date: now(), body: o.text, html: inline ? parsed.html || o.html : o.html, attachments: listed.length && sizes.length ? listed.map((f, i) => ({ name: f.name, size: fmtSize(sizes[i]?.size ?? 0), url: f.url })) : undefined, ...(cal?.invite ? { invite: cal.invite } : {}) };
+      : { id: 'm-' + randomBytes(6).toString('hex'), mid, from: o.from, to: shownTo, ...extras, date: now(), body: o.text, html: stored.html ?? (o.files.some((f) => f.cid) ? parsed.html || o.html : o.html), attachments: stored.attachments.length ? stored.attachments : undefined, ...(cal?.invite ? { invite: cal.invite } : {}) };
     // Team mail: Primary, and Important as learned (server/mailSmart.ts); never spam.
     const sorted = await smart.arrive({ id: 't-' + randomBytes(6).toString('hex'), accountId: hit.account.id, subject: o.subject || '(no subject)', location: 'inbox', starred: false, unread: true, labels: [], messages: [msg], workspaceId: hit.ws.id }, { ws: hit.ws as any, accountId: hit.account.id, accountEmail: hit.account.email, arrival: smart.arrivalOf(parsed, msg), authSpam: false, directTo: o.to.map((p) => p.email), existing: null, internal: true });
     // A teammate's email runs through this mailbox's filters too, after the sorting (server/mailFilters.ts).

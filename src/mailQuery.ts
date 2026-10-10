@@ -278,9 +278,10 @@ function termHit(n: Extract<QNode, { k: 'term' }>, t: MatchThread, m: Message, c
     case 'subject':
       return has(lower(t.subject), lv);
     case 'filename':
-      return (m.attachments ?? []).some((a) => has(lower(a.name), lv) || lower(a.name).endsWith('.' + lv));
+      // Files people attached: not pictures inside the words, not refused files (src/mailAttachments.ts listedAttachments).
+      return (m.attachments ?? []).some((a) => !a.inline && !a.blocked && (has(lower(a.name), lv) || lower(a.name).endsWith('.' + lv)));
     case 'has':
-      if (lv === 'attachment' || lv === 'attachments' || lv === 'file' || lv === 'files') return !!m.attachments?.length;
+      if (lv === 'attachment' || lv === 'attachments' || lv === 'file' || lv === 'files') return (m.attachments ?? []).some((a) => !a.inline && !a.blocked);
       if (lv === 'userlabels') return t.labels.length > 0;
       if (lv === 'nouserlabels') return t.labels.length === 0;
       if (lv === 'invite') return !!m.invite;

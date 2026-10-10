@@ -4,6 +4,7 @@ import { SmoothHeight, TabPane } from './ui/Smooth';
 import { brand as product, term } from '../terms';
 import {
   AlertTriangle,
+  Download,
   Archive,
   ArrowLeft,
   Ban,
@@ -15,9 +16,7 @@ import {
   Clock,
   Eye,
   EyeOff,
-  FileText,
   Forward,
-  HardDriveUpload,
   Laptop,
   Inbox,
   ListChecks,
@@ -39,9 +38,6 @@ import {
   Trash2,
   UserPlus,
   X,
-  Download,
-  Share2,
-  Image as ImageIcon,
 } from 'lucide-react';
 import type { CalEvent, Message, Person, Thread, User, Client } from '../types';
 import { fmtTimeRange } from '../calendarUtils';
@@ -57,11 +53,15 @@ import { ai, type Summary } from '../ai';
 import type { Todo } from '../types';
 import type { Attachment } from '../types';
 import { PushScreen } from './ui/PushScreen';
-import { ActionSheet, useActionMenu, type SheetAction } from './ui/ActionSheet';
+import { ActionSheet, type SheetAction } from './ui/ActionSheet';
 import { usePhone } from '../mobile/media';
 import { AssignPicker, SnoozePicker, type PresenceOf } from './mail/MailPickers';
 import { CommentBox, MailComment } from './mail/Comments';
 import { QuickReply } from './mail/QuickReply';
+import { MessageFiles } from './mail/MessageFiles';
+import { AttachButton, DraftFilesList, useDraftFiles, type OutFile } from './mail/DraftFiles';
+import { uploadForMail } from './mail/attachApi';
+import { toast } from '../toast';
 import { quickReplies } from './mail/Templates';
 import { participantsOf, whenWords } from '../mailRules';
 import { t, tn, tx } from '../i18n';
@@ -123,7 +123,7 @@ interface Props {
   canTrack?: boolean;
   trackByDefault?: boolean;
   /** A reply taken back with Undo: back in the reply box, as it was written. */
-  restoreReply?: { threadId: string; html: string; text: string; key: number } | null;
+  restoreReply?: { threadId: string; html: string; text: string; key: number; files?: OutFile[] } | null; // files: what was attached comes back too
   /** Why replies can't go out from this mailbox yet; Reply and Forward then explain instead of opening. */
   replyOff?: string;
   onReplyOff?: () => void;
@@ -188,6 +188,9 @@ export function Reader(props: Props) {
   const [reply, setReply] = useState({ html: '', text: '' });
   const [replyInitial, setReplyInitial] = useState<string | null>(null);
   const [replyTrack, setReplyTrack] = useState<boolean | null>(null); // null: the person's default
+  // Files in the desktop reply box: uploaded when added, big ones as Drive links (src/components/mail/DraftFiles.tsx).
+  const replyFiles = useDraftFiles([], reply.html.length);
+  const [restoredFiles, setRestoredFiles] = useState<OutFile[]>([]); // phones: files of a reply that came back
   const [summary, setSummary] = useState<Summary | 'loading' | null>(null);
   const [summaryOpen, setSummaryOpen] = useState(false);
   const [suggestions, setSuggestions] = useState<string[] | null>(null);
@@ -241,6 +244,7 @@ export function Reader(props: Props) {
     if (!r || !thread || r.threadId !== thread.id) return;
     setReplyInitial(r.html);
     setReply({ html: r.html, text: r.text });
+    if (r.files?.length) (replyFiles.addExisting(r.files), setRestoredFiles(r.files));
     setReplyOpen(true);
   }, [props.restoreReply?.key]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -432,8 +436,10 @@ export function Reader(props: Props) {
     });
 
   const send = () => {
-    if (!hasOwnText(reply.text, signature)) return;
-    props.onReply(thread.id, reply.html, reply.text, replyTracked, replyAll, { ...(rPeople ? { to: rPeople.to, cc: rPeople.cc } : {}), ...(rSubject?.trim() ? { subject: rSubject.trim() } : {}) });
+    if ((!hasOwnText(reply.text, signature) && !replyFiles.files.length) || replyFiles.busy) return;
+    const out = replyFiles.out();
+    props.onReply(thread.id, reply.html, reply.text, replyTracked, replyAll, { ...(rPeople ? { to: rPeople.to, cc: rPeople.cc } : {}), ...(rSubject?.trim() ? { subject: rSubject.trim() } : {}), ...(out.length ? { files: out } : {}) });
+    replyFiles.clear();
     setReply({ html: '', text: '' });
     setReplyOpen(false);
     setReplyInitial(null);
@@ -452,6 +458,17 @@ export function Reader(props: Props) {
     ...(m.html || m.body ? [{ label: translations.has(m.id) ? t('Show original language') : t('Translate'), icon: Languages, group: 'tools', disabled: confidentialIn(m), run: () => void translate(m) }] : []),
     { label: t('Mark unread from here'), icon: Mail, group: 'mark', run: () => props.onMarkUnread(thread.id) },
   ];
+
+  /** Pictures pasted or dropped into a reply: uploaded, then shown where they were put (cid images when sent). */
+  const inlineImages = (pics: File[]) =>
+    Promise.all(
+      pics.map((f) =>
+        uploadForMail(f).then(
+          (up) => ({ url: up.url, name: f.name }),
+          (e: Error) => (toast({ text: e.message }), null),
+        ),
+      ),
+    );
 
   /** Done, or the way back for an email that isn't in the inbox. */
   const primary =
@@ -591,35 +608,8 @@ export function Reader(props: Props) {
             {m.invite && props.inviteCard && <div className="mi-wrap">{props.inviteCard(m)}</div>}
             {!m.confidential && <CodeCard text={`${thread.subject}\n${m.body}`} />}
             <MailBody m={m} spam={thread.location === 'spam'} blockTrackers={props.blockTrackers} translation={translations.get(m.id)} onShowOriginalText={() => setTranslations((x) => new Map([...x].filter(([k]) => k !== m.id)))} />
-            {m.attachments && m.attachments.some((a) => !a.cid) && (
-              <div className="attachments">
-                {m.attachments.filter((a) => !a.cid).map((a) => {
-                  const saved = props.savedToDrive(a.name);
-                  return (
-                    <div key={a.name} className="attachment">
-                      <span className="file-icon">
-                        <FileText size={18} />
-                      </span>
-                      <div>
-                        <div className="file-name">
-                          {a.url ? (
-                            <a href={a.url} target="_blank" rel="noreferrer" download={a.name}>
-                              {a.name}
-                            </a>
-                          ) : (
-                            a.name
-                          )}
-                        </div>
-                        <div className="file-size">{a.size}</div>
-                      </div>
-                      <button className={`att-save ${saved ? 'saved' : ''}`} disabled={saved} onClick={() => props.onSaveToDrive(thread.id, a)} title={saved ? t('Saved to Drive') : t('Save to Drive')} aria-label={saved ? t('Saved to Drive') : t('Save {name} to Drive', { name: a.name })}>
-                        {saved ? <Check size={14} /> : <HardDriveUpload size={14} />}
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
+            {/* Files: previews, Download all, Save to Drive (src/components/mail/MessageFiles.tsx). */}
+            <MessageFiles thread={thread} message={m} />
             {m.tracking && <TrackingPanel thread={thread} message={m} />}
           </div>
         )}
@@ -838,8 +828,9 @@ export function Reader(props: Props) {
                     }
                   />
                   <div onKeyDown={(e) => e.key === 'Escape' && !(e.target as HTMLElement).closest('.tb-popup, .recip') && setReplyOpen(false)}>
-                    <RichEditor autoFocus initialHtml={replyInitial ?? draft?.html ?? (signature ? `<p><br></p>${signature}` : '')} placeholder={t('Write your reply…')} onChange={(html, text) => (setReply({ html, text }), REPLY_DRAFTS.set(thread.id, { html, text }))} onSubmit={send} spellLang={spellLang} suggest={nextWords} />
+                    <RichEditor autoFocus initialHtml={replyInitial ?? draft?.html ?? (signature ? `<p><br></p>${signature}` : '')} placeholder={t('Write your reply…')} onChange={(html, text) => (setReply({ html, text }), REPLY_DRAFTS.set(thread.id, { html, text }))} onSubmit={send} spellLang={spellLang} suggest={nextWords} onImages={inlineImages} />
                   </div>
+                  <DraftFilesList state={replyFiles} />
                   <div className="reply-actions">
                     {props.canTrack && replyOutside.length > 0 && (
                       <button
@@ -860,11 +851,13 @@ export function Reader(props: Props) {
                         <span>{replyTracked ? t('Tracking') : t('Not tracked')}</span>
                       </button>
                     )}
+                    <AttachButton onFiles={(f) => replyFiles.add(f)} />
                     <button
                       className="ghost-btn"
                       onClick={() => {
                         setReplyOpen(false);
                         setReplyInitial(null);
+                        replyFiles.clear();
                         REPLY_DRAFTS.delete(thread.id);
                       }}
                     >
@@ -876,7 +869,8 @@ export function Reader(props: Props) {
                         send();
                         REPLY_DRAFTS.delete(thread.id);
                       }}
-                      disabled={!hasOwnText(reply.text, signature)}
+                      disabled={(!hasOwnText(reply.text, signature) && !replyFiles.files.length) || replyFiles.busy}
+                      title={replyFiles.busy ? t('Wait for the files to finish uploading') : undefined}
                     >
                       <Send size={15} /> {t('Send')} <kbd>⌘↵</kbd>
                     </button>
@@ -1064,25 +1058,8 @@ export function Reader(props: Props) {
             {m.invite && props.inviteCard && <div className="mi-wrap">{props.inviteCard(m)}</div>}
             {!m.confidential && <CodeCard text={`${thread.subject}\n${m.body}`} />}
             <MailBody m={m} spam={thread.location === 'spam'} blockTrackers={props.blockTrackers} translation={translations.get(m.id)} onShowOriginalText={() => setTranslations((x) => new Map([...x].filter(([k]) => k !== m.id)))} />
-            {m.attachments && m.attachments.some((a) => !a.cid) && (
-              <div className="gm-atts">
-                {m.attachments.length > 2 && (
-                  <div className="gm-atts-head">
-                    <span>{tn(m.attachments.length, '{n} attachment', '{n} attachments')}</span>
-                    {m.attachments.some((a) => !props.savedToDrive(a.name)) && (
-                      <button type="button" className="link-btn" onClick={() => m.attachments!.forEach((a) => !props.savedToDrive(a.name) && props.onSaveToDrive(thread.id, a))}>
-                        {t('Save all to Drive')}
-                      </button>
-                    )}
-                  </div>
-                )}
-                <div className="gm-att-row">
-                  {m.attachments.filter((a) => !a.cid).map((a) => (
-                    <AttachmentCard key={a.name} a={a} saved={props.savedToDrive(a.name)} onSave={() => props.onSaveToDrive(thread.id, a)} />
-                  ))}
-                </div>
-              </div>
-            )}
+            {/* Files: previews, Download all, Save to Drive (src/components/mail/MessageFiles.tsx). */}
+            <MessageFiles thread={thread} message={m} />
             {m.tracking && <TrackingPanel thread={thread} message={m} />}
           </div>
         </article>
@@ -1348,11 +1325,12 @@ export function Reader(props: Props) {
             all={replyAll}
             subject={thread.subject}
             initialHtml={replyInitial ?? draft?.html ?? (signature ? `<p><br></p>${signature}` : '')}
+            initialFiles={restoredFiles}
             signature={signature}
             userId={props.meUser.id}
             myName={props.myName}
             track={props.canTrack && replyOutside.length > 0 ? { on: replyTracked, set: setReplyTrack } : null}
-            onSend={(html, text, opts) => props.onReply(thread.id, html, text, replyTracked, replyAll, opts)}
+            onSend={(html, text, opts) => (setRestoredFiles([]), props.onReply(thread.id, html, text, replyTracked, replyAll, opts))}
             onKeep={(d) => {
               if (d) REPLY_DRAFTS.set(thread.id, d);
               else REPLY_DRAFTS.delete(thread.id);
@@ -1436,40 +1414,3 @@ function CodeCard({ text }: { text: string }) {
   );
 }
 
-/** A file in an email on phones: Gmail's card (a preview, then the name). Tap opens it; hold for Download, Save to Drive, Share. */
-function AttachmentCard({ a, saved, onSave }: { a: Attachment; saved: boolean; onSave: () => void }) {
-  const img = /\.(png|jpe?g|gif|webp|heic|svg)$/i.test(a.name);
-  const ext = (a.name.split('.').pop() ?? '').slice(0, 4).toUpperCase();
-  const self = useRef<HTMLButtonElement>(null);
-  const menu = useActionMenu(
-    () => [
-      ...(a.url ? [{ label: t('Download'), icon: Download, run: () => void window.open(a.url, '_blank', 'noopener') }] : []),
-      { label: saved ? t('Saved to Drive') : t('Save to Drive'), icon: saved ? Check : HardDriveUpload, disabled: saved, run: onSave },
-      ...(a.url && typeof navigator !== 'undefined' && 'share' in navigator ? [{ label: t('Share'), icon: Share2, run: () => void navigator.share({ title: a.name, url: new URL(a.url!, location.href).href }).catch(() => {}) }] : []),
-    ],
-    { title: a.name },
-  );
-  const face = (
-    <>
-      <span className="gm-att-preview">{img && a.url ? <img src={a.url} alt="" loading="lazy" /> : <span className="gm-att-ext">{ext || <FileText size={28} />}</span>}</span>
-      <span className="gm-att-name">
-        {img ? <ImageIcon size={16} /> : <FileText size={16} />}
-        <span>{a.name}</span>
-      </span>
-    </>
-  );
-  return (
-    <>
-      {a.url ? (
-        <a className="gm-att lp" href={a.url} target="_blank" rel="noreferrer" title={`${a.name} · ${a.size}`} {...menu.bind}>
-          {face}
-        </a>
-      ) : (
-        <button type="button" ref={self} className="gm-att lp" title={`${a.name} · ${a.size}`} onClick={() => menu.openFrom(self)} {...menu.bind}>
-          {face}
-        </button>
-      )}
-      {menu.menu}
-    </>
-  );
-}

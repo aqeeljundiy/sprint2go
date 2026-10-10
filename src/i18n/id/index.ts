@@ -14,6 +14,7 @@ import home from './home';
 import onboarding from './onboarding';
 import mail from './mail';
 import mailTeams from './mail.teams';
+import mailFiles from './mail.files';
 import mailExtras from './mail.extras';
 import mailFilters from './mail.filters';
 import mailSorting from './mail.sorting';
@@ -33,6 +34,6 @@ import server from './server';
 import serverFilters from './server.filters';
 import misc from './misc';
 
-const id: Record<string, string> = { ...common, ...shell, ...ui, ...settings, ...settingsAi, ...settingsCompany, ...settingsMail, ...settingsImports, ...auth, ...home, ...onboarding, ...mail, ...mailExtras, ...mailFilters, ...mailSorting, ...mailTeams, ...calendar, ...notes, ...chat, ...meet, ...drive, ...tasks, ...projects, ...teams, ...tables, ...vault, ...guest, ...admin, ...server, ...serverFilters, ...misc };
+const id: Record<string, string> = { ...common, ...shell, ...ui, ...settings, ...settingsAi, ...settingsCompany, ...settingsMail, ...settingsImports, ...auth, ...home, ...onboarding, ...mail, ...mailFiles, ...mailExtras, ...mailFilters, ...mailSorting, ...mailTeams, ...calendar, ...notes, ...chat, ...meet, ...drive, ...tasks, ...projects, ...teams, ...tables, ...vault, ...guest, ...admin, ...server, ...serverFilters, ...misc };
 
 export default id;

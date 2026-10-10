@@ -43,6 +43,9 @@ import { ContactsView, useComposeContacts } from './components/mail/Contacts';
 import { flushOutbox, keepOffline, sendMail } from './components/mail/offline';
 import { dlpWords, type DlpStop } from './components/mail/teamsApi';
 import { live, reloadAll, resync, server, uploadFile, uploadPolicy, wasSkipped } from './sync';
+import { FilesView } from './components/mail/FilesView';
+import { threadHasAttachment } from './mailAttachments';
+import { makeLinks as makeFileLinks, saveToDrive as saveAttachments } from './components/mail/attachApi'; // Mail attachments round
 import { TRY_KEYS, isSandbox, isSandboxId, sandboxWsId, type TryKey } from './sandbox';
 import { DemoCompanyBar, DemoInvite, ResetDemoDialog, TryList, demoCompanySeen, hideDemoCompany, openDemoCompany, resetDemoCompany, useDemoState } from './components/DemoCompany';
 import { InviteCard, type InviteState } from './components/InviteCard';
@@ -76,7 +79,7 @@ import { InboxSections, InboxSettings, InboxTabs, KeepNotice, QueryBar, SavedSea
 import { MailShortcuts } from './components/mail/Shortcuts';
 import { matchThread, parseQuery, type Category } from './mailQuery';
 import { Reader } from './components/Reader';
-import { Compose, type Outgoing } from './components/Compose';
+import { Compose, type Outgoing, type OutgoingFile } from './components/Compose';
 import type { CalView } from './components/CalendarView';
 import { CalendarSidebar } from './components/CalendarSidebar';
 import { ScheduleTask } from './components/calendar/ScheduleTask';
@@ -173,7 +176,7 @@ const fromMe = (t: Thread) => t.messages.some((m) => isMine(m.from.email));
 type ViewCtx = { me?: string; todo?: Set<string>; projectOf?: (t: Thread) => string | undefined; tabs?: Category[] };
 
 function inView(t: Thread, v: View, ctx: ViewCtx = {}): boolean {
-  if (v.kind === 'tracking') return false;
+  if (v.kind === 'tracking' || v.kind === 'files') return false;
   // Inbox tabs (mail/sortPrefs.ts): the inbox is Primary when tabs are on; each tab is its own part of the inbox.
   if (v.kind === 'category') return inView(t, { kind: 'folder', id: 'inbox' }) && tabOf(t, ctx.tabs ?? []) === v.id;
   if (v.kind === 'folder' && v.id === 'inbox' && (ctx.tabs?.length ?? 0) > 1 && tabOf(t, ctx.tabs!) !== 'primary') return false;
@@ -688,7 +691,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       (filter === 'unread' && t.unread) ||
       (filter === 'reply' && needsReply(t, isMine)) ||
       (filter === 'assigned' && t.assignee === user.id) ||
-      (filter === 'files' && t.messages.some((m) => m.attachments?.length))) &&
+      (filter === 'files' && threadHasAttachment(t))) && // pictures inside the words don't count (src/mailAttachments.ts)
     (!parsedQuery || matchThread(parsedQuery, t, queryCtx));
   /** A search looks through all mail, as in Gmail (in:inbox, label: and the rest narrow it); otherwise the view. */
   const inList = (t: Thread) => (parsedQuery ? true : inView(t, view, viewCtx)) && passes(t);
@@ -868,7 +871,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         const m = t.messages[0];
         openCompose({
           draftId: t.id,
-          initial: { to: m.to, cc: m.cc ?? [], bcc: m.bcc ?? [], subject: t.subject === '(no subject)' ? '' : t.subject, html: m.html ?? m.body.replace(/\n/g, '<br>'), text: m.body, files: [], track: settings.trackByDefault, trackOptions: m.trackOptions ?? DEFAULT_TRACK_OPTIONS, fromId: t.accountId, ...draftExtras(m) },
+          initial: { to: m.to, cc: m.cc ?? [], bcc: m.bcc ?? [], subject: t.subject === '(no subject)' ? '' : t.subject, html: m.html ?? m.body.replace(/\n/g, '<br>'), text: m.body, files: filesOf(m), track: settings.trackByDefault, trackOptions: m.trackOptions ?? DEFAULT_TRACK_OPTIONS, fromId: t.accountId, ...draftExtras(m) },
         });
         return;
       }
@@ -944,6 +947,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     const e = email.toLowerCase();
     return members.find((u) => u.email.toLowerCase() === e) ?? members.find((u) => ws.accounts.some((a) => a.kind === 'personal' && a.email.toLowerCase() === e && a.users.includes(u.id)));
   };
+  /** A message's files as Compose takes them (drafts, forwards): the ones kept on the server, not pictures inside it. */
+  const filesOf = (m: Message) => (m.attachments ?? []).filter((a) => a.url && !a.inline && !a.cid && !a.blocked).map((a) => ({ name: a.name, size: parseSize(a.size), url: a.url!, type: a.type }));
   /** Forward: a new email with the last message quoted under your signature, and its files attached. */
   const forward = (th: Thread, one?: Message) => {
     const m = one ?? lastMessage(th);
@@ -959,7 +964,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         subject: /^fwd?:/i.test(th.subject) ? th.subject : `Fwd: ${th.subject}`,
         html,
         text: htmlToText(html),
-        files: (m.attachments ?? []).filter((a) => a.url).map((a) => ({ name: a.name, size: parseSize(a.size), url: a.url! })),
+        files: filesOf(m),
         track: settings.trackByDefault,
         trackOptions: DEFAULT_TRACK_OPTIONS,
         fromId: th.accountId,
@@ -992,7 +997,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     if (d.note) text = d.note;
     showToast(left > 1000 ? { text, ms: Math.max(left, d.note ? 6000 : 0), action: { label: t('Undo'), run: undo } } : { text, ms: d.note ? 6000 : undefined });
   };
-  const [restoreReply, setRestoreReply] = useState<{ threadId: string; html: string; text: string; key: number } | null>(null);
+  const [restoreReply, setRestoreReply] = useState<{ threadId: string; html: string; text: string; key: number; files?: OutgoingFile[] } | null>(null);
 
   /** Why the mail engine didn't take an email, as a sentence that ends properly. */
   const refusal = async (r: Response | null, fallback: string) => {
@@ -1000,11 +1005,26 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     return /[.!?]$/.test(why) ? why : `${why}.`;
   };
 
+  /** Files in `opts.files` are uploaded already; big ones go as Drive links, made first (attachments round). */
+  const reply = (id: string, html: string, text: string, track = false, all = false, opts: ReplyOpts = {}) => {
+    const big = (opts.files ?? []).filter((f) => f.link);
+    const th0 = threads.find((x) => x.id === id);
+    if (real && big.length && th0) {
+      const last0 = lastMessage(th0);
+      const people = (opts.to || opts.cc ? [...(opts.to ?? []), ...(opts.cc ?? [])] : [last0.from, ...last0.to]).map((p) => p.email).filter((e) => !isMine(e));
+      void makeFileLinks(big.map((f) => ({ name: f.name, url: f.url, size: f.size ?? 0 })), 'recipients', people, ws.id).then(
+        (add) => replyNow(id, html + (add?.html ?? ''), text + (add?.text ?? ''), track, all, { ...opts, files: (opts.files ?? []).filter((f) => !f.link) }),
+        (e: Error) => showToast({ text: t('Reply not sent. {why} What you wrote is back in the reply box.', { why: e.message }), ms: 10000 }),
+      );
+      return;
+    }
+    replyNow(id, html, text, track, all, opts);
+  };
   /**
    * A reply in its conversation. Who it goes to follows Gmail (src/mailPeople.ts: Reply-To, Reply all keeps Cc as Cc)
    * unless the reply box changed it (`opts`: the people, the subject, priority, plain text).
    */
-  const reply = (id: string, html: string, text: string, track = false, all = false, opts: ReplyOpts & { dlpAck?: boolean } = {}) => {
+  const replyNow = (id: string, html: string, text: string, track: boolean, all: boolean, opts: ReplyOpts & { dlpAck?: boolean }) => {
     const th = threads.find((x) => x.id === id);
     if (!th) return;
     const acct = accountOf(th.accountId);
@@ -1023,12 +1043,13 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     const outside = [...to, ...cc].filter((p) => !isTeam(p.email));
     const tracked = track && ws.readTracking !== false && outside.length > 0 && !opts.confidential;
     const tracking = tracked ? Object.fromEntries(outside.map((p) => [p.email, { opens: [], clicks: [] }])) : undefined;
+    const attachments = opts.files?.length ? opts.files.map((f) => ({ name: f.name, size: sizeText(f.size ?? 0), url: f.url, ...(f.type ? { type: f.type } : {}) })) : undefined;
     const sendHtml = opts.plain ? undefined : html;
-    setThreads((ts) => ts.map((x) => (x.id === id ? { ...x, messages: [...x.messages, { id: msgId, from, to, ...(cc.length ? { cc } : {}), ...(bcc.length ? { bcc } : {}), ...(opts.replyTo?.length ? { replyTo: opts.replyTo } : {}), ...(opts.priority ? { priority: opts.priority } : {}), ...(opts.plain ? { plain: true } : {}), date: new Date().toISOString(), body: text, html: sendHtml, ...(tracked ? { tracking, trackOptions: REPLY_TRACK_OPTIONS } : {}) }] } : x)));
+    setThreads((ts) => ts.map((x) => (x.id === id ? { ...x, messages: [...x.messages, { id: msgId, from, to, ...(cc.length ? { cc } : {}), ...(bcc.length ? { bcc } : {}), ...(opts.replyTo?.length ? { replyTo: opts.replyTo } : {}), ...(opts.priority ? { priority: opts.priority } : {}), ...(opts.plain ? { plain: true } : {}), date: new Date().toISOString(), body: text, html: sendHtml, ...(attachments ? { attachments } : {}), ...(tracked ? { tracking, trackOptions: REPLY_TRACK_OPTIONS } : {}) }] } : x)));
     /** It didn't go: the reply leaves the conversation and its words go back in the reply box, to send again or change. */
     const notSent = (why: string, again?: () => void) => {
       setThreads((ts) => ts.map((x) => (x.id === id ? { ...x, messages: x.messages.filter((m) => m.id !== msgId) } : x)));
-      const back = () => setRestoreReply({ threadId: id, html, text, key: Date.now() });
+      const back = () => setRestoreReply({ threadId: id, html, text, key: Date.now(), files: opts.files?.map((f) => ({ ...f, size: f.size ?? 0 })) });
       back();
       // A data loss warning (server/mailCompliance.ts): "Send anyway" sends it, confirmed.
       showToast({ text: t('Reply not sent. {why} What you wrote is back in the reply box.', { why }), ms: 10000, action: again ? { label: t('Send anyway'), run: again } : { label: t('Open'), run: () => (setSelectedId(id), setReaderOpen(true), back()) } });
@@ -1040,12 +1061,12 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       void sendMail(user.id, { workspaceId: ws.id, accountId: acct.id, threadId: th.id, messageId: msgId, to, cc, bcc, subject, text, html: sendHtml, files: (opts.files ?? []).map((f) => ({ name: f.name, url: f.url })), inReplyTo: last.mid, references: refs, track: tracked, trackOptions: tracked ? { opens: REPLY_TRACK_OPTIONS.opens, clicks: REPLY_TRACK_OPTIONS.clicks, notify: REPLY_TRACK_OPTIONS.notify } : undefined, undoSeconds: settings.undoSend, ...extrasOf({ fromAddress, replyTo: opts.replyTo, priority: opts.priority, confidential: opts.confidential }, acct) , dlpAck: opts.dlpAck }).then(
         async (r) => {
           const stop = await dlpOf(r);
-          if (stop) return notSent(dlpWords(stop), stop.action === 'warn' ? () => reply(id, html, text, track, all, { ...opts, dlpAck: true }) : undefined);
+          if (stop) return notSent(dlpWords(stop), stop.action === 'warn' ? () => replyNow(id, html, text, track, all, { ...opts, dlpAck: true }) : undefined);
           return r.ok
             ? sentToast(r, t('Reply sent'), () =>
                 takeBack(id, msgId, () => {
                   setThreads((ts) => ts.map((x) => (x.id === id ? { ...x, messages: x.messages.filter((m) => m.id !== msgId) } : x)));
-                  setRestoreReply({ threadId: id, html, text, key: Date.now() });
+                  setRestoreReply({ threadId: id, html, text, key: Date.now(), files: opts.files?.map((f) => ({ ...f, size: f.size ?? 0 })) });
                 }),
               )
             : notSent(await refusal(r, t('The mail engine refused it.')));
@@ -1095,7 +1116,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         ...(m.plain ? { plain: true } : {}),
         // A draft (and a scheduled one) keeps what it asked for, so it goes out the same way later (server/mailExtras.ts).
         ...(location === 'drafts' && (m.fromAddress || m.confidential || m.replyTo?.length || m.priority) ? { sendOptions: extrasOf(m, accountOf(m.fromId)) } : {}),
-        attachments: m.files.length ? m.files.map((f) => ({ name: f.name, size: sizeText(f.size) })) : undefined,
+        // With their addresses: a draft, a scheduled email and the sent copy keep their files (attachments round).
+        attachments: m.files.length ? m.files.map((f) => ({ name: f.name, size: sizeText(f.size), url: f.url, ...(f.type ? { type: f.type } : {}) })) : undefined,
         trackOptions: m.track && (location !== 'drafts' || scheduled) ? m.trackOptions : undefined,
         tracking:
           m.track && (location !== 'drafts' || scheduled)
@@ -1144,7 +1166,24 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   /** The data loss rules' answer to a send (a 409 with `dlp`), or null. */
   const dlpOf = async (r: Response): Promise<DlpStop | null> => (r.status === 409 ? (((await r.clone().json().catch(() => ({}))) as { dlp?: DlpStop }).dlp ?? null) : null);
 
-  const send = (m: Outgoing, dlpAck = false) => {
+  /**
+   * Files too big for the email go as Drive links (src/components/mail/attachApi.ts): the links are made first and added
+   * at the end of what's written, then the email goes as any other. The demo has no links to make: files stay attached.
+   */
+  const send = (m: Outgoing) => {
+    const big = m.files.filter((f) => f.link);
+    // Nothing to share yet when it can't go out (sendNow says why and keeps the draft).
+    if (!real || !big.length || (!m.sendAt && !boxReady(m.fromId).send)) return sendNow(m);
+    const people = [...m.to, ...m.cc, ...(m.bcc ?? [])].map((p) => p.email);
+    void makeFileLinks(big, m.linkAccess ?? 'recipients', people, ws.id).then(
+      (add) => sendNow({ ...m, files: m.files.filter((f) => !f.link), html: m.html + (add?.html ?? ''), text: m.text + (add?.text ?? '') }),
+      (e: Error) => {
+        setCompose(null);
+        showToast({ text: t('Not sent. {why}', { why: e.message }), ms: 10000, action: { label: t('Open'), run: () => openCompose({ initial: m }) } });
+      },
+    );
+  };
+  const sendNow = (m: Outgoing, dlpAck = false) => {
     if (m.sendAt) {
       // Send later: kept as a scheduled draft until its time (the server does this for real).
       const th = { ...toThread(m, 'drafts', undefined, true), sendAt: m.sendAt };
@@ -1186,7 +1225,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       void sendMail(user.id, { workspaceId: ws.id, accountId: from.id, threadId: thread.id, messageId: thread.messages[0].id, ...extrasOf(m, from), to: m.to, cc: m.cc, bcc: m.bcc ?? [], subject: m.subject, text: m.text, html: m.plain ? undefined : m.html, files: m.files.map((f) => ({ name: f.name, url: f.url })), inReplyTo: replyOf?.mid, references: replyOf?.references, track: m.track, trackOptions: m.track ? { opens: m.trackOptions.opens, clicks: m.trackOptions.clicks, notify: m.trackOptions.notify, remindDays: m.trackOptions.remindDays } : undefined, undoSeconds: settings.undoSend , dlpAck }).then(
         async (r) => {
           const stop = await dlpOf(r);
-          if (stop) return notSent(thread, m, dlpWords(stop), stop.action === 'warn' ? () => send(m, true) : undefined);
+          if (stop) return notSent(thread, m, dlpWords(stop), stop.action === 'warn' ? () => sendNow(m, true) : undefined);
           if (!r.ok) return notSent(thread, m, await refusal(r, t('The mail engine refused it.')));
           // Undo while the mail engine still has it waiting: it comes back as a draft, and nobody got it.
           await sentToast(r, t('Message sent'), () =>
@@ -3429,9 +3468,10 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         .filter((t) => t.location !== 'trash' && t.location !== 'spam')
         .flatMap((t) =>
           t.messages.flatMap((m) =>
-            (m.attachments ?? []).map((a) => ({
+            (m.attachments ?? []).filter((a) => !a.inline && !a.blocked).map((a) => ({
               id: `att:${t.id}:${m.id}:${a.name}`,
               name: a.name,
+              url: a.url,
               kind: kindOf({ name: a.name }),
               parentId: null,
               size: parseSize(a.size),
@@ -3508,23 +3548,24 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   };
 
   const savedToDrive = (name: string) => wsDrive.some((i) => i.name === name && i.threadId === selectedId && !i.trashed);
+  // Save to Drive copies the real file (server/mailFiles.ts); the reader's own buttons pick a folder.
   const saveToDrive = (threadId: string, a: Attachment) => {
     const msg = threads.find((t) => t.id === threadId)?.messages.find((m) => m.attachments?.some((x) => x.name === a.name));
-    setDrive((d) => [
-      ...d,
-      { id: uid(), name: a.name, kind: kindOf({ name: a.name }), parentId: null, size: parseSize(a.size), modified: msg?.date ?? new Date().toISOString(), threadId, workspaceId: ws.id },
-    ]);
-    showToast({
-      text: t('Saved to My Drive'),
-      action: {
-        label: t('View'),
-        run: () => {
-          setDriveSection('my');
-          setDriveFolder(null);
-          go('drive');
-        },
-      },
-    });
+    void saveAttachments({ threadId, messageId: msg?.id, atts: [a], folderId: null, date: msg?.date, wsId: ws.id }).then(
+      () =>
+        showToast({
+          text: t('Saved to My Drive'),
+          action: {
+            label: t('View'),
+            run: () => {
+              setDriveSection('my');
+              setDriveFolder(null);
+              go('drive');
+            },
+          },
+        }),
+      (e: Error) => showToast({ text: e.message, ms: 7000 }),
+    );
   };
 
   /* ---------------- Keyboard ---------------- */
@@ -3635,7 +3676,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
 
   /* ---------------- Render ---------------- */
 
-  const title = mode === 'mail' && parsedQuery ? t('Search results') : view.kind === 'category' ? categoryName(view.id) : view.kind === 'contacts' ? t('Contacts') : view.kind === 'folder' ? folderName(view.id) : view.kind === 'tracking' ? t('Waiting for reply') : view.kind === 'todos' ? t('To-do') : view.kind === 'project' ? (wsClientsAll.find((c) => c.id === view.id)?.name ?? term.one) : organize.labelTitle(view.id);
+  const title = mode === 'mail' && parsedQuery ? t('Search results') : view.kind === 'category' ? categoryName(view.id) : view.kind === 'contacts' ? t('Contacts') : view.kind === 'folder' ? folderName(view.id) : view.kind === 'tracking' ? t('Waiting for reply') : view.kind === 'files' ? t('Files') : view.kind === 'todos' ? t('To-do') : view.kind === 'project' ? (wsClientsAll.find((c) => c.id === view.id)?.name ?? term.one) : organize.labelTitle(view.id);
   const appMode = mode === 'settings' ? lastMode : mode;
 
   /** Each app's gear: Settings at that app's section (only sections this person can use). */
@@ -4367,7 +4408,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             />
           </section>
         )}
-        {mobile && mode === 'mail' && view.kind === 'tracking' && (
+        {mobile && mode === 'mail' && (view.kind === 'tracking' || view.kind === 'files') && (
           <TopBar app="mail" replace={<MailSearchPill me={ME} elsewhere={workspaces.some((w) => w.id !== ws.id && (wsUnread[w.id] ?? 0) > 0)} onMenu={() => setSidebarOpen(true)} onSearch={searchHere} onAccounts={() => setMailAccounts(true)} />} />
         )}
         {mobile && mailSettingsOpen && (
@@ -4881,7 +4922,9 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         {mode === 'mail' && view.kind === 'contacts' && (
           <ContactsView ws={ws} users={members} me={user.id} onMenu={() => setSidebarOpen(true)} toast={(text) => showToast({ text })} onCompose={(p) => openCompose({ initial: { to: [p], cc: [], subject: '', html: settings.signature, text: '', files: [], track: settings.trackByDefault, trackOptions: DEFAULT_TRACK_OPTIONS, fromId: (sendable.find((a) => a.kind === 'personal') ?? sendable[0] ?? myAccounts[0])?.id ?? '' } })} />
         )}
-        {mode === 'mail' && myAccounts.length > 0 && (mailIn || mailOut) && view.kind !== 'tracking' && view.kind !== 'contacts' && (
+        {/* Every attachment in one place (src/components/mail/FilesView.tsx). */}
+        {mode === 'mail' && view.kind === 'files' && <FilesView threads={scoped} onOpenThread={openThread} onMenu={() => setSidebarOpen(true)} />}
+        {mode === 'mail' && myAccounts.length > 0 && (mailIn || mailOut) && view.kind !== 'tracking' && view.kind !== 'files' && view.kind !== 'contacts' && (
           <div className="mail-view view-enter">
             <MessageList
               notice={

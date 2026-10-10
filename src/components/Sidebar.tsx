@@ -14,7 +14,7 @@ import {
   ShieldAlert,
   Star,
   Trash2,
-  type LucideIcon, Clock, CalendarClock, UserCheck, Timer, MoreHorizontal, Plus, ListChecks, Inbox as InboxIcon, Hourglass, ListTodo, File, Tag, Folder, Settings, HelpCircle, Contact as ContactIcon, UserRoundCheck } from 'lucide-react';
+  type LucideIcon, Clock, CalendarClock, UserCheck, Timer, MoreHorizontal, Plus, ListChecks, Inbox as InboxIcon, Hourglass, ListTodo, File, Tag, Folder, Settings, HelpCircle, Paperclip, Contact as ContactIcon, UserRoundCheck } from 'lucide-react';
 import type { Account, AppId, FolderId, Label, View, Workspace } from '../types';
 import { usePhone } from '../mobile/media';
 import { WorkspaceLogo } from './WorkspaceLogo';
@@ -285,6 +285,10 @@ export function Sidebar(props: Props) {
                     <ContactIcon size={17} />
                     <span className="sb-label">{t('Contacts')}</span>
                   </button>
+                  <button className={`nav-item ${isActive({ kind: 'files', id: 'files' }) ? 'active' : ''}`} onClick={() => props.onSelect({ kind: 'files', id: 'files' })} title={t('Files: every attachment in your mail')}>
+                    <Paperclip size={17} />
+                    <span className="sb-label">{t('Files')}</span>
+                  </button>
 
                 </nav>
                 {props.savedNav}
@@ -371,6 +375,7 @@ function PhoneMailDrawer(props: Props & { pm: NonNullable<Props['phoneMail']>; i
           {item('snoozed', Clock, folderName('snoozed'), isActive({ kind: 'folder', id: 'snoozed' }), () => pick({ kind: 'folder', id: 'snoozed' }))}
           {item('tracking', Hourglass, t('Waiting for reply'), isActive({ kind: 'tracking', id: 'tracking' }), () => pick({ kind: 'tracking', id: 'tracking' }))}
           {item('todos', ListTodo, t('To-do'), isActive({ kind: 'todos', id: 'todos' }), () => pick({ kind: 'todos', id: 'todos' }), pm.todo)}
+          {item('files', Paperclip, t('Files'), isActive({ kind: 'files', id: 'files' }), () => pick({ kind: 'files', id: 'files' }))}
           {item('sent', Send, folderName('sent'), isActive({ kind: 'folder', id: 'sent' }), () => pick({ kind: 'folder', id: 'sent' }))}
           {item('scheduled', CalendarClock, folderName('scheduled'), isActive({ kind: 'folder', id: 'scheduled' }), () => pick({ kind: 'folder', id: 'scheduled' }), counts.scheduled)}
           {item('drafts', File, folderName('drafts'), isActive({ kind: 'folder', id: 'drafts' }), () => pick({ kind: 'folder', id: 'drafts' }), counts.drafts)}

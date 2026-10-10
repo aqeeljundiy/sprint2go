@@ -64,6 +64,7 @@ import * as digest from './digest.ts';
 import * as retention from './retention.ts';
 import * as sandbox from './sandbox.ts';
 import * as imports from './imports.ts';
+import * as mailFiles from './mailFiles.ts'; // mail attachments: previews, zip, Save to Drive, links for big files, safety
 import { isSandboxId, sandboxWsId } from '../src/sandbox.ts';
 import { companyTz, isZone } from '../src/jobTimes.ts';
 import * as connector from './connector.ts';
@@ -1174,7 +1175,7 @@ async function writeMeetingNotes(id: string, again = false) {
 
 /* ---------- the app itself ---------- */
 
-const TYPES: Record<string, string> = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon', '.woff2': 'font/woff2', '.json': 'application/json', '.webmanifest': 'application/manifest+json', '.webp': 'image/webp' };
+const TYPES: Record<string, string> = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon', '.woff2': 'font/woff2', '.json': 'application/json', '.webmanifest': 'application/manifest+json', '.webp': 'image/webp' };
 /** The company whose own address this request came to (its clients' door), if any: a live address, or <slug>.localhost to try it. */
 function brandedHost(req: IncomingMessage): any {
   const host = hostOf(req);
@@ -1774,6 +1775,8 @@ createServer(async (req, res) => {
   // Read tracking's picture and links in mail people sent (server/readTracking.ts): public, rate limited, and they
   // answer the same whatever happened.
   if (p.startsWith('/t/') && readTracking.serveTracking(req, res, url, ipOf(req), tooMany(`track:${ipOf(req)}`, 600, 60_000))) return;
+  // Big files sent from Mail as links (server/mailFiles.ts): public pages, "recipients only" asks for a code first.
+  if (p.startsWith('/f/') && (await mailFiles.handlePublic(req, res, url))) return;
   // Confidential email for people outside sprint2go (server/mailConfidential.ts): its own page, with a code by email when asked.
   if (p.startsWith('/c/') && (await confidential.handlePublic(req, res, p, { tooMany, secure: secureCookies(), form: async () => { let raw = ''; for await (const c of req) if ((raw += c).length > 4000) break; return new URLSearchParams(raw); } }))) return;
   // Connected AI apps: /mcp and the sign-in addresses they expect (OAuth and /.well-known). /oauth/authorize is a page.
@@ -2444,6 +2447,8 @@ createServer(async (req, res) => {
       notifyUsers(opIds, msg('{company} ordered {n} Boosted emails: invoice {number}, {total}. Mark it paid when the transfer arrives.', { company: ws.name, n: r.credits.toLocaleString('id-ID'), number: r.invoice.number, total: `Rp ${r.invoice.total.toLocaleString('id-ID')}` }), `/admin/money/invoices/${r.invoice.id}`);
       return json(res, 200, { invoice: { id: r.invoice.id, number: r.invoice.number, total: r.invoice.total, dueAt: r.invoice.dueAt }, credits: r.credits, bank: platform.settings().billing.bank, orders: billing.openOrders(ws.id) });
     }
+    // Mail attachments (server/mailFiles.ts): Download all as zip, Save to Drive, links for big files, every attachment.
+    if (p.startsWith('/api/mail/') && (await mailFiles.handle(req, res, url, me))) return;
     if (p === '/api/mail/send' && req.method === 'POST') {
       const b = await body(req);
       const ws = memberOf(me).find((w) => w.id === b.workspaceId) as any;
@@ -2471,6 +2476,9 @@ createServer(async (req, res) => {
         return id ? db.fileInfo(id)?.workspaceId === ws.id : u.startsWith('data:');
       };
       if ((Array.isArray(b.files) ? b.files : []).some((f: any) => f && typeof f.url === 'string' && !fileOk(f.url))) return json(res, 403, { error: mark('One of the attachments isn’t a file of this company.') });
+      // Files Gmail refuses (also inside zips), renamed programs, and more than 25 MB: said now, before the Undo wait.
+      const badFiles = await mailFiles.checkOutgoing((Array.isArray(b.files) ? b.files : []).filter((f: any) => f && typeof f.url === 'string').map((f: any) => ({ name: String(f.name ?? 'file'), url: String(f.url) })), ws.id, String(b.html ?? b.text ?? '').length);
+      if (badFiles) return json(res, 400, { error: badFiles });
       const people = (list: unknown) => (Array.isArray(list) ? list : []).filter((x: any) => x && typeof x.email === 'string' && x.email.includes('@')).map((x: any) => ({ name: String(x.name ?? '').slice(0, 120), email: String(x.email).trim().toLowerCase() }));
       // Data loss rules (server/mailCompliance.ts): a warning goes back to the sender, who confirms (dlpAck); a block stops it.
       const files0 = (Array.isArray(b.files) ? b.files : []).filter((f: any) => f && typeof f.name === 'string').map((f: any) => ({ name: String(f.name) }));
@@ -3112,7 +3120,8 @@ createServer(async (req, res) => {
       const w = workspaces().find((x) => x.id === wsId) as any;
       return json(res, 200, { askOverMb: w?.storage?.askOver ?? 500, used: room.used, total: room.total, left: room.left, maxUpload: MAX_UPLOAD, ...(team ? { video: room.video, byPerson: room.byPerson, mail: room.mail } : {}) });
     }
-    const fileReq = p.match(/^\/api\/files\/([a-f0-9]{32})$/);
+    // `/preview`: the same file as a sandboxed HTML page (Word, Excel, PowerPoint, CSV, text; server/mailFiles.ts).
+    const fileReq = p.match(/^\/api\/files\/([a-f0-9]{32})(\/preview)?$/);
     if (fileReq && req.method === 'GET') {
       const f = db.fileInfo(fileReq[1]);
       if (!f) return json(res, 404, { error: mark('No such file.') });
@@ -3155,6 +3164,7 @@ createServer(async (req, res) => {
       if (supportOp && !/^bytes=[1-9]/.test(String(req.headers.range ?? '')) && firstOpenInAWhile(`${me}:${f.id}`)) db.audit(opRecord!.email, 'ticket.file-open', tickets[0].ticketId, `#${tickets[0].number}: ${String(f.name).slice(0, 120)}`);
       const path = db.filePath(f.id);
       if (!existsSync(path)) return json(res, 404, { error: mark('The file is gone.') });
+      if (fileReq[2]) return mailFiles.servePreview(res, f, url);
       // Streamed, with ranges, so a long video plays and seeks without loading the whole file.
       const total = statSync(path).size;
       // The type is the uploader's word, so only kinds that can't run code open in the browser (images, video, audio, PDF,
@@ -3948,6 +3958,23 @@ setInterval(retentionTick, 60 * 60_000);
 
 // Imports (Slack, Trello, Google Drive): the ones a restart stopped are closed (Undo still works), old uploads go.
 imports.init({ broadcast, tell, maxUpload: MAX_UPLOAD });
+mailFiles.init({
+  publicUrl: () => PUBLIC_URL,
+  broadcast: (coll, upserts, deletes) => broadcast(coll, upserts as db.Doc[], deletes),
+  storageRoom: (wsId, userId) => storageRoom(wsId, userId),
+  readOnly: (ws) => {
+    const w = billing.readOnlyWords(ws as any);
+    return w ? lang.sayIn('en', w) : null;
+  },
+  sendCode: (to, subject, text) => mailer.sendNote(to, subject, text),
+  whoIs: (req) => {
+    const s = db.sessionInfo(cookie(req, 's2g'));
+    const u = s ? (personOf(s.userId) as any) : null;
+    return s && u ? { userId: s.userId, email: String(u.email ?? '').toLowerCase() } : null;
+  },
+  tooMany,
+  ipOf,
+});
 
 // Old meeting video becomes audio after the company's "Turn old video into audio" setting (the audio file stays).
 setInterval(() => {

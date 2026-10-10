@@ -1,8 +1,7 @@
 import { useEffect, useRef, useState, type MutableRefObject } from 'react';
-import { Bell, ChevronDown, ChevronUp, Clock, Sparkles, Eye, EyeOff, FileText, Maximize2, MousePointerClick, Minimize2, Minus, MoreVertical, Paperclip, Send, SendHorizontal, Trash2, Type, X } from 'lucide-react';
+import { Bell, ChevronDown, ChevronUp, Clock, Sparkles, Eye, EyeOff, FileText, HardDrive, Maximize2, MousePointerClick, Minimize2, Minus, MoreVertical, Paperclip, Send, SendHorizontal, Trash2, Type, X } from 'lucide-react';
 import { ActionSheet } from './ui/ActionSheet';
 import type { Person } from '../types';
-import { fmtSize } from '../data/drive';
 import { usePersisted } from '../settings';
 import { RecipientInput } from './RecipientInput';
 import { RichEditor, type RichEditorHandle } from './RichEditor';
@@ -21,11 +20,19 @@ import { t, tx, getLang } from '../i18n';
 import { ConfidentialSheet, OptionChips, defaultSpell, moreOptions, sendersOf, swapSignature, type SendExtras, type SpellLang } from './mail/composeExtras';
 import { suggestNext } from './mail/smartCompose';
 import type { Workspace } from '../types';
+// Attachments (src/components/mail/DraftFiles.tsx): uploaded when added, big ones as Drive links, Insert from Drive,
+// pictures pasted into the words.
+import { DraftFilesList, useDraftFiles } from './mail/DraftFiles';
+import { DrivePicker } from './mail/DrivePicker';
+import { uploadForMail, type LinkAccess } from './mail/attachApi';
+import { toast } from '../toast';
 
 export interface OutgoingFile {
   name: string;
   size: number;
   url: string;
+  type?: string;
+  link?: boolean; // goes as a Drive link (too big for the email, or picked as a link)
 }
 
 export interface Outgoing extends SendExtras {
@@ -41,6 +48,8 @@ export interface Outgoing extends SendExtras {
   trackOptions: TrackOptions;
   fromId: string;
   sendAt?: string; // send later
+  /** Who can open the files that go as Drive links. */
+  linkAccess?: LinkAccess;
 }
 
 interface Props {
@@ -100,9 +109,13 @@ export function Compose({ contacts, signature: baseSignature, signatureFor, work
   const [showCc, setShowCc] = useState(!!initial?.cc.length || !!initial?.bcc?.length);
   const [subject, setSubject] = useState(initial?.subject ?? '');
   const [body, setBody] = useState(initial ? { html: initial.html, text: initial.text } : { html: signature ? `<p><br></p>${signature}` : '', text: '' });
+  const df = useDraftFiles(initial?.files ?? [], body.html.length);
+  const [linkAccess, setLinkAccess] = useState<LinkAccess>(initial?.linkAccess ?? 'recipients');
+  const [drivePick, setDrivePick] = useState(false);
+  const [attachMenu, setAttachMenu] = useState(false);
+  const clipBtn = useRef<HTMLButtonElement>(null);
   const bodyRef = useRef(body);
   bodyRef.current = body;
-  const [files, setFiles] = useState<OutgoingFile[]>(initial?.files ?? []);
   const [trackChoice, setTrackChoice] = useState<boolean | null>(initial ? initial.track : null);
   const [opts, setOpts] = useState<TrackOptions>(initial?.trackOptions ?? DEFAULT_TRACK_OPTIONS);
   const [optsOpen, setOptsOpen] = useState(false);
@@ -147,10 +160,12 @@ export function Compose({ contacts, signature: baseSignature, signatureFor, work
   const external = [...to, ...cc, ...bcc].filter((p) => !isTeam(p.email));
   // Follows the default until you flip it yourself.
   const track = canTrack && external.length > 0 && (trackChoice ?? trackByDefault);
-  const message = (): Outgoing => ({ to, cc, bcc, subject: subject.trim(), html: body.html, text: body.text, files, track: track && !extras.confidential, trackOptions: opts, fromId, ...extras, replyTo: showReplyTo && extras.replyTo?.length ? extras.replyTo : undefined, ...(fromAddress && fromAddress !== addressOf(fromId) ? { fromAddress } : {}) });
+  const files = df.out();
+  const message = (): Outgoing => ({ to, cc, bcc, subject: subject.trim(), html: body.html, text: body.text, files, track: track && !extras.confidential, trackOptions: opts, fromId, linkAccess, ...extras, replyTo: showReplyTo && extras.replyTo?.length ? extras.replyTo : undefined, ...(fromAddress && fromAddress !== addressOf(fromId) ? { fromAddress } : {}) });
   const typed = hasOwnText(body.text, signature);
   const hasContent = to.length > 0 || cc.length > 0 || bcc.length > 0 || !!subject.trim() || typed || files.length > 0;
-  const valid = to.length + cc.length + bcc.length > 0 && (typed || files.length > 0);
+  // Not while a file is still uploading (it would go without it).
+  const valid = to.length + cc.length + bcc.length > 0 && (typed || files.length > 0) && !df.busy;
   if (snapshot) snapshot.current = () => (hasContent ? message() : null);
   useEffect(
     () => () => {
@@ -166,10 +181,17 @@ export function Compose({ contacts, signature: baseSignature, signatureFor, work
   const send = () => valid && close(true);
   const holdSend = useLongPress(() => valid && setLaterOpen(true));
 
-  const addFiles = (list: FileList | null) => {
-    if (!list) return;
-    setFiles((f) => [...f, ...Array.from(list).map((x) => ({ name: x.name, size: x.size, url: URL.createObjectURL(x) }))]);
-  };
+  const addFiles = (list: FileList | null) => df.add(list);
+  /** Pictures pasted or dropped into the words: uploaded, then shown where they were put (cid images when sent). */
+  const inlineImages = (pics: File[]) =>
+    Promise.all(
+      pics.map((f) =>
+        uploadForMail(f).then(
+          (up) => ({ url: up.url, name: f.name }),
+          (e: Error) => (toast({ text: e.message }), null),
+        ),
+      ),
+    );
 
   /** Drag the top/left edges to resize (the window is anchored bottom-right). */
   const startResize = (e: React.PointerEvent, dx: boolean, dy: boolean) => {
@@ -258,7 +280,7 @@ export function Compose({ contacts, signature: baseSignature, signatureFor, work
               <X size={22} />
             </button>
             <span className="compose-title">{t('Compose')}</span>
-            <button type="button" className="icon-btn" onClick={() => fileInput.current?.click()} aria-label={t('Attach files')} title={t('Attach files')}>
+            <button type="button" ref={clipBtn} className="icon-btn" onClick={() => setAttachMenu(true)} aria-label={t('Attach files')} title={t('Attach files')}>
               <Paperclip size={22} />
             </button>
             <button type="button" className={`icon-btn compose-send-icon lp${valid ? ' ready' : ''}`} onClick={send} aria-disabled={!valid} aria-label={t('Send. Hold for Send later')} title={t('Send')} {...holdSend}>
@@ -325,23 +347,10 @@ export function Compose({ contacts, signature: baseSignature, signatureFor, work
           <OptionChips x={extras} set={setXs} onConfidential={() => setConfOpen(true)} />
 
           <div className="compose-body" onClick={(e) => startAtTop(e, typed)}>
-            <RichEditor ref={editor} autoFocus={to.length > 0} initialHtml={body.html} placeholder={phone ? t('Compose email') : t('Write something great…')} onChange={(html, text) => setBody({ html, text })} onSubmit={send} spellLang={spellLang} plain={!!extras.plain} suggest={suggest} />
+            <RichEditor ref={editor} autoFocus={to.length > 0} initialHtml={body.html} placeholder={phone ? t('Compose email') : t('Write something great…')} onChange={(html, text) => setBody({ html, text })} onSubmit={send} spellLang={spellLang} plain={!!extras.plain} suggest={suggest} onImages={inlineImages} />
           </div>
 
-          {files.length > 0 && (
-            <div className="compose-files">
-              {files.map((f, i) => (
-                <div key={f.url} className="file-chip">
-                  <FileText size={15} />
-                  <span className="fc-name">{f.name}</span>
-                  <span className="fc-size">{fmtSize(f.size)}</span>
-                  <button onClick={() => setFiles((fs) => fs.filter((_, j) => j !== i))} aria-label={t('Remove attachment')}>
-                    <X size={13} />
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
+          <DraftFilesList state={df} access={linkAccess} onAccess={setLinkAccess} />
         </div>
 
         {aiOpen && (
@@ -358,7 +367,7 @@ export function Compose({ contacts, signature: baseSignature, signatureFor, work
             }}
           />
         )}
-        <input ref={fileInput} type="file" multiple hidden onChange={(e) => addFiles(e.target.files)} />
+        <input ref={fileInput} type="file" multiple hidden onChange={(e) => (addFiles(e.target.files), (e.target.value = ''))} />
         {phone ? (
           // The strip above the keyboard (only while it's up): help writing, formatting, templates.
           <footer className="compose-foot kb-bar" onMouseDown={(e) => e.preventDefault()}>
@@ -379,11 +388,14 @@ export function Compose({ contacts, signature: baseSignature, signatureFor, work
             <button ref={laterBtn} className="ghost-btn sm" disabled={!valid} onClick={() => setLaterOpen((o) => !o)} title={t('Send later')}>
               <Clock size={14} /> {t('Later')}
             </button>
-            <button className="primary-btn" onClick={send} disabled={!valid}>
+            <button className="primary-btn" onClick={send} disabled={!valid} title={df.busy ? t('Wait for the files to finish uploading') : undefined}>
               <Send size={15} /> {t('Send')} <kbd>⌘↵</kbd>
             </button>
             <button className="icon-btn" title={t('Attach files')} onClick={() => fileInput.current?.click()}>
               <Paperclip size={17} />
+            </button>
+            <button className="icon-btn" title={t('Insert from Drive')} aria-label={t('Insert from Drive')} onClick={() => setDrivePick(true)}>
+              <HardDrive size={17} />
             </button>
             <button className={`icon-btn ai-btn ${aiOpen ? 'on' : ''}`} title={t('Write with AI')} onClick={() => setAiOpen((o) => !o)}>
               <Sparkles size={17} />
@@ -466,6 +478,19 @@ export function Compose({ contacts, signature: baseSignature, signatureFor, work
           ]}
         />
       )}
+      {phone && (
+        <ActionSheet
+          open={attachMenu}
+          onClose={() => setAttachMenu(false)}
+          anchor={clipBtn}
+          menu
+          actions={[
+            { label: t('Attach file'), icon: Paperclip, run: () => fileInput.current?.click() },
+            { label: t('Insert from Drive'), icon: HardDrive, run: () => setDrivePick(true) },
+          ]}
+        />
+      )}
+      {drivePick && <DrivePicker onClose={() => setDrivePick(false)} onPick={(list) => df.addExisting(list)} />}
       {!phone && <ActionSheet open={deskMore} onClose={() => setDeskMore(false)} anchor={deskMoreBtn} title={t('More options')} width={280} actions={deskMore ? more() : []} />}
       {confOpen && <ConfidentialSheet value={extras.confidential} onSave={(c) => setX({ confidential: c })} onClose={() => setConfOpen(false)} />}
       <SendLaterPicker open={laterOpen} onClose={() => setLaterOpen(false)} anchor={phone ? undefined : laterBtn} onPick={(at) => close(true, at)} />

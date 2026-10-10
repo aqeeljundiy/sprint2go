@@ -24,7 +24,7 @@ export interface SendExtras {
   plain?: boolean; // plain text mode: no formatting goes out
 }
 /** A reply with what the reply box (or the popped-out compose) changed. */
-export type ReplyOpts = SendExtras & { to?: Person[]; cc?: Person[]; bcc?: Person[]; subject?: string; files?: { name: string; url: string; size?: number }[] };
+export type ReplyOpts = SendExtras & { to?: Person[]; cc?: Person[]; bcc?: Person[]; subject?: string; files?: { name: string; url: string; size?: number; type?: string; link?: boolean }[] }; // link: goes as a Drive link (attachments round)
 
 /** The fields /api/mail/send reads for these extras. */
 export function extrasOf(x: SendExtras, acct?: Pick<Account, 'email'>) {

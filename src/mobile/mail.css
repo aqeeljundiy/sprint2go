@@ -1899,6 +1899,222 @@
   }
 }
 
+/* ---------- Attachments (src/components/mail/MessageFiles, AttachmentViewer, DraftFiles, DrivePicker, FilesView) ---------- */
+@media (max-width: 767px) {
+  .gm-atts-head .mf-count {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .gm-atts-head .mf-scan {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-weight: 400;
+    color: var(--text-3);
+  }
+  .gm-atts-head .mf-all {
+    display: inline-flex;
+    gap: 16px;
+  }
+  .mf-scanline {
+    display: flex;
+    margin: 0 0 8px;
+    font-size: var(--fs-caption);
+  }
+  .gm-atts-head .mf-all .link-btn {
+    white-space: nowrap;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    min-height: var(--tap);
+    text-decoration: none;
+  }
+  .gm-att.blocked .gm-att-preview {
+    color: var(--danger);
+    background: var(--danger-soft);
+  }
+  .gm-att {
+    text-align: left;
+  }
+
+  /* The viewer: full screen, the bar on top, the files move with a sideways swipe. */
+  .mail-viewer .mv-bar {
+    gap: 4px;
+    min-height: 52px;
+    padding: 4px;
+    padding-top: max(4px, env(safe-area-inset-top));
+  }
+  .mail-viewer .lb-btn {
+    width: var(--tap);
+    height: var(--tap);
+  }
+  .mail-viewer .lb-title strong {
+    font-size: var(--fs-body);
+    font-weight: 600;
+  }
+  .mail-viewer .lb-title small {
+    font-size: var(--fs-caption);
+  }
+  .mv-warn {
+    margin: 0 16px 8px;
+    padding: 8px 12px;
+    font-size: var(--fs-secondary);
+  }
+  .mv-slide {
+    padding: 0 0 56px; /* the arrows and "2 of 7" sit under the file, never over it */
+  }
+  .mv-image img,
+  .mv-video {
+    max-height: calc(100dvh - 140px);
+    border-radius: 0;
+  }
+  .mv-frame,
+  .mv-pdf {
+    border-radius: 0;
+  }
+  .mv-pdf {
+    gap: 8px;
+    padding: 0 8px 24px;
+  }
+  .mv-card {
+    margin: 0 16px;
+    padding: 32px 24px;
+    gap: 8px;
+    border-radius: var(--r-card);
+  }
+  .mv-card p {
+    font-size: var(--fs-secondary);
+  }
+  .mv-foot {
+    gap: 24px;
+    font-size: var(--fs-secondary);
+  }
+
+  /* Files being sent: chips wrap, a note above them when some go as links. */
+  .df,
+  .gm-reply .df {
+    padding: 8px 16px;
+  }
+  .df-note {
+    padding: 8px 12px;
+    font-size: var(--fs-secondary);
+  }
+  .df-access {
+    display: flex;
+    width: 100%;
+  }
+  .df-access button {
+    flex: 1;
+  }
+  .df-chip {
+    min-height: 36px;
+    padding: 0 4px 0 12px;
+    gap: 8px;
+    font-size: var(--fs-secondary);
+  }
+  .df-chip button {
+    width: 36px;
+    height: 36px;
+    border-radius: var(--r-pill);
+  }
+
+  /* Insert from Drive and the folder picker: rows a finger hits. */
+  .dp-row,
+  .dfp .as-item {
+    min-height: 48px;
+  }
+  .dfp-search,
+  .dp-search {
+    height: 44px;
+    margin: 0 0 8px;
+    padding: 0 12px;
+  }
+  .dfp-search input,
+  .dp-search input {
+    font-size: var(--fs-field);
+  }
+  .dp-crumb {
+    min-height: var(--tap);
+    padding: 0 8px;
+  }
+  .dp-foot {
+    gap: 8px;
+  }
+  .dp-foot .dp-count {
+    font-size: var(--fs-secondary);
+  }
+
+  /* The Files view: a search, the filters in a row that scrolls sideways, a list of files. */
+  /* The search pill is the top bar; the view's name sits under it, as the list's folder name does. */
+  .files-pane > .tracking-head {
+    padding: 8px 16px 0;
+    border-bottom: 0;
+  }
+  .files-pane > .tracking-head .menu-btn,
+  .files-pane > .tracking-head p {
+    display: none;
+  }
+  .files-pane > .tracking-head h1 {
+    font: var(--t-title);
+  }
+  .fv-tools {
+    gap: 8px;
+    padding: 8px 16px;
+    border-bottom: 0;
+  }
+  .fv-search {
+    max-width: none;
+    height: 44px;
+  }
+  .fv-search input {
+    font-size: var(--fs-field);
+  }
+  .fv-chips {
+    flex-wrap: nowrap;
+    margin: 0 -16px;
+    padding: 0 16px 4px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .fv-chips::-webkit-scrollbar {
+    display: none;
+  }
+  .fv-chip {
+    flex: none;
+    height: 36px;
+    font-size: var(--fs-secondary);
+  }
+  .fv-scroll {
+    padding: 0 16px 88px;
+  }
+  .fv-list .fv-item {
+    gap: 12px;
+    min-height: 64px;
+  }
+  /* One divider rule: from the text, not under the picture. */
+  .fv-list .fv-item {
+    position: relative;
+  }
+  .fv-list .fv-item + .fv-item::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 52px;
+    right: 0;
+    height: 1px;
+    background: var(--line);
+  }
+  .fv-name {
+    font-size: var(--fs-body);
+    font-weight: 400;
+  }
+  .fv-meta,
+  .fv-list .fv-size {
+    font-size: var(--fs-secondary);
+  }
+}
+
 /* ---------- Labels and filters on phones (src/components/mail/Labels.tsx, Filters.tsx, Organize.tsx) ---------- */
 @media (max-width: 767px) {
   /* The drawer: nested labels step in under their parent. */
