@@ -849,18 +849,6 @@
   margin: 6px 8px 4px;
   justify-content: center;
 }
-.mail-swipe-settings {
-  padding: 8px 8px 24px;
-}
-.swipe-set h3 {
-  margin: 16px 12px 2px;
-  font-size: 15px;
-}
-.swipe-set .set-hint,
-.mail-swipe-settings > .set-hint {
-  display: block;
-  margin: 0 12px 8px;
-}
 
 @media (prefers-reduced-motion: reduce) {
   .mail-tools,

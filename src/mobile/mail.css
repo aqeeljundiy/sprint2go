@@ -731,6 +731,7 @@
     color: var(--text-3);
   }
   .gm-swipe-change {
+    text-decoration: none;
     min-height: var(--tap);
     padding: 0 8px;
     font-size: 15px;
@@ -1693,17 +1694,39 @@
   }
 
   /* Snooze (MailPickers.tsx): Gmail's centred dialog of tiles. */
-  .modal-scrim.gm-dialog-scrim {
+  .gm-dialog-scrim {
+    position: fixed;
+    inset: 0;
+    bottom: var(--kb, 0px);
+    z-index: var(--z-dialog);
+    display: grid;
     place-items: center;
     padding: 16px;
+    background: rgb(0 0 0 / 0.32);
+    animation: gmFade 0.2s ease-out backwards;
   }
-  .modal.gm-snooze {
+  .gm-dialog-scrim.is-leaving {
+    animation: gmFadeOut 0.15s ease-in forwards;
+  }
+  .gm-dialog-scrim.is-leaving .gm-dialog {
+    animation: gmPopOut 0.15s ease-in forwards;
+  }
+  .gm-dialog {
     width: min(340px, calc(100vw - 32px));
-    max-height: calc(100dvh - 32px);
+    max-height: calc(100dvh - var(--kb, 0px) - 32px);
     overflow-y: auto;
+    overscroll-behavior: contain;
     padding: 20px 16px 8px;
     border-radius: 24px;
+    background: var(--surface);
+    box-shadow: var(--shadow-lg);
     animation: gmPop 0.2s var(--ease) backwards;
+  }
+  @keyframes gmPopOut {
+    to {
+      opacity: 0;
+      transform: scale(0.96);
+    }
   }
   @keyframes gmPop {
     from {
@@ -1818,7 +1841,8 @@
   .gm-reader.enter-right,
   .mail-search.push-screen,
   .compose.phone,
-  .modal.gm-snooze {
+  .gm-dialog-scrim,
+  .gm-dialog {
     animation: none;
     transition: none;
   }

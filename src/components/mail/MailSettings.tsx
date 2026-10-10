@@ -124,33 +124,3 @@ export function MailSettingsScreen({ rows, onBack }: { rows: MailSettingsRow[]; 
     </PushScreen>
   );
 }
-
-/** Mail's swipe settings (the list of choices for each side). */
-export function SwipeSettings() {
-  const [swipes, setSwipes] = useMailSwipes();
-  const side = (key: keyof MailSwipes, title: string, sub: string) => (
-    <section className="swipe-set">
-      <h3>{title}</h3>
-      <p className="set-hint">{sub}</p>
-      <div className="as-list" role="radiogroup" aria-label={title}>
-        {SWIPE_CHOICES.map((c) => (
-          <button key={c.id} type="button" role="radio" aria-checked={swipes[key] === c.id} className={`as-item${swipes[key] === c.id ? ' on' : ''}`} onClick={() => setSwipes((s) => ({ ...s, [key]: c.id }))}>
-            <c.icon size={18} className="as-icon" />
-            <span className="as-label">
-              {t(c.label)}
-              <small>{t(c.hint)}</small>
-            </span>
-            {swipes[key] === c.id && <Check size={16} className="as-check" />}
-          </button>
-        ))}
-      </div>
-    </section>
-  );
-  return (
-    <div className="mail-swipe-settings">
-      {side('right', t('Swipe right'), t('Move a finger to the right across an email.'))}
-      {side('left', t('Swipe left'), t('Move a finger to the left across an email.'))}
-      <p className="set-hint">{t('Every swipe can be undone for a few seconds. These are kept on this device.')}</p>
-    </div>
-  );
-}

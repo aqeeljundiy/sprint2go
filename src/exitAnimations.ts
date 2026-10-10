@@ -37,6 +37,7 @@ const LEAVING = [
   '.demo-bar',
   '.task-bulk',
   '.mail-bulk',
+  '.gm-dialog-scrim',
 ].join(',');
 
 const MS = 200;

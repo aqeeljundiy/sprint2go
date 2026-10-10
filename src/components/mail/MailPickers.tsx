@@ -121,16 +121,21 @@ function SnoozeDialog(p: {
 }) {
   useEffect(() => {
     if (!p.open) return;
-    const key = (e: KeyboardEvent) => e.key === 'Escape' && !document.querySelector('.pop:not(.is-leaving)') && p.onClose();
-    document.addEventListener('keydown', key);
-    return () => document.removeEventListener('keydown', key);
+    // Escape closes the dialog only (caught first, so the screen under it doesn't go back too).
+    const key = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || document.querySelector('.pop:not(.is-leaving)')) return;
+      e.stopPropagation();
+      p.onClose();
+    };
+    document.addEventListener('keydown', key, true);
+    return () => document.removeEventListener('keydown', key, true);
   }, [p.open]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!p.open) return null;
   // Gmail's four: "This evening" only stands in for "Later today" when that's gone.
   const tiles = p.presets.filter((x) => x.id !== 'evening' || !p.presets.some((y) => y.id === 'later')).slice(0, 4);
   return createPortal(
-    <div className="modal-scrim gm-dialog-scrim" onMouseDown={p.onClose}>
-      <div className="modal gm-snooze" role="dialog" aria-label={p.count > 1 ? tn(p.count, 'Snooze {n} email until', 'Snooze {n} emails until') : t('Snooze until')} onMouseDown={(e) => e.stopPropagation()}>
+    <div className="gm-dialog-scrim" onMouseDown={p.onClose}>
+      <div className="gm-dialog gm-snooze" role="dialog" aria-label={p.count > 1 ? tn(p.count, 'Snooze {n} email until', 'Snooze {n} emails until') : t('Snooze until')} onMouseDown={(e) => e.stopPropagation()}>
         <h2 className="gm-dialog-title">{p.count > 1 ? tn(p.count, 'Snooze {n} email until', 'Snooze {n} emails until') : t('Snooze until')}</h2>
         <div className="gm-tiles">
           {tiles.map((x) => {
