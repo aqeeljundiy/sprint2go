@@ -18,6 +18,7 @@ import { SmoothHeight, TabPane } from '../ui/Smooth';
 import { useCreateAction, useFocusedScreen, useTitleMenu } from '../../mobile/chrome';
 import { toastUndo } from '../../toast';
 import { TopBar } from '../../mobile/TopBar';
+import { IconTile } from '../ui/IconTile';
 import { term } from '../../terms';
 import { t, tn, tx } from '../../i18n';
 import { fmtDay } from '../../i18n/format';
@@ -228,9 +229,7 @@ function TeamsPhone({ teams, users, tasks, me, actions, onOpen, people: everyone
     const s = teamState(tm, tasks);
     return (
       <div key={tm.id} className="tdir-row" role="button" tabIndex={0} onClick={() => onOpen(tm.id)} onKeyDown={(e) => e.key === 'Enter' && e.target === e.currentTarget && onOpen(tm.id)}>
-        <span className="tdir-tile" style={{ ['--c' as string]: tm.color }} aria-hidden>
-          {tm.name.charAt(0).toUpperCase()}
-        </span>
+        <IconTile letter={tm.name} color={tm.color} size={40} className="tdir-tile" />
         <span className="tdir-text">
           <strong className="tdir-name">{tm.name}</strong>
           {/* What needs attention leads the second line, so the name keeps the row's width (up to two lines) next to Join. */}

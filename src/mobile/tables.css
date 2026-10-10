@@ -419,15 +419,7 @@
   font-weight: 400;
 }
 .tb-home-tile {
-  flex: none;
-  display: grid;
-  place-items: center;
-  width: 32px;
-  height: 32px;
-  border-radius: var(--r-tile);
-  color: #fff;
-  font-size: var(--fs-body);
-  font-weight: 700;
+  flex: none; /* IconTile: the shared pale tile with the table's initial */
 }
 .tb-home-row + .tb-home-row::before {
   left: 60px;

@@ -9,6 +9,7 @@ import { SmoothHeight } from '../ui/Smooth';
 import { ProjectPicker } from '../ProjectPicker';
 import { TABLE_COLORS, TEMPLATES, templateFields, type TemplateId } from './fields';
 import { EmptyState } from '../ui/EmptyState';
+import { IconTile } from '../ui/IconTile';
 import { useCreateAction } from '../../mobile/chrome';
 import { useTableLinkOpen } from './hooks';
 import { t, tn } from '../../i18n';
@@ -176,9 +177,7 @@ export function TablesHome({ tables, rows, clients, onOpen, onNew, onMenu }: { t
             <Group key={g.id || 'company'} title={g.name}>
               {g.list.map((tb) => (
                 <button key={tb.id} type="button" className="g-row has-icon tb-home-row" onClick={() => onOpen(tb.id)}>
-                  <span className="tb-home-tile" style={{ background: tb.color }} aria-hidden>
-                    {tb.name.charAt(0).toUpperCase()}
-                  </span>
+                  <IconTile letter={tb.name} color={tb.color} size={32} className="tb-home-tile" />
                   <span className="g-label">
                     <span className="g-text">{tb.name}</span>
                   </span>

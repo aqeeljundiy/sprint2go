@@ -82,33 +82,11 @@ button.g-row:active {
 }
 .g-row.has-icon + .g-row.has-icon::before,
 .g-row + .g-row.has-icon::before {
-  left: 60px;
+  left: 64px; /* past the 32 tile and its 16 gap: the line starts at the text */
 }
+/* Row icons are IconTile (src/components/ui/IconTile.tsx): the shared pale tile, sized 32 here. */
 .g-icon {
   flex: none;
-  display: grid;
-  place-items: center;
-  width: 32px;
-  height: 32px;
-  border-radius: var(--r-tile);
-  /* The launcher's family (D7): a pastel tint of the colour with the icon in that colour, not a solid tile. */
-  color: color-mix(in srgb, var(--c) 85%, var(--text));
-  background: color-mix(in srgb, var(--c) 16%, var(--surface));
-  --c: #8e8e93;
-}
-.g-blue { --c: #0a84ff; }
-.g-green { --c: #30b158; }
-.g-orange { --c: #ff9500; }
-.g-red { --c: #ff3b30; }
-.g-purple { --c: #af52de; }
-.g-teal { --c: #12a8c7; }
-.g-grey { --c: #8e8e93; }
-.g-pink { --c: #ff2d55; }
-.g-indigo { --c: #5856d6; }
-.g-yellow { --c: #f2b600; }
-:root[data-theme='dark'] .g-icon {
-  color: color-mix(in srgb, var(--c) 70%, #fff);
-  background: color-mix(in srgb, var(--c) 24%, var(--surface));
 }
 .g-plain-icon {
   flex: none;

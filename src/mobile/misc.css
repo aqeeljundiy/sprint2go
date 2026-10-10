@@ -822,17 +822,7 @@
     background: var(--line);
   }
   .tdir-tile {
-    flex: none;
-    display: grid;
-    place-items: center;
-    width: var(--av-m);
-    height: var(--av-m);
-    border-radius: var(--r-tile);
-    /* A pastel tile with the team's letter in its colour, like the launcher's app tiles (D7, N4). */
-    background: color-mix(in srgb, var(--c, var(--accent)) 16%, var(--surface));
-    color: color-mix(in srgb, var(--c, var(--accent)) 80%, var(--text));
-    font-size: var(--fs-body);
-    font-weight: 700;
+    flex: none; /* IconTile: the shared pale tile with the team's initial */
   }
   .tdir-text {
     flex: 1;

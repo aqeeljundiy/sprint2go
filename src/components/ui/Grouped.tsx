@@ -3,6 +3,10 @@ import { Check, ChevronRight, Search, type LucideIcon } from 'lucide-react';
 import { PushScreen } from './PushScreen';
 import { Sheet } from './Sheet';
 import { t } from '../../i18n';
+import { IconTile } from './IconTile';
+
+/** The row icons' colours: the launcher's tile family (IconTile), a pale tint with the icon in the colour (D7). */
+const G_COLORS: Record<string, string> = { blue: '#0a84ff', green: '#30b158', orange: '#ff9500', red: '#ff3b30', purple: '#af52de', teal: '#12a8c7', grey: '#8e8e93', pink: '#ff2d55', indigo: '#5856d6', yellow: '#f2b600' };
 
 /**
  * iOS's inset grouped list, for phone screens (Settings, a Vault login, Teams): a header, one borderless card of rows,
@@ -64,7 +68,7 @@ export function GRow({
   const inner = (
     <>
       {pic && <span className="g-pic" aria-hidden>{pic}</span>}
-      {Icon && (plainIcon ? <Icon size={20} className="g-plain-icon" aria-hidden /> : <span className={`g-icon g-${color}`} aria-hidden><Icon size={18} strokeWidth={2.2} /></span>)}
+      {Icon && (plainIcon ? <Icon size={20} className="g-plain-icon" aria-hidden /> : <IconTile icon={Icon} color={G_COLORS[color ?? 'grey'] ?? G_COLORS.grey} size={32} className="g-icon" />)}
       <span className="g-label">
         <span className="g-text">{label}</span>
         {sub && <small className="g-sub">{sub}</small>}
