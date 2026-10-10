@@ -4,10 +4,7 @@
 //
 //  GET  /api/mail/access?ws=                 your mailboxes: delegates, forwarding, POP, what's logged about them
 //  POST /api/mail/delegates                  { workspaceId, accountId, delegates: [{ userId, send: 'as'|'behalf' }] }
-//  POST /api/mail/forwarding/address         { workspaceId, accountId, address }  sends a code to it
-//  POST /api/mail/forwarding/verify          { workspaceId, accountId, address, code }
-//  POST /api/mail/forwarding/remove          { workspaceId, accountId, address }
-//  POST /api/mail/forwarding                 { workspaceId, accountId, on, address, keep }
+//  POST /api/mail/forward-all                { workspaceId, accountId, on, address, keep } (addresses: /api/mail/forwarding, mailFilters.ts)
 //  POST /api/mail/pop                        { on, after, from: 'all'|'now' }
 //  GET  /api/mail/export?ws=&account=        the mailbox as an mbox in a zip
 //  GET  /api/mail/contacts?ws=               saved contacts, everyone you've emailed, the team, duplicates
@@ -46,12 +43,7 @@ let deps: PlusDeps;
 /** At start-up: forwarding's hooks into the mail engine, and retention once a day. */
 export function start(d: PlusDeps) {
   deps = d;
-  forwarding.init({
-    sendCode: (to, mailbox, code) => mailer.sendNote(to, `${code} is your code to forward mail from ${mailbox}`, `Someone using sprint2go wants to forward the mail of ${mailbox} to ${to}.\n\nTo allow it, type this code in sprint2go: ${code}\n\nIt works for 30 minutes. If you don't know about this, ignore this email: nothing is forwarded without the code.`),
-    queueRaw: (o) => mailer.queueRaw(o),
-    isLocal: (address) => !!mailer.accountFor(address),
-    log: d.log,
-  });
+  forwarding.init({ queueRaw: (o) => mailer.queueRaw(o), log: d.log });
   mailer.onDelivered((x) => forwarding.onDelivered(x));
   const runDaily = () => {
     try {
@@ -123,7 +115,6 @@ export async function handleApi(
       })),
       delegatedToMe: accounts.filter((a) => delegation.delegateOf(a, me)).map((a) => ({ id: a.id, email: a.email, name: a.name, owners: a.users ?? [], send: delegation.delegateOf(a, me)!.send })),
       pop: { ...pst, host: mailer.MAIL_HOST, prefs: pop3.prefsOf(me) },
-      forwardOutside: compliance.policyOf(ws).forwardOutside !== false,
       domains: ws.domains ?? [],
       log: audit.forAccounts(ws.id, manage.map((a) => a.id), 60),
     });
@@ -149,7 +140,9 @@ export async function handleApi(
     }
     return true;
   }
-  if (p.startsWith('/api/mail/forwarding') && post) {
+  // Forwarding all mail (server/mailForwarding.ts). Its addresses and their confirmation are the filters' own
+  // (/api/mail/forwarding, server/mailFilters.ts): one set of addresses, confirmed once, one company rule.
+  if (p === '/api/mail/forward-all' && post) {
     if (own()) return true;
     const b = await c.body(req);
     const ws = wsFor(me, b.workspaceId);
@@ -157,21 +150,8 @@ export async function handleApi(
     if (!ws || !mayForward(ws, a, me)) return deny(403, mark('Not your mailbox.'));
     if (ro(ws)) return deny(403, ro(ws));
     try {
-      if (p === '/api/mail/forwarding/address') {
-        if (c.tooMany(`fwd-code:${me}`, 10, 3600_000)) return deny(429, mark('Too many codes asked for. Try again in an hour.'));
-        const r = await forwarding.addAddress(ws, a.id, String(b.address ?? ''), me);
-        json(res, 200, { ...r, forwarding: forwarding.stateOf(ws, a.id) });
-      } else if (p === '/api/mail/forwarding/verify') {
-        if (c.tooMany(`fwd-verify:${me}`, 30, 3600_000)) return deny(429, mark('Too many tries. Try again in an hour.'));
-        forwarding.verify(ws, a.id, String(b.address ?? ''), String(b.code ?? ''), me);
-        json(res, 200, { forwarding: forwarding.stateOf(ws, a.id) });
-      } else if (p === '/api/mail/forwarding/remove') {
-        forwarding.removeAddress(ws, a.id, String(b.address ?? ''), me);
-        json(res, 200, { forwarding: forwarding.stateOf(ws, a.id) });
-      } else if (p === '/api/mail/forwarding') {
-        forwarding.setForwarding(ws, a.id, { on: !!b.on, address: b.address, keep: b.keep }, me);
-        json(res, 200, { forwarding: forwarding.stateOf(ws, a.id) });
-      } else return deny(404, mark('Not found.'));
+      forwarding.setForwarding(ws, a.id, { on: !!b.on, address: b.address, keep: b.keep }, me);
+      json(res, 200, { forwarding: forwarding.stateOf(ws, a.id) });
     } catch (e) {
       deny(400, errWords(e, 'That couldn’t be saved.'));
     }

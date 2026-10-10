@@ -19,6 +19,7 @@ import { parseRRule } from '../src/recurrence.ts';
 import { msg, phrase } from '../src/i18n/index.ts';
 import { chatRecipients, isGroupDm } from '../src/chatFollow.ts';
 import { noticeWords, whereOf } from './chatLater.ts';
+import { labelPath, type MailLabel } from '../src/mailFilterMatch.ts';
 import { matchThread, parseQuery } from '../src/mailQuery.ts';
 
 export interface ToolDeps {
@@ -372,6 +373,12 @@ function taskLine(v: View, t: Doc) {
   };
 }
 const lastOf = (t: Doc) => (t.messages ?? [])[(t.messages ?? []).length - 1] ?? {};
+/** A conversation's labels by their whole name, from the labels this person sees. */
+function labelsOfThread(v: View, t: Doc): string[] {
+  if (!t.labels?.length) return [];
+  const all = v.docs('mailLabels') as unknown as MailLabel[];
+  return (t.labels as string[]).map((id) => all.find((l) => l.id === id)).filter((l): l is MailLabel => !!l).map((l) => labelPath(l, all));
+}
 function threadLine(v: View, t: Doc) {
   const last = lastOf(t);
   return {
@@ -384,6 +391,9 @@ function threadLine(v: View, t: Doc) {
     ...(t.location !== 'inbox' ? { folder: t.location } : {}),
     messages: (t.messages ?? []).length,
     ...(t.assignee ? { assignee: v.nameOf(t.assignee) } : {}),
+    // Labels by their whole name ("Clients/KopiKita"), and the filter that filed it (server/mailFilters.ts).
+    ...(labelsOfThread(v, t).length ? { labels: labelsOfThread(v, t) } : {}),
+    ...(t.filed?.length ? { filed_by: t.filed[t.filed.length - 1].scope === 'block' ? 'a blocked sender' : t.filed[t.filed.length - 1].name } : {}),
     snippet: clip(last.body, 140),
     link: v.link('mail', t.id),
   };
@@ -744,6 +754,7 @@ export function registerTools(server: McpServer, deps: ToolDeps, ctx: ToolCtx) {
           id: m.id,
           from: m.from ? `${m.from.name || m.from.email} <${m.from.email}>` : undefined,
           to: (m.to ?? []).map((p: Doc) => (p.name && p.name !== p.email ? `${p.name} <${p.email}>` : p.email)),
+          ...(m.cc?.length ? { cc: m.cc.map((p: Doc) => (p.name && p.name !== p.email ? `${p.name} <${p.email}>` : p.email)) } : {}),
           date: v.when(m.date),
           text: clip(m.body || htmlToText(m.html ?? ''), i === shown.length - 1 ? 12_000 : 4000),
           ...(m.attachments?.length ? { attachments: m.attachments.map((x: Doc) => x.name) } : {}),
@@ -1526,7 +1537,7 @@ export function registerTools(server: McpServer, deps: ToolDeps, ctx: ToolCtx) {
       const last = [...msgs].reverse().find((m) => m.from) ?? no('That conversation has no message to reply to.');
       const ours = (e: string) => v.mine(e) || lower(e) === lower(box.email);
       const base = ours(last.from.email) ? (last.to ?? []) : [last.from];
-      const all = a.reply_all ? [...base, ...(last.to ?? [])] : base;
+      const all = a.reply_all ? [...base, ...(last.to ?? []), ...(last.cc ?? [])] : base;
       const to: { name: string; email: string }[] = all.filter((p: Doc, i: number) => p?.email && !ours(p.email) && all.findIndex((x: Doc) => lower(x.email) === lower(p.email)) === i).map((p: Doc) => ({ name: p.name || p.email, email: lower(p.email) }));
       if (!to.length) no('There’s nobody outside your own mailboxes to reply to.');
       const subject = /^re:/i.test(t.subject) ? t.subject : `Re: ${t.subject}`;

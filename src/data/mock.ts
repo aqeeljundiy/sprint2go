@@ -1,4 +1,5 @@
 import type { Label, Person, Thread } from '../types';
+import type { MailFilterRule, MailLabel } from '../mailFilterMatch';
 import { nextWeekday } from './calendar';
 import { DEFAULT_TRACK_OPTIONS as OPTS } from '../tracking';
 
@@ -7,10 +8,22 @@ import { DEFAULT_TRACK_OPTIONS as OPTS } from '../tracking';
 export const ME: Person = { name: 'Aqeel', email: 'aqeel@pixelandprofits.com' };
 
 export const LABELS: Label[] = [
-  { id: 'clients', name: 'Clients', color: '#10b981' },
-  { id: 'team', name: 'Team', color: '#5b5bf6' },
-  { id: 'infra', name: 'Infra', color: '#f59e0b' },
-  { id: 'finance', name: 'Finance', color: '#ef4444' },
+  { id: 'lb-clients', name: 'Clients', color: '#10b981' },
+  { id: 'lb-team', name: 'Team', color: '#5b5bf6' },
+  { id: 'lb-infra', name: 'Infra', color: '#f59e0b' },
+  { id: 'lb-finance', name: 'Finance', color: '#ef4444' },
+];
+
+/** The demo company's labels (src/mailFilterMatch.ts): the four above as company labels, one nested, one of Aqeel's own. */
+export const DEMO_MAIL_LABELS: MailLabel[] = [
+  ...LABELS.map((l, i) => ({ id: l.id, workspaceId: 'pnp', accountId: null, name: l.name, parentId: null, color: l.color, show: 'show' as const, order: i })),
+  { id: 'lb-kopikita', workspaceId: 'pnp', accountId: null, name: 'KopiKita', parentId: 'lb-clients', color: '#10b981', show: 'show', order: 0 },
+  { id: 'lb-receipts', workspaceId: 'pnp', accountId: 'pnp-aqeel', name: 'Receipts', parentId: null, color: '#64748b', show: 'unread', order: 10 },
+];
+/** And two filters, so the Filters screen shows what they look like. */
+export const DEMO_MAIL_FILTERS: MailFilterRule[] = [
+  { id: 'flt-infra', workspaceId: 'pnp', accountId: 'pnp-aqeel', name: 'Server alerts', enabled: true, order: 0, criteria: { from: '@dokploy.com, @contabo.com' }, actions: { labels: ['lb-infra'] }, createdBy: 'u-aqeel', hits: 0 },
+  { id: 'flt-receipts', workspaceId: 'pnp', accountId: 'pnp-aqeel', name: 'Receipts', enabled: true, order: 1, criteria: { hasWords: 'invoice OR receipt', hasAttachment: true }, actions: { labels: ['lb-receipts'], archive: true }, createdBy: 'u-aqeel', hits: 0 },
 ];
 
 const ago = (minutes: number) => new Date(Date.now() - minutes * 60_000).toISOString();
@@ -38,7 +51,7 @@ export const THREADS: Thread[] = [
     location: 'inbox',
     starred: true,
     unread: true,
-    labels: ['clients'],
+    labels: ['lb-clients'],
     invite: {
       title: 'KopiKita Q4 concepts review',
       start: nextWeekday(4, 14),
@@ -88,7 +101,7 @@ export const THREADS: Thread[] = [
     location: 'inbox',
     starred: false,
     unread: true,
-    labels: ['clients'],
+    labels: ['lb-clients'],
     messages: [
       {
         id: 'm-invite',
@@ -125,7 +138,7 @@ export const THREADS: Thread[] = [
     location: 'inbox',
     starred: false,
     unread: true,
-    labels: ['infra'],
+    labels: ['lb-infra'],
     messages: [
       {
         id: 'm2',
@@ -143,7 +156,7 @@ export const THREADS: Thread[] = [
     location: 'inbox',
     starred: false,
     unread: true,
-    labels: ['team'],
+    labels: ['lb-team'],
     messages: [
       {
         id: 'm3',
@@ -162,7 +175,7 @@ export const THREADS: Thread[] = [
     location: 'inbox',
     starred: false,
     unread: false,
-    labels: ['infra'],
+    labels: ['lb-infra'],
     messages: [
       {
         id: 'm4',
@@ -180,7 +193,7 @@ export const THREADS: Thread[] = [
     location: 'inbox',
     starred: true,
     unread: false,
-    labels: ['clients'],
+    labels: ['lb-clients'],
     messages: [
       {
         id: 'm5a',
@@ -227,7 +240,7 @@ export const THREADS: Thread[] = [
     location: 'inbox',
     starred: false,
     unread: false,
-    labels: ['finance'],
+    labels: ['lb-finance'],
     messages: [
       {
         id: 'm6',
@@ -247,7 +260,7 @@ export const THREADS: Thread[] = [
     location: 'inbox',
     starred: false,
     unread: false,
-    labels: ['team'],
+    labels: ['lb-team'],
     messages: [
       {
         id: 'm7',
@@ -283,7 +296,7 @@ export const THREADS: Thread[] = [
     location: 'inbox',
     starred: false,
     unread: false,
-    labels: ['finance'],
+    labels: ['lb-finance'],
     messages: [
       {
         id: 'm9',
@@ -303,7 +316,7 @@ export const THREADS: Thread[] = [
     location: 'archive',
     starred: false,
     unread: false,
-    labels: ['clients'],
+    labels: ['lb-clients'],
     messages: [
       {
         id: 'm13',
@@ -346,7 +359,7 @@ export const THREADS: Thread[] = [
     location: 'archive',
     starred: false,
     unread: false,
-    labels: ['team'],
+    labels: ['lb-team'],
     messages: [
       {
         id: 'm10',
@@ -364,7 +377,7 @@ export const THREADS: Thread[] = [
     location: 'drafts',
     starred: false,
     unread: false,
-    labels: ['clients'],
+    labels: ['lb-clients'],
     messages: [
       {
         id: 'm11',
@@ -405,7 +418,7 @@ export const THREADS: Thread[] = [
     location: 'inbox',
     starred: false,
     unread: true,
-    labels: ['clients'],
+    labels: ['lb-clients'],
     messages: [
       {
         id: 'mh1',
@@ -499,7 +512,7 @@ export const THREADS: Thread[] = [
     location: 'inbox',
     starred: false,
     unread: true,
-    labels: ['clients'],
+    labels: ['lb-clients'],
     messages: [
       {
         id: 'mr1',

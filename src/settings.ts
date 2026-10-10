@@ -11,6 +11,12 @@ export interface Settings {
   title: string;
   avatarColor: string;
   signature: string; // HTML
+  /** A signature per sending address (a mailbox or an alias), by address in lower case; missing: `signature`. */
+  signatures?: Record<string, string>;
+  /** Mail: the inline suggestions while writing (Tab takes them). */
+  smartCompose?: boolean;
+  /** Mail: what the main reply button does, and R. */
+  defaultReply?: 'reply' | 'all';
   theme: ThemePref;
   accent: string;
   density: Density;

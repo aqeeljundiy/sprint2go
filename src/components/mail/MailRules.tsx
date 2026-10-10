@@ -8,7 +8,7 @@ import { PersonCell } from '../ui/Person';
 import { SmoothHeight, useLeaving } from '../ui/Smooth';
 import { EmptyState } from '../ui/EmptyState';
 import { loadPolicy, savePolicy, type AuditEntry } from './teamsApi';
-import { BusyButton, ErrorLine, MailLog, SwitchLine } from './teamsBits';
+import { BusyButton, ErrorLine, MailLog } from './teamsBits';
 import { mark, t, tn } from '../../i18n';
 import { fmtDay } from '../../i18n/format';
 import './teams.css';
@@ -195,11 +195,6 @@ export function MailRules({ ws, users, me, toast }: { ws: Workspace; users: User
               <p className="set-hint">{t('Checked in the subject, the text and attachment names of every email that leaves, from the app, mail apps and scheduled mail. The numbers themselves are never logged.')}</p>
             </section>
 
-            <section className="set-block">
-              <h3>{t('Forwarding')}</h3>
-              <SwitchLine on={draft.forwardOutside !== false} onChange={(v) => set({ forwardOutside: v ? undefined : false })} label={t('Let people forward mail outside the company')} hint={t('Off: forwarding only to addresses at your own domains. Forwarding anywhere else stops at once.')} />
-            </section>
-
             <ErrorLine text={error} />
             <div className={`fold mx-savebar-fold ${dirty ? 'open' : ''}`} aria-hidden={!dirty}>
               <div className="fold-in">
@@ -227,4 +222,4 @@ export function MailRules({ ws, users, me, toast }: { ws: Workspace; users: User
 }
 
 /** The parts of a policy people change (what the server adds, like when deleting starts, doesn't count as a change). */
-const clean = (p: MailPolicy) => ({ days: p.retention?.days ?? 0, boxes: p.retention?.mailboxes ?? {}, holds: (p.holds ?? []).map((h) => [h.userId, h.reason]), dlp: (p.dlp ?? []).map((r) => [r.kind, r.words ?? '', r.action, r.on]), out: p.forwardOutside !== false });
+const clean = (p: MailPolicy) => ({ days: p.retention?.days ?? 0, boxes: p.retention?.mailboxes ?? {}, holds: (p.holds ?? []).map((h) => [h.userId, h.reason]), dlp: (p.dlp ?? []).map((r) => [r.kind, r.words ?? '', r.action, r.on]) });

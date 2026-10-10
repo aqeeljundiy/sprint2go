@@ -16,7 +16,7 @@ import { Popover } from './components/ui/Popover';
 import { Brain, Briefcase, Building2, CalendarPlus, Copy, FileText, Hash, ListChecks, Mail, PenLine, Send, Sparkles, Timer, Trash2, Undo2, Upload, User as UserIcon, Video, Table2, MessagesSquare, AlertTriangle, Menu } from 'lucide-react';
 import { DEFAULT_PERMISSIONS } from './types';
 import type { Quote, Team, Note, Account, AppId, Attachment, BlockRule, CalEvent, Channel, ChannelCategory, Client, ClientPerson, ChatFile, ChatMessage, CommentFile, Meeting, Message, Notice, RsvpStatus, TaskEvent, TaskStatus, Todo, DriveItem, DriveSection, Location, Person, Thread, User, View, Workspace } from './types';
-import { LABELS } from './data/mock';
+import { useMailOrganize } from './components/mail/Organize';
 import { CALENDARS, externalEvents } from './data/calendar';
 import { JOBS, costPer100 } from './data/aiCatalog';
 import { rp, storageGB } from './data/pricing';
@@ -60,6 +60,16 @@ import { Sidebar, SIDEBAR_MAX, SIDEBAR_MIN, folderName, type Mode } from './comp
 import { MessageList, type MailActions, type MailFilter } from './components/MessageList';
 import { needsReply, snoozePatch, wakeThread, whenWords } from './mailRules';
 import { MailSettingsScreen } from './components/mail/MailSettings';
+import { peopleOf, recipientsOf, replyPeople } from './mailPeople';
+import { extrasOf, sendersOf, signatureFor, type ReplyOpts } from './components/mail/composeExtras';
+/** What a saved draft asked for (an alias as From, Reply-To, priority, confidential, plain text), back in Compose. */
+const draftExtras = (m: Message) => ({
+  ...(m.sendOptions?.fromAddress ? { fromAddress: m.sendOptions.fromAddress } : m.from?.email ? { fromAddress: m.from.email } : {}),
+  ...(m.replyTo?.length ? { replyTo: m.replyTo } : {}),
+  ...(m.priority ? { priority: m.priority } : {}),
+  ...(m.sendOptions?.confidential && Date.parse(m.sendOptions.confidential.expiresAt) > Date.now() ? { confidential: m.sendOptions.confidential } : {}),
+  ...(m.plain ? { plain: true } : {}),
+});
 // Search operators, inbox tabs, Important, mute, multiple inboxes, auto-advance, conversation view, shortcuts.
 import { advanceTo, rowOf, sortInbox, splitRows, tabOf, tabsOn, useMailPrefs, categoryName } from './components/mail/sortPrefs';
 import { InboxSections, InboxSettings, InboxTabs, KeepNotice, QueryBar, SavedSearches, TabNav, TabRows } from './components/mail/Sorting';
@@ -205,7 +215,7 @@ function PushedSettings({ push, onBack, children }: { push: { label: string } | 
 
 /** `quiet`: news nobody asked for just now (to-dos found in the background). Gone after 4 s. */
 type Toast = { id: number; text: string; action?: { label: string; run: () => void }; also?: { label: string; run: () => void }; ms?: number; quiet?: boolean };
-type ComposeState = { key: number; draftId?: string; initial?: Outgoing; parked?: boolean };
+type ComposeState = { key: number; draftId?: string; initial?: Outgoing; parked?: boolean; replyThreadId?: string }; // replyThreadId: a reply popped out of the reader, sent into its conversation
 
 interface AppProps {
   user: User;
@@ -664,14 +674,14 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   // Emails that asked you to do something (the AI's to-dos from mail, not done yet): Mail's To-do list.
   const todoThreads = useMemo(() => new Set(myTodos.filter((t) => t.threadId && !t.done).map((t) => t.threadId!)), [myTodos]);
   // The project an email is with, by the sender's domain (as clientForThread, which is defined further down).
-  const projectOfThread = (t: Thread) => clients.find((c) => c.workspaceId === ws.id && c.domain && t.messages.some((m) => [m.from, ...m.to].some((p) => p.email.toLowerCase().endsWith('@' + c.domain))))?.id;
+  const projectOfThread = (t: Thread) => clients.find((c) => c.workspaceId === ws.id && c.domain && t.messages.some((m) => peopleOf(m).some((p) => p.email.toLowerCase().endsWith('@' + c.domain))))?.id;
   // The person's inbox settings: tabs, order, conversation view, auto-advance (components/mail/sortPrefs.ts).
   const [mailPrefs] = useMailPrefs();
   const mailTabs = useMemo(() => tabsOn(mailPrefs), [JSON.stringify(mailPrefs.tabs)]); // eslint-disable-line react-hooks/exhaustive-deps
   const viewCtx: ViewCtx = { me: user.id, todo: todoThreads, projectOf: projectOfThread, tabs: mailTabs };
   // The search box reads Gmail's operators (src/mailQuery.ts, the same as the server, the AI connector and IMAP).
   const parsedQuery = useMemo(() => parseQuery(query), [query]);
-  const queryCtx = { isMine, labelName: (id: string) => LABELS.find((l) => l.id === id)?.name };
+  const queryCtx = { isMine, labelName: (id: string) => store.mailLabels.find((l) => l.id === id)?.name }; // label:Clients in a search (labels: src/components/mail/Organize.tsx)
   /** Whether an email passes the chip under the title (Unread, Needs reply, Assigned to me, Attachments) and the search. */
   const passes = (t: Thread) =>
     (filter === 'all' ||
@@ -816,7 +826,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     const map = new Map<string, Person>();
     for (const p of ranked) if (!isMine(p.email)) map.set(p.email, p);
     const first = map.size;
-    for (const t of wsThreads) for (const m of t.messages) for (const p of [m.from, ...m.to]) map.set(p.email, p);
+    for (const t of wsThreads) for (const m of t.messages) for (const p of peopleOf(m)) map.set(p.email, p);
     for (const e of events) for (const g of e.guests ?? []) map.set(g.email, g);
     for (const e of [...map.keys()]) if (isMine(e)) map.delete(e);
     const all = [...map.values()];
@@ -858,7 +868,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         const m = t.messages[0];
         openCompose({
           draftId: t.id,
-          initial: { to: m.to, cc: [], bcc: m.bcc ?? [], subject: t.subject === '(no subject)' ? '' : t.subject, html: m.html ?? m.body.replace(/\n/g, '<br>'), text: m.body, files: [], track: settings.trackByDefault, trackOptions: m.trackOptions ?? DEFAULT_TRACK_OPTIONS, fromId: t.accountId },
+          initial: { to: m.to, cc: m.cc ?? [], bcc: m.bcc ?? [], subject: t.subject === '(no subject)' ? '' : t.subject, html: m.html ?? m.body.replace(/\n/g, '<br>'), text: m.body, files: [], track: settings.trackByDefault, trackOptions: m.trackOptions ?? DEFAULT_TRACK_OPTIONS, fromId: t.accountId, ...draftExtras(m) },
         });
         return;
       }
@@ -935,8 +945,10 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     return members.find((u) => u.email.toLowerCase() === e) ?? members.find((u) => ws.accounts.some((a) => a.kind === 'personal' && a.email.toLowerCase() === e && a.users.includes(u.id)));
   };
   /** Forward: a new email with the last message quoted under your signature, and its files attached. */
-  const forward = (th: Thread) => {
-    const m = lastMessage(th);
+  const forward = (th: Thread, one?: Message) => {
+    const m = one ?? lastMessage(th);
+    // A confidential email someone sent here can't be forwarded (its words aren't in it; server/mailConfidential.ts).
+    if (m.confidential && !m.confidential.sender) return showToast({ text: t('Confidential: it can’t be forwarded') });
     const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     const html = `<p><br></p>${settings.signature}<p><br></p><p>${esc(t('Forwarded message from {name} <{email}>, {date}', { name: m.from.name, email: m.from.email, date: fullDate(m.date) }))}</p><blockquote>${m.html ? sanitize(m.html) : textToHtml(m.body)}</blockquote>`;
     openCompose({
@@ -988,22 +1000,31 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     return /[.!?]$/.test(why) ? why : `${why}.`;
   };
 
-  const reply = (id: string, html: string, text: string, track = false, all = false, dlpAck = false) => {
+  /**
+   * A reply in its conversation. Who it goes to follows Gmail (src/mailPeople.ts: Reply-To, Reply all keeps Cc as Cc)
+   * unless the reply box changed it (`opts`: the people, the subject, priority, plain text).
+   */
+  const reply = (id: string, html: string, text: string, track = false, all = false, opts: ReplyOpts & { dlpAck?: boolean } = {}) => {
     const th = threads.find((x) => x.id === id);
     if (!th) return;
     const acct = accountOf(th.accountId);
     if (acct && !boxReady(acct.id).send) return replyBlocked(acct);
     const last = lastMessage(th);
-    // Reply all: whoever wrote it and everyone it went to, except you.
-    const everyone = [last.from, ...last.to].filter((p, i, l) => !isMine(p.email) && l.findIndex((q) => q.email.toLowerCase() === p.email.toLowerCase()) === i);
-    const to = all && everyone.length ? everyone : isMine(last.from.email) ? last.to : [last.from];
-    const from = senderFor(acct);
+    const people = replyPeople(last, all, isMine);
+    const to = opts.to ?? people.to;
+    const cc = opts.cc ?? people.cc;
+    const bcc = opts.bcc ?? [];
+    const subject = opts.subject?.trim() || (/^re:/i.test(th.subject) ? th.subject : `Re: ${th.subject}`);
+    // From the address it was written to (an alias of this mailbox), with that address's signature.
+    const fromAddress = opts.fromAddress ?? replyAddress(th);
+    const from = { ...senderFor(acct), email: fromAddress || senderFor(acct).email };
     const msgId = uid();
     // Tracked like a new email: only people outside the team, and only when the company allows it.
-    const outside = to.filter((p) => !isTeam(p.email));
-    const tracked = track && ws.readTracking !== false && outside.length > 0;
+    const outside = [...to, ...cc].filter((p) => !isTeam(p.email));
+    const tracked = track && ws.readTracking !== false && outside.length > 0 && !opts.confidential;
     const tracking = tracked ? Object.fromEntries(outside.map((p) => [p.email, { opens: [], clicks: [] }])) : undefined;
-    setThreads((ts) => ts.map((x) => (x.id === id ? { ...x, messages: [...x.messages, { id: msgId, from, to, date: new Date().toISOString(), body: text, html, ...(tracked ? { tracking, trackOptions: REPLY_TRACK_OPTIONS } : {}) }] } : x)));
+    const sendHtml = opts.plain ? undefined : html;
+    setThreads((ts) => ts.map((x) => (x.id === id ? { ...x, messages: [...x.messages, { id: msgId, from, to, ...(cc.length ? { cc } : {}), ...(bcc.length ? { bcc } : {}), ...(opts.replyTo?.length ? { replyTo: opts.replyTo } : {}), ...(opts.priority ? { priority: opts.priority } : {}), ...(opts.plain ? { plain: true } : {}), date: new Date().toISOString(), body: text, html: sendHtml, ...(tracked ? { tracking, trackOptions: REPLY_TRACK_OPTIONS } : {}) }] } : x)));
     /** It didn't go: the reply leaves the conversation and its words go back in the reply box, to send again or change. */
     const notSent = (why: string, again?: () => void) => {
       setThreads((ts) => ts.map((x) => (x.id === id ? { ...x, messages: x.messages.filter((m) => m.id !== msgId) } : x)));
@@ -1016,10 +1037,10 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     if (real && acct && (!acct.provider || acct.provider === 'sprint2go')) {
       const refs = th.messages.map((m) => m.mid).filter(Boolean) as string[];
       // With no connection it waits on this device and goes out once the connection is back (Mail offline).
-      void sendMail(user.id, { workspaceId: ws.id, accountId: acct.id, threadId: th.id, messageId: msgId, to, cc: [], subject: /^re:/i.test(th.subject) ? th.subject : `Re: ${th.subject}`, text, html, files: [], inReplyTo: last.mid, references: refs, track: tracked, trackOptions: tracked ? { opens: REPLY_TRACK_OPTIONS.opens, clicks: REPLY_TRACK_OPTIONS.clicks, notify: REPLY_TRACK_OPTIONS.notify } : undefined, undoSeconds: settings.undoSend, dlpAck }).then(
+      void sendMail(user.id, { workspaceId: ws.id, accountId: acct.id, threadId: th.id, messageId: msgId, to, cc, bcc, subject, text, html: sendHtml, files: (opts.files ?? []).map((f) => ({ name: f.name, url: f.url })), inReplyTo: last.mid, references: refs, track: tracked, trackOptions: tracked ? { opens: REPLY_TRACK_OPTIONS.opens, clicks: REPLY_TRACK_OPTIONS.clicks, notify: REPLY_TRACK_OPTIONS.notify } : undefined, undoSeconds: settings.undoSend, ...extrasOf({ fromAddress, replyTo: opts.replyTo, priority: opts.priority, confidential: opts.confidential }, acct) , dlpAck: opts.dlpAck }).then(
         async (r) => {
           const stop = await dlpOf(r);
-          if (stop) return notSent(dlpWords(stop), stop.action === 'warn' ? () => reply(id, html, text, track, all, true) : undefined);
+          if (stop) return notSent(dlpWords(stop), stop.action === 'warn' ? () => reply(id, html, text, track, all, { ...opts, dlpAck: true }) : undefined);
           return r.ok
             ? sentToast(r, t('Reply sent'), () =>
                 takeBack(id, msgId, () => {
@@ -1034,6 +1055,21 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     } else showToast({ text: inSandbox ? t('Reply sent in the demo company. Nothing left it.') : t('Reply sent') });
     if (inSandbox && clientForThread(th)) tried('reply');
   };
+  /** The address of this mailbox a conversation was written to: one of its aliases, when that's where it arrived. */
+  const replyAddress = (th: Thread): string | undefined => {
+    const acct = accountOf(th.accountId);
+    if (!acct) return undefined;
+    const mine = sendersOf(ws, acct).slice(1);
+    const hit = th.messages.flatMap((m) => recipientsOf(m)).find((p) => mine.includes(p.email.toLowerCase()));
+    return hit?.email.toLowerCase();
+  };
+  /** Opens a reply in the full compose window (Gmail's "Pop out reply"), with what the reply box held. */
+  const popOutReply = (id: string, draft: { to: Person[]; cc: Person[]; bcc?: Person[]; subject: string; html: string; text: string }) => {
+    const th = threads.find((x) => x.id === id);
+    if (!th) return;
+    const fromAddress = replyAddress(th);
+    openCompose({ replyThreadId: id, initial: { to: draft.to, cc: draft.cc, bcc: draft.bcc ?? [], subject: draft.subject, html: draft.html, text: draft.text, files: [], track: settings.trackByDefault, trackOptions: DEFAULT_TRACK_OPTIONS, fromId: th.accountId, ...(fromAddress ? { fromAddress } : {}) } });
+  };
 
   /** `scheduled`: a "send later" draft keeps its tracking, so the server tracks it when it goes out. */
   const toThread = (m: Outgoing, location: Location, id = uid(), scheduled = false): Thread => ({
@@ -1047,12 +1083,18 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     messages: [
       {
         id: uid(),
-        from: senderFor(accountOf(m.fromId)),
-        to: [...m.to, ...m.cc],
+        from: { ...senderFor(accountOf(m.fromId)), ...(m.fromAddress ? { email: m.fromAddress } : {}) },
+        to: m.to,
+        ...(m.cc.length ? { cc: m.cc } : {}),
         ...(m.bcc?.length ? { bcc: m.bcc } : {}),
         date: new Date().toISOString(),
         body: m.text,
-        html: m.html,
+        html: m.plain ? undefined : m.html,
+        ...(m.replyTo?.length ? { replyTo: m.replyTo } : {}),
+        ...(m.priority ? { priority: m.priority } : {}),
+        ...(m.plain ? { plain: true } : {}),
+        // A draft (and a scheduled one) keeps what it asked for, so it goes out the same way later (server/mailExtras.ts).
+        ...(location === 'drafts' && (m.fromAddress || m.confidential || m.replyTo?.length || m.priority) ? { sendOptions: extrasOf(m, accountOf(m.fromId)) } : {}),
         attachments: m.files.length ? m.files.map((f) => ({ name: f.name, size: sizeText(f.size) })) : undefined,
         trackOptions: m.track && (location !== 'drafts' || scheduled) ? m.trackOptions : undefined,
         tracking:
@@ -1127,6 +1169,13 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       showToast({ text: from ? replyWhy(from) : t('Choose a mailbox that can send.'), ms: 7000, action: wsAdmin ? { label: t('Set it up'), run: () => (setSettingsSection('email'), go('settings')) } : undefined });
       return;
     }
+    // A reply popped out of the reader goes into its conversation, like one sent from the reply box.
+    if (compose?.replyThreadId) {
+      const tid = compose.replyThreadId;
+      setCompose(null);
+      reply(tid, m.html, m.text, m.track, false, { to: m.to, cc: m.cc, bcc: m.bcc, subject: m.subject, fromAddress: m.fromAddress, replyTo: m.replyTo, priority: m.priority, confidential: m.confidential, plain: m.plain, files: m.files });
+      return;
+    }
     // A reply drafted in a connected AI app keeps the conversation's headers, so it lands in the same thread.
     const replyOf = compose?.draftId ? threads.find((x) => x.id === compose.draftId)?.replyTo : undefined;
     const { thread, delivered } = deliver(m, compose?.draftId);
@@ -1134,7 +1183,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     // With the server: the mail engine really sends it (our own mailboxes already have their copies).
     const handedOver = real && !!from && (!from.provider || from.provider === 'sprint2go');
     if (handedOver) {
-      void sendMail(user.id, { workspaceId: ws.id, accountId: from.id, threadId: thread.id, messageId: thread.messages[0].id, to: m.to, cc: m.cc, bcc: m.bcc ?? [], subject: m.subject, text: m.text, html: m.html, files: m.files.map((f) => ({ name: f.name, url: f.url })), inReplyTo: replyOf?.mid, references: replyOf?.references, track: m.track, trackOptions: m.track ? { opens: m.trackOptions.opens, clicks: m.trackOptions.clicks, notify: m.trackOptions.notify, remindDays: m.trackOptions.remindDays } : undefined, undoSeconds: settings.undoSend, dlpAck }).then(
+      void sendMail(user.id, { workspaceId: ws.id, accountId: from.id, threadId: thread.id, messageId: thread.messages[0].id, ...extrasOf(m, from), to: m.to, cc: m.cc, bcc: m.bcc ?? [], subject: m.subject, text: m.text, html: m.plain ? undefined : m.html, files: m.files.map((f) => ({ name: f.name, url: f.url })), inReplyTo: replyOf?.mid, references: replyOf?.references, track: m.track, trackOptions: m.track ? { opens: m.trackOptions.opens, clicks: m.trackOptions.clicks, notify: m.trackOptions.notify, remindDays: m.trackOptions.remindDays } : undefined, undoSeconds: settings.undoSend , dlpAck }).then(
         async (r) => {
           const stop = await dlpOf(r);
           if (stop) return notSent(thread, m, dlpWords(stop), stop.action === 'warn' ? () => send(m, true) : undefined);
@@ -1293,7 +1342,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     // receipts and no-reply senders never reach the AI.
     if (!force && ws.ai?.auto.emailTodos === false) return;
     const clientDomains = new Set(wsClients.map((c) => c.domain).filter(Boolean) as string[]);
-    const known = new Set(wsThreads.flatMap((t) => (t.messages.some((m) => isMine(m.from.email)) ? t.messages.flatMap((m) => m.to.map((p) => p.email.toLowerCase())) : [])));
+    const known = new Set(wsThreads.flatMap((t) => (t.messages.some((m) => isMine(m.from.email)) ? t.messages.flatMap((m) => recipientsOf(m).map((p) => p.email.toLowerCase())) : [])));
     const fresh = wsThreads.filter((t) => {
       if (t.location !== 'inbox' || fromBlocked(t)) return false;
       const last = t.messages[t.messages.length - 1];
@@ -1518,6 +1567,9 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   // their teams' work, the clients they work on, and the channels they're in.
   const isAdmin = ws.members.some((m) => m.userId === user.id && m.role !== 'member');
   const perms = { ...DEFAULT_PERMISSIONS, ...ws.permissions };
+  // Mail's labels and filters (src/components/mail/Organize.tsx): the sidebar's Labels, "Label as", "Filter messages
+  // like this", the chips and "Filed by" line on an email, Settings' sections and their dialogs.
+  const organize = useMailOrganize({ ws, me: user.id, isAdmin, myAccounts, threads: wsThreads, setThreads: (fn) => setThreads(fn), people: members, view, onView: selectView, toast: showToast });
   // What the server didn't keep, and a session that ended elsewhere.
   useEffect(() => {
     const failed = (e: Event) => {
@@ -1630,7 +1682,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
 
   /** Which client an email belongs to, by the sender's domain. */
   function clientForThread(t: Thread) {
-    return wsClientsAll.find((c) => c.domain && t.messages.some((m) => [m.from, ...m.to].some((p) => p.email.toLowerCase().endsWith('@' + c.domain))));
+    return wsClientsAll.find((c) => c.domain && t.messages.some((m) => peopleOf(m).some((p) => p.email.toLowerCase().endsWith('@' + c.domain))));
   }
 
   const chatUnread = useMemo(() => {
@@ -2419,7 +2471,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
           : scope.kind === 'client' && client
             ? [
                 ...wsMeetings.filter((m) => m.clientId === client.id && m.summary).map(meetSrc),
-                ...(client.domain ? wsThreads.filter((t) => t.messages.some((m) => [m.from, ...m.to].some((x) => x.email.endsWith('@' + client.domain)))).map(mailSrc) : []),
+                ...(client.domain ? wsThreads.filter((t) => t.messages.some((m) => peopleOf(m).some((x) => x.email.endsWith('@' + client.domain)))).map(mailSrc) : []),
                 ...wsChannels.filter((c) => c.clientId === client.id).map(chanSrc),
                 taskSrc(client.id, wsTasks.filter((t) => t.clientId === client.id)),
               ]
@@ -3559,6 +3611,9 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         case 'u':
           if (selectedId) markUnread(selectedId);
           break;
+        case 'l':
+          if (selectedId) organize.openPicker([selectedId]);
+          break;
         case 'c':
           openCompose();
           break;
@@ -3580,7 +3635,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
 
   /* ---------------- Render ---------------- */
 
-  const title = mode === 'mail' && parsedQuery ? t('Search results') : view.kind === 'category' ? categoryName(view.id) : view.kind === 'contacts' ? t('Contacts') : view.kind === 'folder' ? folderName(view.id) : view.kind === 'tracking' ? t('Waiting for reply') : view.kind === 'todos' ? t('To-do') : view.kind === 'project' ? (wsClientsAll.find((c) => c.id === view.id)?.name ?? term.one) : (LABELS.find((l) => l.id === view.id)?.name ?? '');
+  const title = mode === 'mail' && parsedQuery ? t('Search results') : view.kind === 'category' ? categoryName(view.id) : view.kind === 'contacts' ? t('Contacts') : view.kind === 'folder' ? folderName(view.id) : view.kind === 'tracking' ? t('Waiting for reply') : view.kind === 'todos' ? t('To-do') : view.kind === 'project' ? (wsClientsAll.find((c) => c.id === view.id)?.name ?? term.one) : organize.labelTitle(view.id);
   const appMode = mode === 'settings' ? lastMode : mode;
 
   /** Each app's gear: Settings at that app's section (only sections this person can use). */
@@ -3678,8 +3733,6 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     />
   );
 
-  // Labels in use, for the phone's folders drawer (Gmail's labels).
-  const usedLabels = LABELS.filter((l) => scoped.some((t) => t.labels.includes(l.id)));
   // Unread in the inbox per label and per project: the drawer's counts.
   const tagUnread = useMemo(() => {
     const r: Record<string, number> = {};
@@ -4210,13 +4263,15 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         view={view}
         savedNav={<SavedSearches query={query} onRun={(q) => (selectView({ kind: 'folder', id: 'inbox' }), setQuery(q), mobile && setSidebarOpen(false))} />}
         tabNav={<TabNav current={view.kind === 'category' ? view.id : null} inbox={inboxAll} onPick={(c) => (activeAccount !== 'all' && setActiveAccount('all'), selectView({ kind: 'category', id: c }))} />}
-        labels={LABELS}
+        labels={organize.chipLabels}
+        labelNav={organize.nav}
         clients={mobile ? wsClients.filter((c) => c.domain) : wsClients}
         phoneMail={{
           workspace: ws,
           email: myAccounts.find((a) => a.kind !== 'shared' && !a.temp)?.email ?? user.email,
           onAccounts: () => (setSidebarOpen(false), setMailAccounts(true)),
-          labels: usedLabels,
+          labels: [],
+          labelNav: organize.drawer,
           tagUnread,
           todo: todoThreads.size,
           onSettings: () => (setSidebarOpen(false), setMailSettingsOpen(true)),
@@ -4859,7 +4914,9 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
               title={title}
               threads={visible}
               clientOf={clientForThread}
-              labels={LABELS}
+              labels={organize.chipLabels}
+              moreActions={organize.listActions}
+              onFilterSearch={organize.filterFromSearch}
               personOf={(id) => allUsers.find((u) => u.id === id)}
               meId={user.id}
               me={ME}
@@ -4945,6 +5002,11 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
               onClient={(id) => openClient(id, 'emails')}
               me={ME}
               signature={settings.signature}
+              signatureFor={(address) => signatureFor(settings, address)}
+              replyAddress={(th) => replyAddress(th) ?? accountOf(th.accountId)?.email}
+              defaultReply={settings.defaultReply ?? 'reply'}
+              smartCompose={settings.smartCompose !== false}
+              onPopOut={popOutReply}
               blockTrackers={settings.blockTrackers}
               myName={settings.name || user.name}
               todos={selected ? myTodos.filter((t) => t.threadId === selected.id) : []}
@@ -4954,6 +5016,9 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
               unsubscribedAt={selected && incomingFrom(selected) ? unsubscribed[domainOf(incomingFrom(selected)!.email)] : undefined}
               onUnsubscribe={unsubscribe}
               onBlock={setBlockTarget}
+              labelChips={selected ? organize.chips(selected) : null}
+              filedLine={selected ? organize.filed(selected) : null}
+              organizeActions={organize.readerActions}
               inviteAdded={!!selected && events.some((e) => e.threadId === selected.id && e.start === selected.invite?.start)}
               inviteConflicts={selected?.invite ? conflictsWith(selected.invite.start, selected.invite.end) : []}
               savedToDrive={savedToDrive}
@@ -5318,6 +5383,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
                   return r?.ok ? null : why ? t(why) : t('No connection. Try again.');
                 }}
               />
+              {organize.settings}
               </>
             }
           />
@@ -5423,6 +5489,12 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
           key={compose.key}
           contacts={contacts}
           signature={settings.signature}
+          signatureFor={(address) => signatureFor(settings, address)}
+          workspace={ws}
+          smartCompose={settings.smartCompose !== false}
+          aiOn={aiOn}
+          myName={settings.name || user.name}
+          replying={!!compose.replyThreadId}
           trackByDefault={settings.trackByDefault}
           canTrack={ws.readTracking !== false}
           accounts={sendable.length ? sendable : myAccounts}
@@ -5809,6 +5881,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
           onClose={() => (setPaletteOpen(false), setSearchScope(null))}
         />
       )}
+
+      {organize.overlays}
 
       {blockTarget && incomingFrom(blockTarget) && (
         <BlockDialog

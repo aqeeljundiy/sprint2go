@@ -25,7 +25,10 @@ import { mailConfigured, simpleHtml } from './mail.ts';
 import * as admin from './admin.ts';
 import * as mailer from './mailer.ts';
 import * as readTracking from './readTracking.ts';
+import * as mailExtras from './mailExtras.ts';
+import * as confidential from './mailConfidential.ts';
 import * as mailTeam from './mailTeam.ts';
+import * as mailFilters from './mailFilters.ts';
 import * as mailSmart from './mailSmart.ts';
 import { wakeThread } from '../src/mailRules.ts';
 import * as routing from './routing.ts';
@@ -407,6 +410,10 @@ function teamLens(userId: string): (coll: string, d: any) => any | null {
         const a = accounts.get(d.accountId);
         return !!a && mine.has(a.ws) && a.users.includes(userId);
       }
+      // Mail's labels and filters: a mailbox's for its people, the company's for everyone in it (mailFilters.ts).
+      case 'mailLabels':
+      case 'mailFilters':
+        return mailFilters.visible(d, userId);
       default:
         return mine.has(typeof d.workspaceId === 'string' ? d.workspaceId : firstWs);
     }
@@ -825,6 +832,8 @@ const JOB_OF: Record<string, string> = {
   askmeetings: 'ask',
   braindump: 'braindump',
   meetingnotes: 'meeting',
+  complete: 'draft',
+  translate: 'summary',
 };
 /** Whether our keys serve this company: the AI plan (or a trial, or free months on it), unless it pays for AI itself. */
 const onOurAI = (ws: any) => !!ws && ws.ai?.payer !== 'own' && aiplan.planAI(ws).ok;
@@ -988,6 +997,8 @@ const routes: Record<string, (b: any) => Promise<unknown>> = {
   meetingnotes: (b) => ai.meetingNotes(b),
   folderoverview: (b) => ai.folderOverview(b),
   askmeetings: (b) => ai.askMeetings(b),
+  complete: (b) => ai.nextWords(b), // Mail's smart compose: the next few words
+  translate: (b) => ai.translate(b), // Mail: an email in the reader's language
 };
 
 /* ---------- the meeting recorder (recorder/, its own service) ---------- */
@@ -1436,6 +1447,8 @@ function applySync(me: string, incoming: any, from: { conn?: string; operator?: 
     return d;
   };
   const mayDelete = (before: any) => {
+    // Mail's labels and filters: whoever may change them (mailFilters.ts).
+    if (coll === 'mailLabels' || coll === 'mailFilters') return mailFilters.mayDelete(coll, before, me);
     // Someone else's chat message: its author, admins, or members allowed to delete things.
     if (coll === 'messages' && before && before.userId !== me) {
       const chan = db.getDoc('channels', String(before.channelId)) as any;
@@ -1583,11 +1596,15 @@ function applySync(me: string, incoming: any, from: { conn?: string; operator?: 
     }
     // Threads: opens and clicks, the Message-ID and the delivery state are the server's (readTracking.ts, mailer.ts);
     // comments, who handles it and snoozes follow the team mail rules (mailTeam.ts).
+    // Labels only from the thread's own mailbox or company, and what filters did is the server's (mailFilters.ts).
     if (coll === 'threads') {
       const acct = (db.allDocs('workspaces') as any[]).flatMap((w) => w.accounts ?? []).find((a: any) => a.id === (d as any).accountId);
       // Then the 30 days in Spam and Trash, and what Report spam, Not spam, a moved tab and Important teach (mailSmart.ts).
-      return mailSmart.guardSmart(mailTeam.guardTeamMail(readTracking.guardThread(mailer.guardDelivery(d, before), before, DEMO), before, me, acct, now), before, undefined);
+      return mailSmart.guardSmart(mailTeam.guardTeamMail(readTracking.guardThread(confidential.guardThread(mailer.guardDelivery(mailFilters.guardThread(d, before), before), before), before, DEMO), before, me, acct, now), before, undefined);
     }
+    // Mail's labels and filters: who may change them, and what a filter may do (forwarding, assigning: mailFilters.ts).
+    if (coll === 'mailLabels') return mailFilters.guardLabel(d, before, me, say, ok as db.Doc[]);
+    if (coll === 'mailFilters') return mailFilters.guardFilter(d, before, me, say);
     // A channel's scheduled summaries and the server's last run stay, whatever an older copy in someone's app says.
     if (coll === 'channels' && before) return summaries.keepSummaries(d, before) as db.Doc;
     // Your own message: a send time only while it hasn't gone out (Send later, server/chatLater.ts).
@@ -1668,6 +1685,8 @@ function applySync(me: string, incoming: any, from: { conn?: string; operator?: 
         }).map((d) => d.id)
       : [];
   db.writeDocs(coll, ok, dels, me);
+  // A deleted label leaves its mail (and takes its sub-labels with it): mailFilters.ts.
+  if (coll === 'mailLabels' && delDocs.length) mailFilters.afterLabelWrite(delDocs, me);
   for (const id of emailChanged) soonReadiness(id);
   for (const id of addressChanged) customDomains.soon(id);
   for (const id of holidaysChanged) void feeds.syncHolidays(id).catch((e) => console.error('[holidays]', e instanceof Error ? e.message : e));
@@ -1755,10 +1774,13 @@ createServer(async (req, res) => {
   // Read tracking's picture and links in mail people sent (server/readTracking.ts): public, rate limited, and they
   // answer the same whatever happened.
   if (p.startsWith('/t/') && readTracking.serveTracking(req, res, url, ipOf(req), tooMany(`track:${ipOf(req)}`, 600, 60_000))) return;
+  // Confidential email for people outside sprint2go (server/mailConfidential.ts): its own page, with a code by email when asked.
+  if (p.startsWith('/c/') && (await confidential.handlePublic(req, res, p, { tooMany, secure: secureCookies(), form: async () => { let raw = ''; for await (const c of req) if ((raw += c).length > 4000) break; return new URLSearchParams(raw); } }))) return;
   // Connected AI apps: /mcp and the sign-in addresses they expect (OAuth and /.well-known). /oauth/authorize is a page.
   if ((p === '/mcp' || p.startsWith('/oauth/') || p.startsWith('/.well-known/oauth-') || p === '/.well-known/openid-configuration') && (await connector.handlePublic(req, res, url))) return;
   // Thunderbird's autoconfig for mail apps (server/mailApps.ts).
   if (mailApps.handlePublic(req, res, url)) return;
+  if (mailFilters.handlePublic(req, res, url)) return; // the forwarding confirmation link
   // A company's BIMI logo (server/bimi.ts): public, at the same address for as long as it has one, never anything else.
   const bimiLogo = p.match(/^\/bimi\/([\w-]{1,64})\.svg$/);
   if (bimiLogo && (req.method === 'GET' || req.method === 'HEAD')) {
@@ -2118,6 +2140,8 @@ createServer(async (req, res) => {
     if (p.startsWith('/api/oauth/') && (await connector.handleApi(p, { req, res, url, me, operator: session?.operator ?? null, json, body }))) return;
     // Phone mail apps: app passwords, setup help, the Apple profile (Settings, Phone mail apps).
     if (p.startsWith('/api/mailapps') && (await mailApps.handleApi(p, { req, res, url, me, operator: session?.operator ?? null, json, body, tooMany }))) return;
+    // Mail filters: "N emails match", applying to existing mail and its Undo, forwarding addresses (mailFilters.ts).
+    if ((p.startsWith('/api/mail/filters/') || p.startsWith('/api/mail/forwarding')) && (await mailFilters.handleApi(p, { req, res, url, me, json, body, seesThread: (t) => !!teamLens(me)('threads', t) }))) return;
     // Mail for teams (server/mailPlus.ts): its own /api/mail/ routes; anything else carries on below.
     if (p.startsWith('/api/mail/') && (await mailPlus.handleApi(p, { req, res, url, me, operator: session?.operator ?? null, json, body, tooMany }))) return;
 
@@ -2272,6 +2296,11 @@ createServer(async (req, res) => {
       d.setUTCHours(0, 0, 0, 0);
       return d.toISOString();
     };
+    // Show original, print, pictures through our proxy and confidential email (server/mailExtras.ts).
+    if (/^\/api\/mail\/(original|print|img|confidential\/)/.test(p)) {
+      const canOpen = (accountId: string) => memberOf(me).some((w: any) => (w.accounts ?? []).some((a: any) => a.id === accountId && delegation.openersOf(a).includes(me))); // delegates too
+      if (await mailExtras.handleApi(p, req, res, url, { me, canOpen, json, body: () => body(req), tooMany })) return;
+    }
     if (p === '/api/mail/setup' && req.method === 'GET') {
       const saved = memberOf(me).find((w) => w.id === url.searchParams.get('ws')) as any;
       if (!saved) return json(res, 403, { error: mark('Not in this company.') });
@@ -2297,7 +2326,7 @@ createServer(async (req, res) => {
       const sp = new URL(req.url ?? '/', 'http://x').searchParams;
       const ws = memberOf(me).find((w: any) => w.id === sp.get('workspaceId')) as any;
       if (!ws) return json(res, 403, { error: mark('Not in this company.') });
-      const boxes = (ws.accounts ?? []).filter((a: any) => (a.users ?? []).includes(me)).map((a: any) => String(a.id));
+      const boxes = (ws.accounts ?? []).filter((a: any) => delegation.openersOf(a).includes(me)).map((a: any) => String(a.id)); // delegates search the mailbox too
       const found = mailSmart.search(String(sp.get('q') ?? ''), boxes, { limit: Math.min(Number(sp.get('limit')) || 100, 500) });
       return json(res, 200, { ids: found.map((t) => t.id) });
     }
@@ -2452,6 +2481,9 @@ createServer(async (req, res) => {
       const meBox = (ws.accounts ?? []).find((a: any) => a.kind === 'personal' && (a.users ?? []).includes(me) && !a.temp);
       const senderHeader = delegate?.send === 'behalf' ? { Sender: `"${String(meUser?.name ?? '').replace(/["\\\r\n]/g, '')}" <${String(meBox?.email ?? meUser?.email ?? '').toLowerCase()}>` } : undefined;
       if (delegate) mailAudit.log(ws.id, me, 'delegate.send', account.id, `“${String(b.subject ?? '').slice(0, 80)}” ${delegate.send === 'behalf' ? 'on behalf of the owner' : 'as the mailbox'}`);
+      // An alias as From, Reply-To, priority and confidential mode (server/mailExtras.ts).
+      const extra = mailExtras.sendOptions(b, ws, account, me);
+      if (extra.error) return json(res, 403, { error: extra.error });
       try {
         platform.firstEvent('mail.first', ws.id, me);
         const email: mailer.Outgoing = {
@@ -2459,7 +2491,7 @@ createServer(async (req, res) => {
           accountId: account.id,
           threadId: String(b.threadId ?? ''),
           messageId: String(b.messageId ?? ''),
-          from: { name: String(account.name || ws.name), email: String(account.email).toLowerCase() },
+          from: extra.from ?? { name: String(account.name || ws.name), email: String(account.email).toLowerCase() },
           to: people(b.to),
           cc: people(b.cc),
           bcc: people(b.bcc),
@@ -2472,7 +2504,10 @@ createServer(async (req, res) => {
           headers: senderHeader,
           // Read tracking for the outside recipients, when the sender asked and the company allows it.
           // "Remind me if no reply" comes with tracking (it's in the same menu): told once, by the server, after that many days.
-          tracking: b.track === true ? { opens: b.trackOptions?.opens !== false, clicks: b.trackOptions?.clicks !== false, notify: b.trackOptions?.notify !== false, by: me, remindDays: Number(b.trackOptions?.remindDays) || 0 } : undefined,
+          ...(extra.replyTo ? { replyTo: extra.replyTo } : {}),
+          ...(extra.priority ? { priority: extra.priority } : {}),
+          ...(extra.confidential ? { confidential: extra.confidential } : {}),
+          tracking: b.track === true && !extra.confidential ? { opens: b.trackOptions?.opens !== false, clicks: b.trackOptions?.clicks !== false, notify: b.trackOptions?.notify !== false, by: me, remindDays: Number(b.trackOptions?.remindDays) || 0 } : undefined,
         };
         // Undo send (Settings, Mail): the email waits here for the sender's window before anything leaves.
         const undo = Math.min(mailer.MAX_UNDO_SECONDS, Math.max(0, Math.round(Number(b.undoSeconds) || 0)));
@@ -3550,8 +3585,11 @@ createServer(async (req, res) => {
   const mailPath = mailer.systemMailPath();
   console.log(`sprint2go on http://localhost:${PORT}${mailPath === 'ses' ? ' (email through Amazon SES)' : mailPath === 'own' ? ` (email from ${mailer.NOREPLY} through our mail server)` : ' (no email: codes go to this log)'}`);
   mailer.startMailer({ publicUrl: PUBLIC_URL, broadcast, log: (line) => console.log(line), notify: notifyPeople });
+  mailFilters.initFilters({ broadcast, notify: notifyPeople, send: mailer.queueSend, sendNote: mailer.sendNote, publicUrl: () => PUBLIC_URL || `http://localhost:${PORT}`, log: (line) => console.log(line) });
   // A company's tracked mail points at its own live address when it has one, so its clients never see ours.
   readTracking.initTracking({ broadcast: (c, u, d) => broadcast(c, u, d), origin: (wsId) => { const w = db.getDoc('workspaces', wsId) as any; return customDomains.isLive(w) ? `https://${w.whiteLabel.domain}` : PUBLIC_URL || `http://localhost:${PORT}`; } });
+  // Confidential email: its links point where the company's tracked mail does; codes go out as the app's own notes.
+  confidential.initConfidential({ broadcast: (c, u, d) => broadcast(c, u, d), origin: (wsId) => { const w = db.getDoc('workspaces', wsId) as any; return customDomains.isLive(w) ? `https://${w.whiteLabel.domain}` : PUBLIC_URL || `http://localhost:${PORT}`; }, sendCode: (to, subject, text) => mailer.sendNote(to, subject, text), log: (line) => console.log(line) });
   routing.startRouting({ notify: notifyPeople, broadcast, log: (line) => console.log(line) });
   customDomains.start({
     broadcast,
@@ -3747,6 +3785,7 @@ const housekeeping = () => {
 };
 setTimeout(housekeeping, 60_000);
 setInterval(housekeeping, 24 * 60 * 60_000);
+setInterval(() => confidential.sweep(), 6 * 60 * 60_000).unref?.(); // closed confidential email loses its words after a month
 
 /* ---------- every hour: what the operator backend keeps an eye on ---------- */
 const adminDeps = () =>
@@ -3944,7 +3983,9 @@ setInterval(() => {
     const account = ws?.accounts?.find((a: any) => a.id === t.accountId);
     const m = t.messages[t.messages.length - 1];
     if (!ws || !account || !m || (account.provider && account.provider !== 'sprint2go')) continue;
-    mailer.holdSend({ workspaceId: ws.id, accountId: account.id, threadId: t.id, messageId: m.id, from: { name: account.name || ws.name, email: String(account.email).toLowerCase() }, to: m.to ?? [], cc: [], bcc: m.bcc ?? [], subject: t.subject, text: m.body ?? '', html: m.html, files: (m.attachments ?? []).filter((a: any) => a.url).map((a: any) => ({ name: a.name, url: a.url })), tracking: m.trackOptions && m.tracking ? { opens: m.trackOptions.opens !== false, clicks: m.trackOptions.clicks !== false, notify: m.trackOptions.notify !== false, by: null, remindDays: Number(m.trackOptions.remindDays) || 0 } : undefined }, { userId: null, releaseAt: Date.parse(t.sendAt) });
+    // What the draft asked for when it was scheduled: an alias as From, Reply-To, priority, confidential (server/mailExtras.ts).
+    const extra = mailExtras.sendOptions(m.sendOptions ?? {}, ws, account, null);
+    mailer.holdSend({ workspaceId: ws.id, accountId: account.id, threadId: t.id, messageId: m.id, from: (!extra.error && extra.from) || { name: account.name || ws.name, email: String(account.email).toLowerCase() }, ...(extra.replyTo ? { replyTo: extra.replyTo } : {}), ...(extra.priority ? { priority: extra.priority } : {}), ...(extra.confidential ? { confidential: extra.confidential } : {}), to: m.to ?? [], cc: m.cc ?? [], bcc: m.bcc ?? [], subject: t.subject, text: m.body ?? '', html: m.html, files: (m.attachments ?? []).filter((a: any) => a.url).map((a: any) => ({ name: a.name, url: a.url })), tracking: m.trackOptions && m.tracking ? { opens: m.trackOptions.opens !== false, clicks: m.trackOptions.clicks !== false, notify: m.trackOptions.notify !== false, by: null, remindDays: Number(m.trackOptions.remindDays) || 0 } : undefined }, { userId: null, releaseAt: Date.parse(t.sendAt) });
   }
   const due = (db.allDocs('todos') as any[]).filter((t) => t.remindAt && !t.reminded && !t.done && t.remindAt <= now);
   if (due.length) {

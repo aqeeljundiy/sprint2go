@@ -43,7 +43,7 @@ export function needsReply(t: Pick<Thread, 'location' | 'messages'>, isMine: (em
 /** The people in a conversation, for "who's on this thread": everyone who wrote or was written to. */
 export const participantsOf = (t: Pick<Thread, 'messages'>): Person[] => {
   const seen = new Map<string, Person>();
-  for (const m of t.messages) for (const p of [m.from, ...m.to, ...(m.bcc ?? [])]) if (p?.email && !seen.has(p.email.toLowerCase())) seen.set(p.email.toLowerCase(), p);
+  for (const m of t.messages) for (const p of [m.from, ...m.to, ...(m.cc ?? []), ...(m.bcc ?? [])]) if (p?.email && !seen.has(p.email.toLowerCase())) seen.set(p.email.toLowerCase(), p);
   return [...seen.values()];
 };
 

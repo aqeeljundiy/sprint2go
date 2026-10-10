@@ -35,7 +35,6 @@ export interface MailPolicy {
   retention?: { days: number; mailboxes?: Record<string, number>; deleteFrom?: string; lastRun?: { at: string; deleted: number } };
   holds?: Hold[];
   dlp?: DlpRule[];
-  forwardOutside?: boolean; // false: forwarding only to the company's own domains (missing: allowed)
 }
 type Ws = { id: string; name?: string; domains?: string[]; accounts?: { id: string; email?: string; kind?: string; users?: string[] }[]; members?: { userId: string; role: string }[]; mailPolicy?: MailPolicy };
 
@@ -205,9 +204,8 @@ export function clean(ws: Ws, asked: any, me: string, now = Date.now()): { polic
     dlp.push({ id: typeof r?.id === 'string' && /^[\w-]{1,40}$/.test(r.id) ? r.id : randomBytes(6).toString('hex'), name: String(r?.name ?? '').trim().slice(0, 80) || KIND_WORDS[kind], kind, ...(words ? { words } : {}), action: r?.action === 'block' ? 'block' : 'warn', on: r?.on !== false });
   }
   if (JSON.stringify(dlp) !== JSON.stringify(before.dlp ?? [])) changes.push(`data loss rules: ${dlp.length ? dlp.map((r) => `${r.name} (${r.kind}, ${r.action}${r.on ? '' : ', off'})`).join('; ') : 'none'}`);
-  const forwardOutside = asked?.forwardOutside === false ? false : undefined;
-  if ((before.forwardOutside === false) !== (forwardOutside === false)) changes.push(forwardOutside === false ? 'forwarding outside the company: blocked' : 'forwarding outside the company: allowed');
-  return { policy: { retention, holds: holds.length ? holds : undefined, dlp: dlp.length ? dlp : undefined, forwardOutside }, changes, started };
+  // (Forwarding outside the company is the filters' company rule, Settings, Mail: one rule for all forwarding.)
+  return { policy: { retention, holds: holds.length ? holds : undefined, dlp: dlp.length ? dlp : undefined }, changes, started };
 }
 
 /* ---------- retention: the daily run ---------- */

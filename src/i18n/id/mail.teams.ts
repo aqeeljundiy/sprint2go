@@ -75,6 +75,14 @@ const id: Record<string, string> = {
   '{name} gave you access to {email}. Pick it in Mail’s list of inboxes.': '{name} memberi Anda akses ke {email}. Pilih di daftar kotak masuk Email.',
 
   // Mailbox access: forwarding
+  'Add an address first. An outside one forwards once someone opens the link it gets.': 'Tambahkan alamat dulu. Alamat luar baru diteruskan setelah seseorang membuka link yang dikirim ke sana.',
+  'Forwarding is stopped: that address isn’t confirmed any more.': 'Penerusan dihentikan: alamat itu tidak terkonfirmasi lagi.',
+  'Send it again': 'Kirim lagi',
+  'Someone at that address opens the link we emailed.': 'Seseorang di alamat itu perlu membuka link yang kami kirim.',
+  'The same addresses work for filters. An outside address is emailed a link first, so mail only goes where someone agreed to get it.': 'Alamat yang sama berlaku untuk filter. Alamat luar dikirimi link dulu, jadi email hanya pergi ke tempat yang setuju menerimanya.',
+  'This server can’t send the link yet: an admin finds it in the server log.': 'Server ini belum bisa mengirim link: admin bisa menemukannya di log server.',
+  'Waiting for its link': 'Menunggu link-nya dibuka',
+  'We emailed a link to {address}. It forwards once someone opens it.': 'Kami mengirim link ke {address}. Penerusan berjalan setelah link dibuka.',
   Forwarding: 'Penerusan',
   'Forward all new mail': 'Teruskan semua email baru',
   'Forward to': 'Teruskan ke',

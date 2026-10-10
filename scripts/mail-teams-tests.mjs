@@ -236,38 +236,39 @@ try {
   check(revoke.status === 200 && !bobGone.threads.some((t) => t.accountId === 'a-alice') && afterRevoke.status === 403, 'once Alice takes it back, Bob can’t read or send from her mailbox');
   check((await alice.json('GET', '/api/mail/access?ws=w-acme')).log.some((l) => l.action === 'delegate.revoke'), 'taking it back is logged');
 
-  /* ---------- 2. forwarding ---------- */
+  /* ---------- 2. forwarding (one system with filters: their addresses and link, the company rule) ---------- */
   const fwdAddr = 'alice.home@outside.test';
-  const add = await alice.json('POST', '/api/mail/forwarding/address', { workspaceId: 'w-acme', accountId: 'a-alice', address: fwdAddr });
-  check(add.status === 200 && add.forwarding?.addresses?.[0]?.verified === false, 'Alice adds a forwarding address; it waits for its code');
-  const tooEarly = await alice.json('POST', '/api/mail/forwarding', { workspaceId: 'w-acme', accountId: 'a-alice', on: true, address: fwdAddr, keep: 'archive' });
+  const add = await alice.json('POST', '/api/mail/forwarding', { accountId: 'a-alice', address: fwdAddr });
+  const st0 = await alice.json('GET', '/api/mail/access?ws=w-acme');
+  check(add.status === 200 && add.verified === false && st0.mailboxes.find((m) => m.id === 'a-alice').forwarding.addresses[0]?.verified === false, 'Alice adds a forwarding address (the one filters use too); it waits for its link');
+  const tooEarly = await alice.json('POST', '/api/mail/forward-all', { workspaceId: 'w-acme', accountId: 'a-alice', on: true, address: fwdAddr, keep: 'archive' });
   check(tooEarly.status === 400, 'forwarding can’t start before the address is confirmed');
-  const code = (await waitFor(() => new RegExp(`the code for ${fwdAddr.replace(/\./g, '\\.')} is (\\d{6})`).exec(log)?.[1]))?.toString();
-  const wrong = await alice.json('POST', '/api/mail/forwarding/verify', { workspaceId: 'w-acme', accountId: 'a-alice', address: fwdAddr, code: code === '000000' ? '111111' : '000000' });
-  const right = await alice.json('POST', '/api/mail/forwarding/verify', { workspaceId: 'w-acme', accountId: 'a-alice', address: fwdAddr, code });
-  check(!!code && wrong.status === 400 && right.status === 200 && right.forwarding.addresses[0].verified, 'a wrong code is refused, the right one confirms the address');
-  const bobTries = await bob.json('POST', '/api/mail/forwarding', { workspaceId: 'w-acme', accountId: 'a-alice', on: true, address: fwdAddr });
+  const link = (await waitFor(() => /forwarding confirmation for alice@acme\.test to alice\.home@outside\.test \(no system mail here\): (\S+)/.exec(log)?.[1]))?.toString();
+  const opened = link ? await fetch(link.replace(/^https?:\/\/[^/]+/, base)) : null;
+  const st1 = await alice.json('GET', '/api/mail/access?ws=w-acme');
+  check(!!opened?.ok && st1.mailboxes.find((m) => m.id === 'a-alice').forwarding.addresses[0]?.verified === true, 'opening the link confirms it, once, for forwarding and filters alike');
+  const bobTries = await bob.json('POST', '/api/mail/forward-all', { workspaceId: 'w-acme', accountId: 'a-alice', on: true, address: fwdAddr });
   check(bobTries.status === 403, 'nobody else switches on forwarding for her mailbox');
-  const on = await alice.json('POST', '/api/mail/forwarding', { workspaceId: 'w-acme', accountId: 'a-alice', on: true, address: fwdAddr, keep: 'archive' });
+  const on = await alice.json('POST', '/api/mail/forward-all', { workspaceId: 'w-acme', accountId: 'a-alice', on: true, address: fwdAddr, keep: 'archive' });
   check(on.status === 200 && on.forwarding.on && on.forwarding.keep === 'archive', 'forwarding on, the copy here archived');
   const fsubj = `Guava order ${randomBytes(3).toString('hex')}`;
   await smtpIn('buyer@client.test', ['alice@acme.test'], fsubj, 'Two boxes of guava please');
   const fwd = await waitFor(() => sunk.find((x) => x.raw.includes(fsubj) && x.to.includes(fwdAddr)));
-  check(!!fwd && /^X-Forwarded-To: alice\.home@outside\.test/im.test(fwd.raw) && /^From: buyer@client\.test/im.test(fwd.raw) && fwd.from === 'alice@acme.test' && /DKIM-Signature: v=1;[^]*?d=acme\.test;/i.test(fwd.raw), 'new mail goes on to the address, from the sender as it was, signed for acme.test');
+  check(!!fwd && /^X-Forwarded-To: alice\.home@outside\.test/im.test(fwd.raw) && /^X-S2G-Forwarded: alice@acme\.test/im.test(fwd.raw) && /^From: buyer@client\.test/im.test(fwd.raw) && fwd.from === 'alice@acme.test' && /DKIM-Signature: v=1;[^]*?d=acme\.test;/i.test(fwd.raw), 'new mail goes on to the address, from the sender as it was, signed for acme.test');
   const here = await waitFor(() => threadsOf('a-alice').find((t) => t.subject === fsubj));
   check(here?.location === 'archive', 'and Alice’s copy here is archived as she chose');
-  // Admins block forwarding outside the company.
-  const pol1 = await alice.json('POST', '/api/mail/policy', { workspaceId: 'w-acme', policy: { forwardOutside: false } });
+  // The company rule (Settings, Mail): company only stops it at once.
+  await alice.sync('workspaces', [{ ...doc('workspaces', 'w-acme'), mailForwarding: 'company' }]);
   const st = await alice.json('GET', '/api/mail/access?ws=w-acme');
-  check(pol1.status === 200 && st.mailboxes.find((m) => m.id === 'a-alice').forwarding.blocked === true, 'an admin blocks forwarding outside the company: her forwarding shows as stopped');
+  check(doc('workspaces', 'w-acme').mailForwarding === 'company' && st.mailboxes.find((m) => m.id === 'a-alice').forwarding.blocked === true, 'an admin sets forwarding to company addresses only: her forwarding shows as stopped');
   const fsubj2 = `Durian order ${randomBytes(3).toString('hex')}`;
   await smtpIn('buyer@client.test', ['alice@acme.test'], fsubj2, 'Durian too');
   await waitFor(() => threadsOf('a-alice').find((t) => t.subject === fsubj2));
   await sleep(800);
   check(!sunk.some((x) => x.raw.includes(fsubj2)) && threadsOf('a-alice').find((t) => t.subject === fsubj2)?.location === 'inbox', 'then nothing more goes outside, and the mail stays in her inbox');
-  const outsideAdd = await carol.json('POST', '/api/mail/forwarding/address', { workspaceId: 'w-acme', accountId: 'a-carol', address: 'carol@gmail.test' });
-  check(outsideAdd.status === 400, 'and nobody can add an outside address');
-  await alice.json('POST', '/api/mail/policy', { workspaceId: 'w-acme', policy: {} });
+  const outsideAdd = await carol.json('POST', '/api/mail/forwarding', { accountId: 'a-carol', address: 'carol@gmail.test' });
+  check(outsideAdd.status === 403, 'and nobody can add an outside address');
+  await alice.sync('workspaces', [{ ...doc('workspaces', 'w-acme'), mailForwarding: 'verified' }]);
 
   /* ---------- 3. groups and shared inboxes ---------- */
   const memberMakes = await bob.json('POST', '/api/mail/groups', { workspaceId: 'w-acme', groups: [{ address: 'x@acme.test', kind: 'list', owners: ['u-bob'], members: [] }] });

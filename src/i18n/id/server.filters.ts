@@ -1,0 +1,32 @@
+// Bahasa Indonesia: what the server says about labels and filters (server/mailFilters.ts). A part of the server area,
+// kept apart so the mail round's builders don't edit server.ts at the same time.
+const id: Record<string, string> = {
+  'Not your company.': 'Bukan perusahaan Anda.',
+  'Only admins can change company labels.': 'Hanya admin yang bisa mengubah label perusahaan.',
+  'Only admins can change company filters.': 'Hanya admin yang bisa mengubah filter perusahaan.',
+  'Only admins can change a shared inbox’s filters.': 'Hanya admin yang bisa mengubah filter kotak masuk bersama.',
+  'That mailbox isn’t here any more.': 'Kotak surat itu sudah tidak ada.',
+  'Give the label a name.': 'Beri nama label.',
+  'That’s as many labels as one mailbox can have (500).': 'Itu batas label untuk satu kotak surat (500).',
+  'That’s as many filters as one mailbox can have (500).': 'Itu batas filter untuk satu kotak surat (500).',
+  'There’s already a label with that name there.': 'Sudah ada label dengan nama itu di sana.',
+  'A filter needs at least one thing to look for.': 'Filter perlu setidaknya satu hal yang dicari.',
+  'A label the filter applied isn’t in this mailbox, so it was left out.': 'Label yang dipakai filter tidak ada di kotak surat ini, jadi tidak dipakai.',
+  'Only a shared inbox’s filters can assign, and only to people on it.': 'Hanya filter kotak masuk bersama yang bisa menugaskan, dan hanya ke orang di kotak masuk itu.',
+  'Choose at least one thing for the filter to do.': 'Pilih setidaknya satu hal yang dilakukan filter.',
+  'A label it applied was deleted.': 'Label yang dipakainya sudah dihapus.',
+  'That isn’t an email address.': 'Itu bukan alamat email.',
+  'Your company has automatic forwarding switched off.': 'Perusahaan Anda mematikan penerusan otomatis.',
+  'Your company only allows forwarding to its own addresses.': 'Perusahaan Anda hanya mengizinkan penerusan ke alamatnya sendiri.',
+  'Company filters forward only to the company’s own addresses.': 'Filter perusahaan hanya meneruskan ke alamat perusahaan sendiri.',
+  'That address hasn’t confirmed yet. Add it under Forwarding addresses and open the link it gets.': 'Alamat itu belum dikonfirmasi. Tambahkan di Alamat penerusan dan buka tautan yang dikirim ke sana.',
+  'Forwarding failed. Check the address and the mailbox’s sending.': 'Penerusan gagal. Periksa alamatnya dan pengiriman kotak surat ini.',
+  'New task from an email: {task}': 'Tugas baru dari email: {task}',
+  '{subject} was assigned to you by a filter': '{subject} ditugaskan ke Anda oleh filter',
+  'That filter isn’t there any more.': 'Filter itu sudah tidak ada.',
+  'That can’t be undone any more.': 'Itu sudah tidak bisa dibatalkan.',
+  'A mailbox can forward to 20 addresses at most.': 'Satu kotak surat bisa meneruskan ke paling banyak 20 alamat.',
+  Template: 'Template',
+};
+
+export default id;

@@ -79,7 +79,7 @@ export function MailAccess({ ws, users, me, isAdmin, onImport, toast }: { ws: Wo
                 <p className="set-hint">{t('Pick one in Mail’s list of inboxes to read and answer its mail.')}</p>
               </section>
             )}
-            <ForwardingBlock ws={ws} boxes={d!.mailboxes.filter((m) => m.forwarding)} outside={d!.forwardOutside} domains={d!.domains} onChange={(id, f) => setInfo((x) => (x && x !== 'failed' ? { ...x, mailboxes: x.mailboxes.map((b) => (b.id === id ? { ...b, forwarding: f } : b)) } : x))} toast={toast} />
+            <ForwardingBlock ws={ws} boxes={d!.mailboxes.filter((m) => m.forwarding)} domains={d!.domains} onChange={(id, f) => setInfo((x) => (x && x !== 'failed' ? { ...x, mailboxes: x.mailboxes.map((b) => (b.id === id ? { ...b, forwarding: f } : b)) } : x))} reload={load} toast={toast} />
             <PopBlock info={d!} onPrefs={(prefs) => setInfo((x) => (x && x !== 'failed' ? { ...x, pop: { ...x.pop, prefs } } : x))} toast={toast} />
             <section className="set-block">
               <h3>{t('Export and import')}</h3>
@@ -178,41 +178,40 @@ function Delegates({ ws, users, me, box, multiple, onSaved, toast }: { ws: Works
 
 /* ---------- forwarding ---------- */
 
-function ForwardingBlock({ ws, boxes, outside, domains, onChange, toast }: { ws: Workspace; boxes: AccessInfo['mailboxes']; outside: boolean; domains: string[]; onChange: (id: string, f: Forwarding) => void; toast: (text: string) => void }) {
+function ForwardingBlock({ ws, boxes, domains, onChange, reload, toast }: { ws: Workspace; boxes: AccessInfo['mailboxes']; domains: string[]; onChange: (id: string, f: Forwarding) => void; reload: () => void; toast: (text: string) => void }) {
   const [pick, setPick] = useState(boxes.find((b) => b.mine)?.id ?? boxes[0]?.id ?? '');
   const box = boxes.find((b) => b.id === pick) ?? boxes[0];
   const [address, setAddress] = useState('');
-  const [codes, setCodes] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState('');
   const f = box?.forwarding;
   const verified = useMemo(() => f?.addresses.filter((a) => a.verified) ?? [], [f]);
   const addrRows = useLeaving(f?.addresses ?? [], (a) => a.address);
   if (!box || !f) return null;
-  const run = async (key: string, path: string, body: Record<string, unknown>, done?: string) => {
+  const run = async (key: string, fn: () => Promise<unknown>, done?: string) => {
     setBusy(key);
     setError('');
     try {
-      const r = await postJson<{ forwarding: Forwarding; sent?: boolean }>(path, { workspaceId: ws.id, accountId: box.id, ...body });
-      onChange(box.id, r.forwarding);
+      await fn();
       if (done) toast(done);
-      return r;
+      return true;
     } catch (e) {
       setError((e as Error).message);
-      return null;
+      return false;
     } finally {
       setBusy(null);
     }
   };
-  const add = async () => {
-    const a = address.trim().toLowerCase();
-    if (!a) return;
-    const r = await run('add', '/api/mail/forwarding/address', { address: a });
-    if (r) {
-      setAddress('');
-      toast(r.sent === false ? t('This server can’t send the code yet: an admin finds it in the server log.') : t('We sent a code to {address}. Type it here to confirm.', { address: a }));
-    }
-  };
+  // The forwarding addresses are the same ones filters use (one confirmation, server/mailFilters.ts).
+  const ask = (a: string) =>
+    run(`a:${a}`, async () => {
+      const r = await postJson<{ verified: boolean; sent?: boolean }>('/api/mail/forwarding', { accountId: box.id, address: a });
+      reload();
+      toast(r.verified ? t('{address} is ready', { address: a }) : r.sent === false ? t('This server can’t send the link yet: an admin finds it in the server log.') : t('We emailed a link to {address}. It forwards once someone opens it.', { address: a }));
+    });
+  const setAll = (key: string, body: Record<string, unknown>, done?: string) =>
+    run(key, async () => onChange(box.id, (await postJson<{ forwarding: Forwarding }>('/api/mail/forward-all', { workspaceId: ws.id, accountId: box.id, ...body })).forwarding), done);
+  const off = f.policy === 'off';
   return (
     <section className="set-block">
       <h3>{t('Forwarding')}</h3>
@@ -224,13 +223,17 @@ function ForwardingBlock({ ws, boxes, outside, domains, onChange, toast }: { ws:
           <Select value={box.id} options={boxes.map((b) => ({ value: b.id, label: b.email, hint: b.kind === 'shared' ? t('Shared inbox') : undefined }))} onChange={setPick} label={t('Mailbox')} title={t('Mailbox')} width={300} />
         </div>
       )}
-      {f.blocked && <p className="mx-note">{t('Forwarding is stopped: your company only allows forwarding to its own addresses now.')}</p>}
+      {off ? (
+        <p className="mx-note">{t('Your company has automatic forwarding switched off.')}</p>
+      ) : (
+        f.blocked && <p className="mx-note">{f.policy === 'company' ? t('Forwarding is stopped: your company only allows forwarding to its own addresses now.') : t('Forwarding is stopped: that address isn’t confirmed any more.')}</p>
+      )}
       <SwitchLine
         on={f.on && !f.blocked}
-        disabled={!verified.length || !!busy || f.blocked}
+        disabled={!verified.length || !!busy || off}
         label={t('Forward all new mail')}
-        hint={!verified.length ? t('Add an address and confirm it with its code first.') : f.on && f.address ? t('To {address}.', { address: f.address }) : t('Spam isn’t forwarded.')}
-        onChange={(on) => void run('switch', '/api/mail/forwarding', { on, address: f.address ?? verified[0]?.address, keep: f.keep }, on ? t('Forwarding is on') : t('Forwarding is off'))}
+        hint={!verified.length ? t('Add an address first. An outside one forwards once someone opens the link it gets.') : f.on && f.address ? t('To {address}.', { address: f.address }) : t('Spam isn’t forwarded.')}
+        onChange={(on) => void setAll('switch', { on, address: f.address ?? verified[0]?.address, keep: f.keep }, on ? t('Forwarding is on') : t('Forwarding is off'))}
       />
       <div className={`fold ${f.on && !f.blocked && verified.length ? 'open' : ''}`}>
         <div className="fold-in">
@@ -238,13 +241,13 @@ function ForwardingBlock({ ws, boxes, outside, domains, onChange, toast }: { ws:
             <span>
               <strong>{t('Forward to')}</strong>
             </span>
-            <Select value={f.address ?? verified[0]?.address} options={verified.map((a) => ({ value: a.address, label: a.address }))} onChange={(addr) => void run('to', '/api/mail/forwarding', { on: true, address: addr, keep: f.keep })} label={t('Forward to')} title={t('Forward to')} width={300} />
+            <Select value={f.address ?? verified[0]?.address} options={verified.map((a) => ({ value: a.address, label: a.address }))} onChange={(addr) => void setAll('to', { on: true, address: addr, keep: f.keep })} label={t('Forward to')} title={t('Forward to')} width={300} />
           </div>
           <div className="set-row">
             <span>
               <strong>{t('Then the copy here')}</strong>
             </span>
-            <Select value={f.keep} options={KEEPS.map((k) => ({ value: k.value, label: t(k.label) }))} onChange={(keep) => void run('keep', '/api/mail/forwarding', { on: true, address: f.address, keep })} label={t('Then the copy here')} title={t('Then the copy here')} width={260} />
+            <Select value={f.keep} options={KEEPS.map((k) => ({ value: k.value, label: t(k.label) }))} onChange={(keep) => void setAll('keep', { on: true, address: f.address, keep })} label={t('Then the copy here')} title={t('Then the copy here')} width={260} />
           </div>
         </div>
       </div>
@@ -253,47 +256,40 @@ function ForwardingBlock({ ws, boxes, outside, domains, onChange, toast }: { ws:
           <div key={a.address} className={`acct-row mx-address ${leaving ? 'row-leaving' : ''}`}>
             <span className="acct-info">
               <strong>
-                {a.address} {a.verified ? <Badge small tone="good">{t('Confirmed')}</Badge> : <Badge small tone="warn">{t('Waiting for its code')}</Badge>}
+                {a.address} {a.verified ? <Badge small tone="good">{t('Confirmed')}</Badge> : <Badge small tone="warn">{t('Waiting for its link')}</Badge>}
               </strong>
-              {!a.verified && <small>{a.waiting ? t('Type the 6-digit code we emailed to it.') : t('The code ran out. Send a new one.')}</small>}
+              {!a.verified && (
+                <small>
+                  {t('Someone at that address opens the link we emailed.')}{' '}
+                  <button type="button" className="link-btn small" disabled={!!busy} onClick={() => void ask(a.address)}>
+                    {t('Send it again')}
+                  </button>
+                </small>
+              )}
             </span>
-            {!a.verified && (
-              <form
-                className="mx-code"
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  void run(`v:${a.address}`, '/api/mail/forwarding/verify', { address: a.address, code: codes[a.address] ?? '' }, t('{address} is confirmed', { address: a.address })).then((r) => r && setCodes((c) => ({ ...c, [a.address]: '' })));
-                }}
-              >
-                <input inputMode="numeric" autoComplete="one-time-code" maxLength={6} placeholder="123456" aria-label={t('Code for {address}', { address: a.address })} value={codes[a.address] ?? ''} onChange={(e) => setCodes((c) => ({ ...c, [a.address]: e.target.value.replace(/\D/g, '') }))} />
-                <BusyButton type="submit" busy={busy === `v:${a.address}`} className="ghost-btn outline sm" disabled={(codes[a.address] ?? '').length !== 6}>
-                  {t('Confirm')}
-                </BusyButton>
-                <button type="button" className="link-btn small" disabled={!!busy} onClick={() => void run(`r:${a.address}`, '/api/mail/forwarding/address', { address: a.address }, t('We sent a new code to {address}.', { address: a.address }))}>
-                  {t('Send a new code')}
-                </button>
-              </form>
-            )}
-            <button type="button" className="icon-btn sm" aria-label={t('Remove {address}', { address: a.address })} title={t('Remove')} disabled={!!busy || leaving} onClick={() => void run(`x:${a.address}`, '/api/mail/forwarding/remove', { address: a.address })}>
+            <button type="button" className="icon-btn sm" aria-label={t('Remove {address}', { address: a.address })} title={t('Remove')} disabled={!!busy || leaving} onClick={() => void run(`x:${a.address}`, async () => (await postJson('/api/mail/forwarding/remove', { accountId: box.id, address: a.address }), reload()))}>
               <X size={15} />
             </button>
           </div>
         ))}
-        <form
-          className="acct-row mx-add-address"
-          onSubmit={(e) => {
-            e.preventDefault();
-            void add();
-          }}
-        >
-          <input type="email" inputMode="email" autoComplete="email" placeholder={t('Add a forwarding address')} aria-label={t('Add a forwarding address')} value={address} onChange={(e) => setAddress(e.target.value)} />
-          <BusyButton type="submit" busy={busy === 'add'} className="ghost-btn outline sm" disabled={!address.includes('@')}>
-            {t('Send code')}
-          </BusyButton>
-        </form>
+        {box.mine && !off && (
+          <form
+            className="acct-row mx-add-address"
+            onSubmit={(e) => {
+              e.preventDefault();
+              const a = address.trim().toLowerCase();
+              if (a) void ask(a).then((ok) => ok && setAddress(''));
+            }}
+          >
+            <input type="email" inputMode="email" autoComplete="email" placeholder={t('Add a forwarding address')} aria-label={t('Add a forwarding address')} value={address} onChange={(e) => setAddress(e.target.value)} />
+            <BusyButton type="submit" busy={!!busy && busy.startsWith('a:')} className="ghost-btn outline sm" disabled={!address.includes('@')}>
+              {t('Add')}
+            </BusyButton>
+          </form>
+        )}
       </div>
       <ErrorLine text={error} />
-      <p className="set-hint">{outside ? t('We email a code to the address first, so mail only goes where someone agreed to get it.') : t('Your company only allows forwarding to its own addresses ({domains}).', { domains: domains.join(', ') || t('none yet') })}</p>
+      <p className="set-hint">{f.policy === 'company' ? t('Your company only allows forwarding to its own addresses ({domains}).', { domains: domains.join(', ') || t('none yet') }) : t('The same addresses work for filters. An outside address is emailed a link first, so mail only goes where someone agreed to get it.')}</p>
     </section>
   );
 }

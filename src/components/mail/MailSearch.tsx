@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
-import { ArrowLeft, Bookmark, Check, ChevronDown, Clock, LayoutGrid, Search, X } from 'lucide-react';
+import { ArrowLeft, Bookmark, Check, ChevronDown, Clock, LayoutGrid, ListFilter, Search, X } from 'lucide-react';
 import { matchThread, parseQuery } from '../../mailQuery';
 import { newId, useMailPrefs } from './sortPrefs';
 import type { Client, Label, Person, Thread, User } from '../../types';
@@ -51,6 +51,8 @@ export function MailSearch(p: {
   onStar: (id: string, on: boolean) => void;
   onOpen: (id: string) => void;
   onAllApps?: () => void;
+  /** "Create filter from this search": the words and the From, To and attachment chips (src/components/mail/Organize.tsx). */
+  onFilterSearch?: (q: string, extra?: { from?: string; to?: string; files?: boolean }) => void;
   onClose: () => void;
 }) {
   const input = useRef<HTMLInputElement>(null);
@@ -70,7 +72,7 @@ export function MailSearch(p: {
     for (const th of p.threads)
       for (const m of th.messages) {
         if (!isMine(m.from.email)) from.set(m.from.email.toLowerCase(), { p: m.from, n: (from.get(m.from.email.toLowerCase())?.n ?? 0) + 1 });
-        for (const r of m.to) if (!isMine(r.email)) to.set(r.email.toLowerCase(), { p: r, n: (to.get(r.email.toLowerCase())?.n ?? 0) + 1 });
+        for (const r of [...m.to, ...(m.cc ?? [])]) if (!isMine(r.email)) to.set(r.email.toLowerCase(), { p: r, n: (to.get(r.email.toLowerCase())?.n ?? 0) + 1 });
       }
     const sort = (m: Map<string, { p: Person; n: number }>) => [...m.values()].sort((a, b) => b.n - a.n).map((x) => x.p);
     return { from: sort(from), to: sort(to) };
@@ -91,7 +93,7 @@ export function MailSearch(p: {
           (!f.files || th.messages.some((m) => m.attachments?.length)) &&
           (!f.assigned || th.assignee === p.meId) &&
           (!f.from || th.messages.some((m) => has([m.from], f.from!))) &&
-          (!f.to || th.messages.some((m) => has(m.to, f.to!))) &&
+          (!f.to || th.messages.some((m) => has([...m.to, ...(m.cc ?? [])], f.to!))) &&
           (!since || lastMessage(th).date >= since) &&
           (!parsed || matchThread(parsed, th, { isMine })), // Gmail's operators too (src/mailQuery.ts)
       )
@@ -244,6 +246,12 @@ export function MailSearch(p: {
               <button type="button" className="gm-suggest" onClick={() => commit()}>
                 <Search size={20} />
                 <span>{t('Search for “{q}” in mail', { q: q.trim() })}</span>
+              </button>
+            )}
+            {p.onFilterSearch && (words || f.from || f.to || f.files) && (done || !words) && (
+              <button type="button" className="gm-suggest" onClick={() => p.onFilterSearch!(q.trim(), { from: f.from?.email, to: f.to?.email, files: f.files || undefined })}>
+                <ListFilter size={20} />
+                <span>{t('Create filter from this search')}</span>
               </button>
             )}
             {results.length > 0 ? (

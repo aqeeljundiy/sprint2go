@@ -19,11 +19,12 @@ export const postJson = <T>(path: string, body: unknown) => call<T>('POST', path
 
 export type Keep = 'keep' | 'read' | 'archive' | 'trash';
 export interface Forwarding {
-  addresses: { address: string; verified: boolean; addedAt: string; waiting: boolean }[];
+  addresses: { address: string; verified: boolean; addedAt: string }[]; // the filters' forwarding addresses (one set)
   on: boolean;
   address: string | null;
   keep: Keep;
   blocked: boolean;
+  policy: 'off' | 'company' | 'verified'; // the company rule (Settings, Mail: Automatic forwarding)
 }
 export interface AuditEntry {
   id: number;
@@ -37,7 +38,6 @@ export interface AccessInfo {
   mailboxes: { id: string; email: string; name: string; kind: 'personal' | 'shared'; mine: boolean; delegable: boolean; delegates: MailDelegate[]; forwarding: Forwarding | null; held: boolean }[];
   delegatedToMe: { id: string; email: string; name: string; owners: string[]; send: 'as' | 'behalf' }[];
   pop: { on: boolean; missing: 'switch' | 'certificate' | 'ports' | null; ports: { pop3: number; pop3s: number }; host: string; prefs: { on: boolean; after: Keep; since: string | null } };
-  forwardOutside: boolean;
   domains: string[];
   log: AuditEntry[];
 }

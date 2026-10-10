@@ -49,7 +49,7 @@ export function TrackingPanel({ thread, message }: { thread: Thread; message: Me
 
       {emails.map((email) => {
         const r = tracking[email];
-        const person = message.to.find((p) => p.email === email) ?? { name: email, email };
+        const person = [...message.to, ...(message.cc ?? []), ...(message.bcc ?? [])].find((p) => p.email === email) ?? { name: email, email };
         const real = realOpens(r);
         const clicks = realClicks(r);
         const replied = replyAfter(thread, message, email);

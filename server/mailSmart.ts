@@ -299,7 +299,7 @@ function history(accountIds: Set<string>, sender: string, skipThread?: string) {
     for (const m of t.messages ?? []) {
       const from = lower(m.from?.email);
       if (from === e) received = true;
-      else if (ours.has(from) && (m.to ?? []).some((p: Doc) => lower(p.email) === e)) wroteTo = true;
+      else if (ours.has(from) && [...(m.to ?? []), ...(m.cc ?? [])].some((p: Doc) => lower(p.email) === e)) wroteTo = true;
       if (received && wroteTo) return { received, wroteTo };
     }
   }
@@ -488,7 +488,7 @@ export function syncIndex() {
       const t = JSON.parse(r.data) as Doc;
       del.run(r.id);
       const ms = (t.messages ?? []) as Doc[];
-      const people = ms.flatMap((m) => [m.from, ...(m.to ?? []), ...(m.bcc ?? [])]).filter(Boolean).map((p: Doc) => `${p.name ?? ''} ${p.email ?? ''}`).join(' ');
+      const people = ms.flatMap((m) => [m.from, ...(m.to ?? []), ...(m.cc ?? []), ...(m.bcc ?? [])]).filter(Boolean).map((p: Doc) => `${p.name ?? ''} ${p.email ?? ''}`).join(' ');
       const body = ms.map((m) => String(m.body || String(m.html ?? '').replace(/<[^>]+>/g, ' '))).join('\n').slice(0, 200_000);
       const files = ms.flatMap((m) => (m.attachments ?? []).map((a: Doc) => a.name)).join(' ');
       ins.run(r.id, String(t.accountId ?? ''), String(t.subject ?? ''), people, body, files);
