@@ -44,6 +44,8 @@ jobs:
         run: node --import ./server/register.mjs --test server/ics.test.ts server/repeat.test.ts
       - name: Mail smoke test
         run: node scripts/smoke-mail.mjs
+      - name: Mail extras (Cc kept apart, alias From, Reply-To and priority, confidential links, codes and expiry, show original, print, picture proxy)
+        run: node --import ./server/register.mjs scripts/mail-extras-tests.mjs
       - name: Security and billing checks
         run: node scripts/security-tests.mjs
       - name: AI models (provider lists, picking, fallback)
