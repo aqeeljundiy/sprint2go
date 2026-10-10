@@ -1899,6 +1899,162 @@
   }
 }
 
+/* ---------- Labels and filters on phones (src/components/mail/Labels.tsx, Filters.tsx, Organize.tsx) ---------- */
+@media (max-width: 767px) {
+  /* The drawer: nested labels step in under their parent. */
+  .gm-nav.ml-drawer-row {
+    padding-left: calc(16px + var(--depth, 0) * 16px);
+  }
+  /* "Label as" as a sheet: Gmail's list with ticks. */
+  .ml-pick .ml-search {
+    margin: 0 var(--gutter) 8px;
+    height: var(--row-compact);
+    border-radius: var(--r-pill);
+  }
+  .ml-pick .ml-search input {
+    font-size: var(--fs-field);
+  }
+  .ml-list {
+    max-height: none;
+  }
+  .ml-row {
+    min-height: var(--row-1);
+    padding: 0 var(--gutter) 0 calc(16px + var(--depth, 0) * 16px);
+    gap: 16px;
+    border-radius: 0;
+    font: var(--t-body);
+  }
+  .ml-scope {
+    font: var(--t-caption);
+  }
+  .ml-tick {
+    width: 20px;
+    height: 20px;
+  }
+  .ml-empty {
+    padding: 16px var(--gutter);
+    font: var(--t-secondary);
+  }
+  /* The editor as a pushed screen. */
+  .ml-screen-body {
+    padding: 16px var(--gutter);
+  }
+  .ml-screen-body .field input,
+  .flt-screen-body .field input,
+  .flt-size input {
+    font-size: var(--fs-field);
+    min-height: var(--row-compact);
+  }
+  .accent-row.ml-colors {
+    gap: 12px;
+  }
+  .accent-row.ml-colors .accent-swatch {
+    width: 32px;
+    height: 32px;
+  }
+  .ml-confirm {
+    padding: 0 var(--gutter) 16px;
+    font: var(--t-para);
+  }
+  /* On an email: chips sit on the subject's line, the filed line under it. */
+  .gm-subject .chip.ml-chip {
+    height: 24px;
+    font: var(--t-caption);
+    padding: 0 4px 0 8px;
+    margin-right: 4px;
+    vertical-align: middle;
+  }
+  .gm-reader .filed-line {
+    margin: 0 var(--gutter) 8px;
+    font: var(--t-caption);
+  }
+  .ml-chip-x {
+    width: 20px;
+    height: 20px;
+  }
+  /* The filter editor as a pushed screen: one column, the count and the button at the bottom. */
+  .flt-screen-body {
+    padding: 16px var(--gutter) var(--fab-space);
+  }
+  .flt-screen-body .flt-find,
+  .flt-screen-body .flt-two {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .flt-screen-body .flt-field label {
+    font: var(--t-heading);
+  }
+  .flt-screen-body .flt-field small {
+    font: var(--t-caption);
+  }
+  .flt-screen-body .flt-preview {
+    position: static;
+    margin-top: 8px;
+    border-radius: var(--r-card);
+    padding: 12px 16px;
+  }
+  .flt-screen-body .flt-hint,
+  .flt-screen-body .flt-summary {
+    font: var(--t-secondary);
+  }
+  .flt-screen-body .flt-count {
+    font: var(--t-heading);
+  }
+  .flt-screen-body .flt-sample li {
+    font: var(--t-secondary);
+  }
+  .flt-screen-body .flt-act-row {
+    min-height: var(--row-1);
+    font: var(--t-body);
+  }
+  .flt-screen-body .flt-act-words small {
+    font: var(--t-caption);
+  }
+  .flt-screen-foot {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px var(--gutter) calc(8px + env(safe-area-inset-bottom));
+    border-top: 1px solid var(--line);
+    background: var(--surface);
+  }
+  .flt-screen-foot .primary-btn {
+    margin-left: auto;
+    min-height: var(--row-compact);
+  }
+  .flt-foot-count {
+    font: var(--t-secondary);
+    color: var(--text-2);
+  }
+  /* Settings' Labels and Filters screens: our own grouped rows (long-press opens their actions). */
+  .g-row.ml-grow .g-label {
+    padding-left: calc(var(--depth, 0) * 16px);
+  }
+  .g-row.flt-grow {
+    gap: 12px;
+  }
+  .flt-grow-main {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    min-height: var(--row-2);
+    text-align: left;
+    color: inherit;
+  }
+  .g-row.flt-grow.off .g-label {
+    opacity: 0.55;
+  }
+  .flt-fwd-row .flt-fwd-add {
+    flex: 1;
+    margin: 0;
+  }
+  .flt-fwd-row .flt-fwd-add input {
+    max-width: none;
+    font-size: var(--fs-field);
+    min-height: var(--row-compact);
+  }
+}
+
 /* ---------- Mail's sorting on phones (components/mail/Sorting.tsx, Safety.tsx): the other tabs' rows at the top of
    Primary (Gmail's), their drawer entries, a saved search on the list, Spam's 30 days, the phishing banner ---------- */
 @media (max-width: 767px) {

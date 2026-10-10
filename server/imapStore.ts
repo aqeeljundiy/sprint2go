@@ -15,7 +15,8 @@ import MailComposer from 'nodemailer/lib/mail-composer/index.js';
 import { simpleParser, type ParsedMail } from 'mailparser';
 import * as db from './db.ts';
 import * as raws from './mailRaw.ts';
-import { LABELS } from '../src/data/mock.ts';
+import * as filters from './mailFilters.ts';
+import { labelPath, labelsFor, type MailLabel } from '../src/mailFilterMatch.ts';
 import { addDays, companyTz, localParts, zonedTime } from '../src/jobTimes.ts';
 
 db.db.exec(`
@@ -63,19 +64,26 @@ const LOCATION_FOLDERS: { id: FolderId; top: string; sub: string; special: strin
   { id: 'trash', top: 'Trash', sub: 'Trash', special: '\\Trash' },
   { id: 'spam', top: 'Spam', sub: 'Spam', special: '\\Junk' },
 ];
-const LABEL_IDS = new Set(LABELS.map((l) => l.id));
 const RESERVED = new Set(LOCATION_FOLDERS.flatMap((f) => [f.top.toLowerCase(), f.sub.toLowerCase()]));
 
-/** Every folder of these mailboxes, in the order mail apps list them. */
+/** The labels a mailbox has (its own and the company's: server/mailFilters.ts), read once per call. */
+export const labelsOf = (mb: Pick<Mailbox, 'id' | 'wsId'>, all = db.allDocs('mailLabels') as unknown as MailLabel[]) => labelsFor(all, mb.wsId, mb.id);
+/** A label's folder name: its path ("Clients/KopiKita"), with a top level that would clash with a place renamed. */
+export function labelFolderName(l: MailLabel, all: MailLabel[]) {
+  const path = labelPath(l, all);
+  const [top, ...rest] = path.split('/');
+  return [RESERVED.has(top.toLowerCase()) ? `Label ${top}` : top, ...rest].join('/');
+}
+
+/** Every folder of these mailboxes, in the order mail apps list them. Labels nest with "/" (Clients/KopiKita). */
 export function foldersOf(mailboxes: Mailbox[]): Folder[] {
   const out: Folder[] = [];
+  const all = db.allDocs('mailLabels') as unknown as MailLabel[];
   for (const mb of [...mailboxes].sort((a, b) => Number(b.primary) - Number(a.primary))) {
     const prefix = mb.primary ? '' : `${mb.email}/`;
     for (const f of LOCATION_FOLDERS) out.push({ name: prefix + (mb.primary ? f.top : f.sub), box: `${mb.id}/${f.id}`, id: f.id, mailbox: mb, special: mb.primary ? f.special : null });
-    for (const l of LABELS) {
-      const name = RESERVED.has(l.name.toLowerCase()) ? `Label ${l.name}` : l.name;
-      out.push({ name: prefix + name, box: `${mb.id}/label:${l.id}`, id: `label:${l.id}`, mailbox: mb, special: null });
-    }
+    const mine = labelsOf(mb, all);
+    for (const l of mine) out.push({ name: prefix + labelFolderName(l, mine), box: `${mb.id}/label:${l.id}`, id: `label:${l.id}`, mailbox: mb, special: null });
   }
   return out;
 }
@@ -111,13 +119,13 @@ const isFrom = (mb: Mailbox, m: Msg) => mb.addresses.has(lower(m.from?.email));
 const snoozedNow = (t: Thread) => !!t.snoozedUntil && t.snoozedUntil > new Date().toISOString();
 
 /** The folders one message shows in. Mail waiting out its sender's Undo hasn't been sent yet, so it shows nowhere. */
-export function homesOf(t: Thread, m: Msg, mb: Mailbox): FolderId[] {
+export function homesOf(t: Thread, m: Msg, mb: Mailbox, labelIds: Set<string> = new Set(labelsOf(mb).map((l) => l.id))): FolderId[] {
   if (m.delivery?.state === 'held') return [];
   if (t.location === 'drafts') return t.sendAt ? [] : ['drafts'];
   if (t.location === 'trash') return ['trash'];
   if (t.location === 'spam') return ['spam'];
   const out: FolderId[] = [isFrom(mb, m) ? 'sent' : snoozedNow(t) ? 'snoozed' : t.location === 'archive' ? 'archive' : 'inbox'];
-  for (const l of t.labels ?? []) if (LABEL_IDS.has(l)) out.push(`label:${l}`);
+  for (const l of t.labels ?? []) if (labelIds.has(l)) out.push(`label:${l}`);
   return out;
 }
 
@@ -189,7 +197,8 @@ export function sync(f: Folder, ctx: Ctx): BoxState {
   const threads = ctx.threadsOf(mb.id);
   const kept = ctx.kept(mb.id);
   const want: { key: string; t: Thread; m: Msg }[] = [];
-  for (const t of threads) for (const m of t.messages) if (m && homesOf(t, m, mb).includes(f.id)) want.push({ key: keyOf(t, m, kept), t, m });
+  const labelIds = new Set(labelsOf(mb).map((l) => l.id));
+  for (const t of threads) for (const m of t.messages) if (m && homesOf(t, m, mb, labelIds).includes(f.id)) want.push({ key: keyOf(t, m, kept), t, m });
   db.db.exec('BEGIN IMMEDIATE');
   try {
     const box = boxRow(f.box);
@@ -291,6 +300,67 @@ export async function sizeOf(ctx: Ctx, t: Thread, m: Msg, mb: Mailbox): Promise<
 export interface Writer {
   /** Saves threads through the app's own rules (index.ts applySync); `why` when not everything was kept. */
   write: (userId: string, upserts: Thread[], deletes: string[]) => { ok: boolean; why?: string };
+  /** Saves labels the same way (a mail app making, renaming or deleting a folder). */
+  labels?: (userId: string, upserts: MailLabel[], deletes: string[]) => { ok: boolean; why?: string };
+}
+
+/* ---------- label folders made, renamed and deleted from a mail app ---------- */
+
+/** Which mailbox a new folder name belongs to, and its path inside it ("Clients/KopiKita"). */
+function placeOf(name: string, mailboxes: Mailbox[]): { mb: Mailbox; parts: string[] } | null {
+  const other = mailboxes.find((m) => !m.primary && name.toLowerCase().startsWith(`${m.email.toLowerCase()}/`));
+  const mb = other ?? mailboxes.find((m) => m.primary);
+  if (!mb) return null;
+  const rest = other ? name.slice(other.email.length + 1) : name;
+  const parts = rest.split('/').map((x) => x.trim()).filter(Boolean);
+  if (!parts.length || parts.some((x) => x.length > 80)) return null;
+  if (RESERVED.has(parts[0].toLowerCase()) || parts[0].toUpperCase() === 'INBOX') return null;
+  return { mb, parts };
+}
+/** CREATE: makes the label (and any parents it needs) in that mailbox. */
+export function createLabelFolder(w: Writer, userId: string, name: string, mailboxes: Mailbox[]): { ok: boolean; why?: string } {
+  const at = placeOf(name, mailboxes);
+  if (!at || !w.labels) return { ok: false, why: "Folders here are sprint2go's places and labels; that name can't be a label." };
+  const all = db.allDocs('mailLabels') as unknown as MailLabel[];
+  const mine = labelsOf(at.mb, all);
+  const made: MailLabel[] = [];
+  let parent: MailLabel | null = null;
+  for (const part of at.parts) {
+    const pool: MailLabel[] = [...mine, ...made];
+    const found: MailLabel | undefined = pool.find((l) => (l.parentId ?? null) === (parent?.id ?? null) && l.name.toLowerCase() === part.toLowerCase());
+    if (found) {
+      parent = found;
+      continue;
+    }
+    // Nested under a company label only by an admin, in sprint2go: here the new part is this mailbox's own.
+    if (parent && parent.accountId === null) return { ok: false, why: 'Sub-labels of a company label are made by admins in sprint2go.' };
+    const l: MailLabel = { id: newId('lb-'), workspaceId: at.mb.wsId, accountId: at.mb.id, name: part, parentId: parent?.id ?? null, color: '#64748b', show: 'show', order: Date.now() };
+    made.push(l);
+    parent = l;
+  }
+  if (!made.length) return { ok: false, why: 'That folder is already there.' };
+  return w.labels(userId, made, []);
+}
+/** RENAME: a label folder gets its new name (and place, when the path changes). */
+export function renameLabelFolder(w: Writer, userId: string, f: Folder, to: string, mailboxes: Mailbox[]): { ok: boolean; why?: string } {
+  if (!f.id.startsWith('label:') || !w.labels) return { ok: false, why: 'Only labels can be renamed here.' };
+  const at = placeOf(to, mailboxes);
+  if (!at || at.mb.id !== f.mailbox.id) return { ok: false, why: 'A label stays in its own mailbox.' };
+  const all = db.allDocs('mailLabels') as unknown as MailLabel[];
+  const label = all.find((l) => l.id === f.id.slice(6));
+  if (!label) return { ok: false, why: "That label isn't there any more." };
+  const mine = labelsOf(f.mailbox, all);
+  let parent: MailLabel | null = null;
+  for (const part of at.parts.slice(0, -1)) {
+    parent = mine.find((l) => (l.parentId ?? null) === (parent?.id ?? null) && l.name.toLowerCase() === part.toLowerCase()) ?? null;
+    if (!parent) return { ok: false, why: 'Make the folder it goes in first.' };
+  }
+  return w.labels(userId, [{ ...label, name: at.parts[at.parts.length - 1], parentId: parent?.id ?? null }], []);
+}
+/** DELETE: the label goes (its mail stays, in sprint2go's other places). */
+export function deleteLabelFolder(w: Writer, userId: string, f: Folder): { ok: boolean; why?: string } {
+  if (!f.id.startsWith('label:') || !w.labels) return { ok: false, why: 'Only labels can be deleted here.' };
+  return w.labels(userId, [], [f.id.slice(6)]);
 }
 
 const setKw = (box: string, uid: number, fn: (k: Set<string>) => void) => {
@@ -493,6 +563,12 @@ export async function append(w: Writer, userId: string, f: Folder, ctx: Ctx, raw
     thread = existing
       ? { ...existing, location: place ?? (existing.location === 'trash' || existing.location === 'spam' ? 'archive' : existing.location), labels, messages: [...existing.messages, msg], unread: mine ? !!existing.unread : !has('\\Seen'), starred: existing.starred || has('\\Flagged') }
       : { id: newId('t-'), accountId: mb.id, workspaceId: mb.wsId, subject, location: place ?? 'archive', starred: has('\\Flagged'), unread: !mine && !has('\\Seen'), labels, messages: [msg] };
+  }
+  // Mail moved in from elsewhere (an import by dragging into INBOX) runs through the mailbox's filters and blocked
+  // senders, as arriving mail does: the marks only, nothing is forwarded or answered (server/mailFilters.ts).
+  if (f.id === 'inbox' && !mine) {
+    const hit = filters.accountOf(mb.id);
+    if (hit) thread = filters.onArrival(thread, msg, { ws: hit.ws, account: hit.account, spam: false, importing: true, listId: filters.listIdOf(r.parsed) }).thread;
   }
   raws.keepRaw(thread.id, msg.id, raw);
   const saved = w.write(userId, [thread], []);

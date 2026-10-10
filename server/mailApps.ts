@@ -176,6 +176,13 @@ const writer: store.Writer = {
     const ok = a.status === 200 && (a.body.saved ?? 0) >= upserts.length && b.status === 200 && deletes.every((id) => !db.getDoc('threads', id));
     return { ok, why: ok ? undefined : a.body.why ?? a.body.error ?? b.body.why ?? b.body.error ?? 'You can’t change that here.' };
   },
+  // Label folders made, renamed or deleted in a mail app: the same rules as in sprint2go (server/mailFilters.ts).
+  labels(userId, upserts, deletes) {
+    const a = upserts.length ? deps.write(userId, 'mailLabels', upserts as unknown as db.Doc[], []) : { status: 200, body: { saved: 0 } as { saved?: number; why?: string; error?: string } };
+    const b = deletes.length ? deps.write(userId, 'mailLabels', [], deletes) : { status: 200, body: {} as { saved?: number; why?: string; error?: string } };
+    const ok = a.status === 200 && (a.body.saved ?? 0) >= upserts.length && b.status === 200 && deletes.every((id) => !db.getDoc('mailLabels', id));
+    return { ok, why: ok ? undefined : a.body.why ?? a.body.error ?? b.body.why ?? b.body.error ?? "You can't change that label here." };
+  },
 };
 
 /** Why a mailbox can't send now (as /api/mail/send checks it), or null. */

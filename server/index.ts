@@ -28,6 +28,7 @@ import * as readTracking from './readTracking.ts';
 import * as mailExtras from './mailExtras.ts';
 import * as confidential from './mailConfidential.ts';
 import * as mailTeam from './mailTeam.ts';
+import * as mailFilters from './mailFilters.ts';
 import * as mailSmart from './mailSmart.ts';
 import { wakeThread } from '../src/mailRules.ts';
 import * as routing from './routing.ts';
@@ -401,6 +402,10 @@ function teamLens(userId: string): (coll: string, d: any) => any | null {
         const a = accounts.get(d.accountId);
         return !!a && mine.has(a.ws) && a.users.includes(userId);
       }
+      // Mail's labels and filters: a mailbox's for its people, the company's for everyone in it (mailFilters.ts).
+      case 'mailLabels':
+      case 'mailFilters':
+        return mailFilters.visible(d, userId);
       default:
         return mine.has(typeof d.workspaceId === 'string' ? d.workspaceId : firstWs);
     }
@@ -1434,6 +1439,8 @@ function applySync(me: string, incoming: any, from: { conn?: string; operator?: 
     return d;
   };
   const mayDelete = (before: any) => {
+    // Mail's labels and filters: whoever may change them (mailFilters.ts).
+    if (coll === 'mailLabels' || coll === 'mailFilters') return mailFilters.mayDelete(coll, before, me);
     // Someone else's chat message: its author, admins, or members allowed to delete things.
     if (coll === 'messages' && before && before.userId !== me) {
       const chan = db.getDoc('channels', String(before.channelId)) as any;
@@ -1577,11 +1584,15 @@ function applySync(me: string, incoming: any, from: { conn?: string; operator?: 
     }
     // Threads: opens and clicks, the Message-ID and the delivery state are the server's (readTracking.ts, mailer.ts);
     // comments, who handles it and snoozes follow the team mail rules (mailTeam.ts).
+    // Labels only from the thread's own mailbox or company, and what filters did is the server's (mailFilters.ts).
     if (coll === 'threads') {
       const acct = (db.allDocs('workspaces') as any[]).flatMap((w) => w.accounts ?? []).find((a: any) => a.id === (d as any).accountId);
       // Then the 30 days in Spam and Trash, and what Report spam, Not spam, a moved tab and Important teach (mailSmart.ts).
-      return mailSmart.guardSmart(mailTeam.guardTeamMail(readTracking.guardThread(confidential.guardThread(mailer.guardDelivery(d, before), before), before, DEMO), before, me, acct, now), before, undefined);
+      return mailSmart.guardSmart(mailTeam.guardTeamMail(readTracking.guardThread(confidential.guardThread(mailer.guardDelivery(mailFilters.guardThread(d, before), before), before), before, DEMO), before, me, acct, now), before, undefined);
     }
+    // Mail's labels and filters: who may change them, and what a filter may do (forwarding, assigning: mailFilters.ts).
+    if (coll === 'mailLabels') return mailFilters.guardLabel(d, before, me, say, ok as db.Doc[]);
+    if (coll === 'mailFilters') return mailFilters.guardFilter(d, before, me, say);
     // A channel's scheduled summaries and the server's last run stay, whatever an older copy in someone's app says.
     if (coll === 'channels' && before) return summaries.keepSummaries(d, before) as db.Doc;
     // Your own message: a send time only while it hasn't gone out (Send later, server/chatLater.ts).
@@ -1660,6 +1671,8 @@ function applySync(me: string, incoming: any, from: { conn?: string; operator?: 
         }).map((d) => d.id)
       : [];
   db.writeDocs(coll, ok, dels, me);
+  // A deleted label leaves its mail (and takes its sub-labels with it): mailFilters.ts.
+  if (coll === 'mailLabels' && delDocs.length) mailFilters.afterLabelWrite(delDocs, me);
   for (const id of emailChanged) soonReadiness(id);
   for (const id of addressChanged) customDomains.soon(id);
   for (const id of holidaysChanged) void feeds.syncHolidays(id).catch((e) => console.error('[holidays]', e instanceof Error ? e.message : e));
@@ -1753,6 +1766,7 @@ createServer(async (req, res) => {
   if ((p === '/mcp' || p.startsWith('/oauth/') || p.startsWith('/.well-known/oauth-') || p === '/.well-known/openid-configuration') && (await connector.handlePublic(req, res, url))) return;
   // Thunderbird's autoconfig for mail apps (server/mailApps.ts).
   if (mailApps.handlePublic(req, res, url)) return;
+  if (mailFilters.handlePublic(req, res, url)) return; // the forwarding confirmation link
   // A company's BIMI logo (server/bimi.ts): public, at the same address for as long as it has one, never anything else.
   const bimiLogo = p.match(/^\/bimi\/([\w-]{1,64})\.svg$/);
   if (bimiLogo && (req.method === 'GET' || req.method === 'HEAD')) {
@@ -2112,6 +2126,8 @@ createServer(async (req, res) => {
     if (p.startsWith('/api/oauth/') && (await connector.handleApi(p, { req, res, url, me, operator: session?.operator ?? null, json, body }))) return;
     // Phone mail apps: app passwords, setup help, the Apple profile (Settings, Phone mail apps).
     if (p.startsWith('/api/mailapps') && (await mailApps.handleApi(p, { req, res, url, me, operator: session?.operator ?? null, json, body, tooMany }))) return;
+    // Mail filters: "N emails match", applying to existing mail and its Undo, forwarding addresses (mailFilters.ts).
+    if ((p.startsWith('/api/mail/filters/') || p.startsWith('/api/mail/forwarding')) && (await mailFilters.handleApi(p, { req, res, url, me, json, body, seesThread: (t) => !!teamLens(me)('threads', t) }))) return;
 
     /* ---------- help and support, for everyone signed in ---------- */
     if (p === '/api/support' && req.method === 'GET') {
@@ -3539,6 +3555,7 @@ createServer(async (req, res) => {
   const mailPath = mailer.systemMailPath();
   console.log(`sprint2go on http://localhost:${PORT}${mailPath === 'ses' ? ' (email through Amazon SES)' : mailPath === 'own' ? ` (email from ${mailer.NOREPLY} through our mail server)` : ' (no email: codes go to this log)'}`);
   mailer.startMailer({ publicUrl: PUBLIC_URL, broadcast, log: (line) => console.log(line), notify: notifyPeople });
+  mailFilters.initFilters({ broadcast, notify: notifyPeople, send: mailer.queueSend, sendNote: mailer.sendNote, publicUrl: () => PUBLIC_URL || `http://localhost:${PORT}`, log: (line) => console.log(line) });
   // A company's tracked mail points at its own live address when it has one, so its clients never see ours.
   readTracking.initTracking({ broadcast: (c, u, d) => broadcast(c, u, d), origin: (wsId) => { const w = db.getDoc('workspaces', wsId) as any; return customDomains.isLive(w) ? `https://${w.whiteLabel.domain}` : PUBLIC_URL || `http://localhost:${PORT}`; } });
   // Confidential email: its links point where the company's tracked mail does; codes go out as the app's own notes.

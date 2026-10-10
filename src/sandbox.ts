@@ -110,6 +110,8 @@ export function buildSandbox(seed: Seed, me: { id: string; name: string }, now =
     tables,
     rows: list('rows').filter((r) => tableIds.has(String(r.tableId))),
     quotes: list('quotes').filter((q) => q.workspaceId === SAMPLE_COMPANY),
+    mailLabels: list('mailLabels').filter((l) => l.workspaceId === SAMPLE_COMPANY),
+    mailFilters: list('mailFilters').filter((f) => f.workspaceId === SAMPLE_COMPANY),
   };
   const statuses = Object.entries((seed.statuses ?? {}) as Record<string, unknown>).filter(([id]) => members.has(id) && id !== SAMPLE_SEAT);
 

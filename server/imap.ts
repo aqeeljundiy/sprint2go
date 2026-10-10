@@ -632,14 +632,29 @@ class Session {
       case 'SUBSCRIBE':
       case 'UNSUBSCRIBE':
         return ok(`${name} completed`);
+      // Folders are sprint2go's places and its labels: a new folder is a new label (nested with "/"), and renaming or
+      // deleting one renames or deletes the label (server/imapStore.ts). The places themselves stay.
       case 'CREATE': {
-        const n = strOf(cmd.args[0]) ?? '';
-        if (this.folderNamed(n.replace(/\/$/, ''))) return this.line(`${tag} NO [ALREADYEXISTS] That folder is already there`);
-        return this.line(`${tag} NO [CANNOT] Folders come from sprint2go: its places and its labels`);
+        const n = utf7Decode(strOf(cmd.args[0]) ?? '').replace(/\/$/, '');
+        if (this.folderNamed(utf7Encode(n))) return this.line(`${tag} NO [ALREADYEXISTS] That folder is already there`);
+        const r = store.createLabelFolder(deps.writer, this.userId!, n, this.mailboxes());
+        return r.ok ? ok('CREATE completed') : this.line(`${tag} NO [CANNOT] ${r.why ?? 'That folder can’t be made here'}`);
       }
-      case 'DELETE':
-      case 'RENAME':
-        return this.line(`${tag} NO [CANNOT] Folders come from sprint2go and can't be ${name === 'DELETE' ? 'deleted' : 'renamed'} here`);
+      case 'DELETE': {
+        const f = this.folderNamed(strOf(cmd.args[0]) ?? '');
+        if (!f) return this.line(`${tag} NO [NONEXISTENT] No such folder`);
+        if (this.sel?.folder.box === f.box) return this.line(`${tag} NO [INUSE] Close the folder first`);
+        const r = store.deleteLabelFolder(deps.writer, this.userId!, f);
+        return r.ok ? ok('DELETE completed') : this.line(`${tag} NO [CANNOT] ${r.why ?? 'That folder can’t be deleted here'}`);
+      }
+      case 'RENAME': {
+        const f = this.folderNamed(strOf(cmd.args[0]) ?? '');
+        if (!f) return this.line(`${tag} NO [NONEXISTENT] No such folder`);
+        const to = utf7Decode(strOf(cmd.args[1]) ?? '').replace(/\/$/, '');
+        if (this.folderNamed(utf7Encode(to))) return this.line(`${tag} NO [ALREADYEXISTS] That folder is already there`);
+        const r = store.renameLabelFolder(deps.writer, this.userId!, f, to, this.mailboxes());
+        return r.ok ? ok('RENAME completed') : this.line(`${tag} NO [CANNOT] ${r.why ?? 'That folder can’t be renamed here'}`);
+      }
       case 'STATUS':
         return this.status(cmd);
       case 'SELECT':
@@ -738,7 +753,8 @@ class Session {
     const folders = this.folders();
     const parents = [...new Set(folders.filter((f) => !f.mailbox.primary).map((f) => f.mailbox.email))];
     const rows: { name: string; attrs: string[] }[] = [
-      ...folders.map((f) => ({ name: f.name, attrs: ['\\HasNoChildren', ...(f.special ? [f.special] : []), ...(cmd.name === 'XLIST' && f.name === 'INBOX' ? ['\\Inbox'] : [])] })),
+      // Nested labels (Clients/KopiKita): a folder with folders under it says so.
+      ...folders.map((f) => ({ name: f.name, attrs: [folders.some((x) => x.name.startsWith(`${f.name}/`)) ? '\\HasChildren' : '\\HasNoChildren', ...(f.special ? [f.special] : []), ...(cmd.name === 'XLIST' && f.name === 'INBOX' ? ['\\Inbox'] : [])] })),
       ...parents.map((p) => ({ name: p, attrs: ['\\Noselect', '\\HasChildren'] })),
     ];
     const res = patterns.map((pt) => {

@@ -1,6 +1,7 @@
 import { mark, type Msg } from './i18n/index';
 import type { SandboxMark } from './sandbox';
 import type { SummaryRun } from './jobTimes';
+import type { FiledBy } from './mailFilterMatch';
 
 export type FolderId = 'inbox' | 'starred' | 'sent' | 'drafts' | 'archive' | 'spam' | 'trash' | 'snoozed' | 'scheduled' | 'assigned';
 
@@ -168,6 +169,8 @@ export interface Thread {
   trashedAt?: string; // when it went to Trash (deleted for good 30 days later)
   spamWhy?: string[]; // why the filter put it in Spam (short words, for the banner)
   replyTo?: { threadId: string; mid?: string; references?: string[] }; // a reply drafted in a connected AI app: when sent, it carries that conversation's headers so it lands in the same thread
+  /* Labels and filters (src/mailFilterMatch.ts, server/mailFilters.ts) */
+  filed?: FiledBy[]; // the server's: what filters (or a block) did to it on arrival, newest last
 }
 
 /** A meeting proposed inside an email, offered as "Add to calendar". */
@@ -335,6 +338,7 @@ export interface Workspace {
   mailCredits?: number; // emails left on Boosted sending
   mailCreditsNotified?: boolean;
   mailAliases?: MailAlias[]; // extra addresses that deliver into mailboxes (set through the server)
+  mailForwarding?: 'off' | 'company' | 'verified'; // automatic forwarding by filters: off, to the company's own addresses, or also to outside addresses that confirmed (the default)
   mailChecks?: { at: string; allOk: boolean; checks: { key: string; ok: boolean; found: string; want: string }[] }; // the last DNS check
   /** What really works, worked out by the server: mail in, mail out, per mailbox, with the reason when it doesn't. */
   mailReady?: { at: string; receive: boolean; send: boolean; why: { receive?: string; send?: string }; mailboxes: Record<string, { receive: boolean; send: boolean; why?: string; sendWhy?: string }> };

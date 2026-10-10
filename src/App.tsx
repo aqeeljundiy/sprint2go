@@ -16,7 +16,7 @@ import { Popover } from './components/ui/Popover';
 import { Brain, Briefcase, Building2, CalendarPlus, Copy, FileText, Hash, ListChecks, Mail, PenLine, Send, Sparkles, Timer, Trash2, Undo2, Upload, User as UserIcon, Video, Table2, MessagesSquare, AlertTriangle, Menu } from 'lucide-react';
 import { DEFAULT_PERMISSIONS } from './types';
 import type { Quote, Team, Note, Account, AppId, Attachment, BlockRule, CalEvent, Channel, ChannelCategory, Client, ClientPerson, ChatFile, ChatMessage, CommentFile, Meeting, Message, Notice, RsvpStatus, TaskEvent, TaskStatus, Todo, DriveItem, DriveSection, Location, Person, Thread, User, View, Workspace } from './types';
-import { LABELS } from './data/mock';
+import { useMailOrganize } from './components/mail/Organize';
 import { CALENDARS, externalEvents } from './data/calendar';
 import { JOBS, costPer100 } from './data/aiCatalog';
 import { rp, storageGB } from './data/pricing';
@@ -36,7 +36,7 @@ import { holidayCalendarId, holidayCountry } from './data/holidays';
 import { useSettings, usePersisted, usePrefsSync } from './settings';
 import { DEFAULT_TRACK_OPTIONS, REPLY_TRACK_OPTIONS, isTeam } from './tracking';
 import { isMine, setIdentity } from './identity';
-import { scanned, session, useStored } from './store';
+import { scanned, session, store, useStored } from './store';
 import { live, reloadAll, resync, server, uploadFile, uploadPolicy, wasSkipped } from './sync';
 import { TRY_KEYS, isSandbox, isSandboxId, sandboxWsId, type TryKey } from './sandbox';
 import { DemoCompanyBar, DemoInvite, ResetDemoDialog, TryList, demoCompanySeen, hideDemoCompany, openDemoCompany, resetDemoCompany, useDemoState } from './components/DemoCompany';
@@ -656,7 +656,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const viewCtx: ViewCtx = { me: user.id, todo: todoThreads, projectOf: projectOfThread, tabs: mailTabs };
   // The search box reads Gmail's operators (src/mailQuery.ts, the same as the server, the AI connector and IMAP).
   const parsedQuery = useMemo(() => parseQuery(query), [query]);
-  const queryCtx = { isMine, labelName: (id: string) => LABELS.find((l) => l.id === id)?.name };
+  const queryCtx = { isMine, labelName: (id: string) => store.mailLabels.find((l) => l.id === id)?.name }; // label:Clients in a search (labels: src/components/mail/Organize.tsx)
   /** Whether an email passes the chip under the title (Unread, Needs reply, Assigned to me, Attachments) and the search. */
   const passes = (t: Thread) =>
     (filter === 'all' ||
@@ -1535,6 +1535,9 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   // their teams' work, the clients they work on, and the channels they're in.
   const isAdmin = ws.members.some((m) => m.userId === user.id && m.role !== 'member');
   const perms = { ...DEFAULT_PERMISSIONS, ...ws.permissions };
+  // Mail's labels and filters (src/components/mail/Organize.tsx): the sidebar's Labels, "Label as", "Filter messages
+  // like this", the chips and "Filed by" line on an email, Settings' sections and their dialogs.
+  const organize = useMailOrganize({ ws, me: user.id, isAdmin, myAccounts, threads: wsThreads, setThreads: (fn) => setThreads(fn), people: members, view, onView: selectView, toast: showToast });
   // What the server didn't keep, and a session that ended elsewhere.
   useEffect(() => {
     const failed = (e: Event) => {
@@ -3566,6 +3569,9 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         case 'u':
           if (selectedId) markUnread(selectedId);
           break;
+        case 'l':
+          if (selectedId) organize.openPicker([selectedId]);
+          break;
         case 'c':
           openCompose();
           break;
@@ -3587,7 +3593,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
 
   /* ---------------- Render ---------------- */
 
-  const title = mode === 'mail' && parsedQuery ? t('Search results') : view.kind === 'category' ? categoryName(view.id) : view.kind === 'folder' ? folderName(view.id) : view.kind === 'tracking' ? t('Waiting for reply') : view.kind === 'todos' ? t('To-do') : view.kind === 'project' ? (wsClientsAll.find((c) => c.id === view.id)?.name ?? term.one) : (LABELS.find((l) => l.id === view.id)?.name ?? '');
+  const title = mode === 'mail' && parsedQuery ? t('Search results') : view.kind === 'category' ? categoryName(view.id) : view.kind === 'folder' ? folderName(view.id) : view.kind === 'tracking' ? t('Waiting for reply') : view.kind === 'todos' ? t('To-do') : view.kind === 'project' ? (wsClientsAll.find((c) => c.id === view.id)?.name ?? term.one) : organize.labelTitle(view.id);
   const appMode = mode === 'settings' ? lastMode : mode;
 
   /** Each app's gear: Settings at that app's section (only sections this person can use). */
@@ -3685,8 +3691,6 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     />
   );
 
-  // Labels in use, for the phone's folders drawer (Gmail's labels).
-  const usedLabels = LABELS.filter((l) => scoped.some((t) => t.labels.includes(l.id)));
   // Unread in the inbox per label and per project: the drawer's counts.
   const tagUnread = useMemo(() => {
     const r: Record<string, number> = {};
@@ -4216,13 +4220,15 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         view={view}
         savedNav={<SavedSearches query={query} onRun={(q) => (selectView({ kind: 'folder', id: 'inbox' }), setQuery(q), mobile && setSidebarOpen(false))} />}
         tabNav={<TabNav current={view.kind === 'category' ? view.id : null} inbox={inboxAll} onPick={(c) => (activeAccount !== 'all' && setActiveAccount('all'), selectView({ kind: 'category', id: c }))} />}
-        labels={LABELS}
+        labels={organize.chipLabels}
+        labelNav={organize.nav}
         clients={mobile ? wsClients.filter((c) => c.domain) : wsClients}
         phoneMail={{
           workspace: ws,
           email: myAccounts.find((a) => a.kind !== 'shared' && !a.temp)?.email ?? user.email,
           onAccounts: () => (setSidebarOpen(false), setMailAccounts(true)),
-          labels: usedLabels,
+          labels: [],
+          labelNav: organize.drawer,
           tagUnread,
           todo: todoThreads.size,
           onSettings: () => (setSidebarOpen(false), setMailSettingsOpen(true)),
@@ -4861,7 +4867,9 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
               title={title}
               threads={visible}
               clientOf={clientForThread}
-              labels={LABELS}
+              labels={organize.chipLabels}
+              moreActions={organize.listActions}
+              onFilterSearch={organize.filterFromSearch}
               personOf={(id) => allUsers.find((u) => u.id === id)}
               meId={user.id}
               me={ME}
@@ -4961,6 +4969,9 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
               unsubscribedAt={selected && incomingFrom(selected) ? unsubscribed[domainOf(incomingFrom(selected)!.email)] : undefined}
               onUnsubscribe={unsubscribe}
               onBlock={setBlockTarget}
+              labelChips={selected ? organize.chips(selected) : null}
+              filedLine={selected ? organize.filed(selected) : null}
+              organizeActions={organize.readerActions}
               inviteAdded={!!selected && events.some((e) => e.threadId === selected.id && e.start === selected.invite?.start)}
               inviteConflicts={selected?.invite ? conflictsWith(selected.invite.start, selected.invite.end) : []}
               savedToDrive={savedToDrive}
@@ -5319,6 +5330,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
                   return r?.ok ? null : why ? t(why) : t('No connection. Try again.');
                 }}
               />
+              {organize.settings}
               </>
             }
           />
@@ -5816,6 +5828,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
           onClose={() => (setPaletteOpen(false), setSearchScope(null))}
         />
       )}
+
+      {organize.overlays}
 
       {blockTarget && incomingFrom(blockTarget) && (
         <BlockDialog
