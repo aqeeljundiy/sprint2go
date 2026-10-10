@@ -476,8 +476,9 @@ async function receive(raw: Buffer, session: SMTPServerSession) {
     const thread = existing
       ? { ...existing, unread: true, location: existing.location === 'trash' || existing.location === 'archive' ? 'inbox' : existing.location, snoozedUntil: undefined, snoozeIfNoReply: undefined, messages: [...existing.messages, msg] }
       : { id: 't-' + randomBytes(6).toString('hex'), accountId: account.id, subject: cleanSubject(parsed.subject ?? '') || '(no subject)', location: spam ? 'spam' : 'inbox', starred: false, unread: true, labels: [], messages: [msg], workspaceId: ws.id };
-    // The source as it arrived, for mail apps over IMAP (server/imap.ts).
-    keepRaw(thread.id, msg.id, raw);
+    // The source as it arrived, for mail apps over IMAP (server/imap.ts). With a refused file in it, mail apps get the
+    // copy rebuilt from what's kept instead (server/imapStore.ts), so the refused file never reaches them either.
+    if (!attachments.some((a) => a.blocked)) keepRaw(thread.id, msg.id, raw);
     db.writeDocs('threads', [thread], [], null);
     deps.broadcast('threads', [thread], []);
     db.db.prepare('INSERT INTO mail_log (workspace_id, direction, route, addr, bytes, state, error, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(ws.id, 'in', spam ? 'spam' : 'inbox', lower(rcpt.address), raw.length, 'stored', authSummary || null, now());

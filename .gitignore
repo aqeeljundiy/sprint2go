@@ -15,3 +15,4 @@ tsconfig.tsbuildinfo
 # Competitor research (screenshots and notes): local only, never in the public repo
 research/
 /data-test
+/data-test

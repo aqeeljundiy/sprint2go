@@ -44,7 +44,7 @@
 }
 .mf-row {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
+  grid-template-columns: repeat(auto-fill, 176px);
   gap: 8px;
   max-width: 760px;
 }
@@ -294,13 +294,14 @@
 .mv-pdf {
   overflow: auto;
   background: transparent;
-  display: grid;
-  align-content: start;
+  display: flex;
+  flex-direction: column;
   gap: 12px;
   padding-bottom: 24px;
   overscroll-behavior: contain;
 }
 .mv-page {
+  flex: none;
   width: 100%;
   background: #fff;
   border-radius: 4px;

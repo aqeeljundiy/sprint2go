@@ -335,6 +335,7 @@ try {
   check(by('logo.png')?.inline && t3.messages[0].html.includes(by('logo.png').url) && !t3.messages[0].html.includes('cid:'), 'a cid picture shows in place');
   check(scans > 0, 'the scanner was asked (CLAMD_HOST)');
   check(!db.prepare("SELECT 1 FROM files WHERE name IN ('setup.exe', 'bundle.zip', 'scan-me.pdf') AND workspace_id = 'pnp'").get(), 'nothing refused is kept as a file');
+  check(!db.prepare("SELECT 1 FROM mail_raw WHERE thread_id = ? AND kind = 'raw'").get(t3.id), 'mail apps (IMAP) get a copy without the refused files, not the source as it arrived');
 
   /* ---------- 5. Download all ---------- */
   const zr = await aqeel.call('GET', `/api/mail/zip?threadId=${t3.id}&messageId=${t3.messages[0].id}`);
