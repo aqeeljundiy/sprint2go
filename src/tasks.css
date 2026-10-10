@@ -968,6 +968,11 @@
   border-bottom: 1px solid var(--line);
   background: var(--surface);
 }
+/* Under the toolbar (view switch, New task), the header starts below it instead of sliding up over its buttons. */
+.tq-bar ~ .ucal .ucal-top,
+.tq-bar ~ * .ucal-top {
+  margin-top: 0;
+}
 .ucal-bar {
   display: flex;
   align-items: center;
@@ -1082,27 +1087,31 @@
   scroll-margin-top: 140px;
   padding-bottom: 6px;
 }
-.ucal-day.empty .t-heading {
+.ucal-day.no-tasks .t-heading {
   color: var(--text-3);
 }
-.ucal-add {
+.ucal-dhead {
   display: flex;
   align-items: center;
-  gap: 6px;
-  min-height: 40px;
-  padding: 0 8px;
-  border: 0;
-  border-radius: 10px;
-  background: none;
+  justify-content: space-between;
+  gap: 8px;
+}
+.ucal-dhead .t-heading {
+  margin: 0;
+  text-align: left;
+}
+.ucal-add {
+  flex: none;
   color: var(--text-3);
-  font: inherit;
-  font-size: 13.5px;
-  cursor: pointer;
-  transition: color 0.15s ease, background-color 0.15s ease;
 }
 .ucal-add:hover {
-  background: var(--hover);
   color: var(--accent);
+}
+.ucal-none {
+  margin: 0;
+  padding: 4px 0 8px;
+  color: var(--text-3);
+  font-size: 13px;
 }
 .ucal-more {
   display: flex;

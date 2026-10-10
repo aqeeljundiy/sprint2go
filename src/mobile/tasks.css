@@ -507,28 +507,26 @@
     scroll-margin-top: 120px;
     padding-bottom: 0;
   }
-  .ucal-day .t-heading {
-    margin: 0;
-    min-height: 40px;
-    padding: 16px 16px 8px;
+  .ucal-dhead {
+    min-height: var(--row-1);
+    padding: var(--sp-4) var(--sp-2) 0 var(--gutter);
+  }
+  .ucal-dhead .t-heading {
     font-size: var(--fs-body);
   }
-  .ucal-day.empty .t-heading {
+  .ucal-day.no-tasks .t-heading {
     color: var(--text-3);
   }
   .ucal-add {
-    width: 100%;
-    gap: 16px;
-    min-height: var(--tap);
-    padding: 0 16px 0 24px;
-    border-radius: 0;
-    font-size: var(--fs-body);
+    width: var(--tap);
+    height: var(--tap);
   }
   .ucal-add svg {
     color: var(--accent-text);
   }
-  .ucal-add:active {
-    background: var(--hover);
+  .ucal-none {
+    padding: 0 var(--gutter) var(--sp-3);
+    font-size: var(--fs-secondary);
   }
 
   /* ---------- Quick Add: Todoist's sheet on the keyboard (QuickAdd, `.qa-todo`) ---------- */
@@ -907,7 +905,7 @@
   .tdp-val .sel-chev,
   .tdp-val .sel > svg:last-child,
   .tdp-val .date-sel > svg,
-  .tdp-row.td-priority .st-dot {
+  .tdp-row.td-f-priority .st-dot {
     display: none; /* a value, not a dropdown: tap it to change it; the row's own icon says what it is */
   }
   .tdp-val .td-due {
@@ -922,11 +920,11 @@
   .tdp-val .td-val-col small {
     display: none;
   }
-  .tdp-row.td-due .tdp-icon {
+  .tdp-row.td-f-due .tdp-icon {
     color: inherit;
   }
-  .tdp-row.td-priority .tdp-icon,
-  .tdp-row.td-priority .tdp-val {
+  .tdp-row.td-f-priority .tdp-icon,
+  .tdp-row.td-f-priority .tdp-val {
     color: var(--danger);
   }
   .tdp-desc {
@@ -944,10 +942,10 @@
     outline: 0;
     field-sizing: content;
   }
-  .tdp-row.td-notes {
+  .tdp-row.td-f-notes {
     align-items: flex-start;
   }
-  .tdp-row.td-notes .tdp-icon {
+  .tdp-row.td-f-notes .tdp-icon {
     margin-top: 12px;
   }
   .tdp-btn {

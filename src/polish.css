@@ -227,6 +227,11 @@
 .chat-pane {
   position: relative;
 }
+/* The pane hid its overflow, which still lets the browser scroll it: the thread's box takes focus while the panel
+   slides in from 40 px to the right, and the conversation jumped left. Clip instead: same look, never scrolls. */
+.app .chat-pane {
+  overflow: clip;
+}
 @media (max-width: 1439px) {
   .chat-side {
     position: absolute;

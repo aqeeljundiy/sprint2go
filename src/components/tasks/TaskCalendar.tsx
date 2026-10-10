@@ -134,15 +134,21 @@ export function TaskCalendar({
       </div>
       {head}
       <div className="ucal-list" ref={listRef}>
+        {/* Only days that have something, plus today; each day's own + sits on its heading (no add row under every day). */}
         {days.map((d) => {
           const items = byDay.get(d) ?? [];
+          if (!items.length && d !== today && d !== selected) return null;
+          const heading = phone ? dayHeadingDateFirst(d, today) : dayHeading(d, today);
           return (
-            <section key={d} id={`ucal-${d}`} data-day={d} className={`ucal-day${items.length ? '' : ' empty'}`}>
-              <h3 className="t-heading">{phone ? dayHeadingDateFirst(d, today) : dayHeading(d, today)}</h3>
+            <section key={d} id={`ucal-${d}`} data-day={d} className={`ucal-day${items.length ? '' : ' no-tasks'}`}>
+              <div className="ucal-dhead">
+                <h3 className="t-heading">{heading}</h3>
+                <button type="button" className="icon-btn ucal-add" onClick={() => onAdd(d)} aria-label={t('Add a task on {day}', { day: heading })} title={t('Add a task on {day}', { day: heading })}>
+                  <Plus size={16} />
+                </button>
+              </div>
               {items.map(row)}
-              <button type="button" className="ucal-add" onClick={() => onAdd(d)}>
-                <Plus size={16} /> {t('Add task')}
-              </button>
+              {!items.length && <p className="ucal-none">{d === today ? t('Nothing due today.') : t('Nothing due this day.')}</p>}
             </section>
           );
         })}

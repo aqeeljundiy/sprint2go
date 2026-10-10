@@ -745,6 +745,9 @@ const id: Record<string, string> = {
   'day::Plan': 'Rencanakan',
   // The phone's switch under the top bar: Today, Upcoming, My tasks, Browse
   Browse: 'Jelajahi',
+  'Add a task on {day}': 'Tambah tugas pada {day}',
+  'Nothing due today.': 'Tidak ada tugas hari ini.',
+  'Nothing due this day.': 'Tidak ada tugas pada hari ini.',
 };
 
 export default id;

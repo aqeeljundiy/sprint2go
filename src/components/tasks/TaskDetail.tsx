@@ -350,7 +350,7 @@ export function TaskDetail({
       {rows.length > 0 && (
         <div className="td-rows">
           {rows.map((f) => (
-            <div key={f.id} className={`td-row td-${f.id}`}>
+            <div key={f.id} className={`td-row td-f-${f.id}`}>
               <span className="td-label">
                 <f.icon size={16} />
                 {f.label}
@@ -464,7 +464,7 @@ export function TaskDetail({
       {(pRows.length > 0 || guest) && (
         <div className="tdp-rows">
           {pRows.map((f) => (
-            <div key={f.id} className={`tdp-row td-${f.id}`} role="group" aria-label={f.label}>
+            <div key={f.id} className={`tdp-row td-f-${f.id}`} role="group" aria-label={f.label}>
               <f.icon size={20} className="tdp-icon" aria-hidden="true" />
               <span className="tdp-val">
                 {f.id === 'notes' ? <textarea ref={notesRef} className="tdp-desc" rows={1} value={task.notes ?? ''} onChange={(e) => onPatch(task.id, { notes: e.target.value })} placeholder={t('Description')} aria-label={t('Description')} /> : f.row}
