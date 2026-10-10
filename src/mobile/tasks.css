@@ -1799,3 +1799,13 @@
     border-radius: var(--r-pill);
   }
 }
+
+@media (max-width: 767px) {
+  .tdp-row:is(.td-f-supervisor, .td-f-followers) .tdp-val {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: center;
+    gap: 0;
+  }
+}

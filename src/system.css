@@ -982,3 +982,8 @@ h4,
     transition: none;
   }
 }
+
+/* Focus: the browser's own ring takes the company colour (not the system amber or blue), the one focus colour. */
+:focus-visible {
+  outline-color: var(--accent);
+}

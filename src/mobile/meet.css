@@ -548,3 +548,12 @@
     color: var(--text-2);
   }
 }
+
+@media (max-width: 767px) {
+  .mt-quick .mt-quick-title,
+  .mt-quick .mt-quick-title:focus {
+    outline: 0;
+    box-shadow: none;
+    border: 0;
+  }
+}

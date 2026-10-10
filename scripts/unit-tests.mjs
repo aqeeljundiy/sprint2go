@@ -2291,6 +2291,23 @@ await test('Email layout: every system email renders through the shared layout, 
   });
 }
 
+/* ---------- Dates that can't be read (a guest's "Next week" next step) never throw ---------- */
+
+await test('fmtDay and friends show an unreadable date as written', async () => {
+  const f = await import('../src/i18n/format.ts');
+  assert.equal(f.fmtDay('Next week'), 'Next week');
+  assert.equal(f.fmtWeekday(''), '');
+  assert.equal(f.fmtDateTime(new Date('nope')), '');
+  assert.match(f.fmtDay('2026-10-06'), /6 Oct/);
+});
+await test('Needs you says a late date in words, not 2026-10-06', async () => {
+  const { needsYou } = await import('../src/needsYou.ts');
+  const list = needsYou({ me: 'u1', today: '2026-10-10', now: Date.parse('2026-10-10T09:00:00Z'), tasks: [{ id: 't1', title: 'Late one', userId: 'u1', due: '2026-10-06', done: false }], teams: [], clients: [], isOwner: false, firstName: () => 'A', threads: [], mine: () => false, notices: [], stageKind: (tk) => (tk.done ? 'done' : 'open') });
+  const late = list.find((x) => x.kind === 'late');
+  assert.ok(late, 'a late task is listed');
+  assert.ok(!/2026-10-06/.test(late.sub ?? ''), late.sub);
+});
+
 db.db.close();
 rmSync(dir, { recursive: true, force: true });
 console.log(failed ? `\n${failed} failed` : '\nAll passed');

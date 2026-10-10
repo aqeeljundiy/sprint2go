@@ -141,7 +141,7 @@ import { Huddle } from './components/Huddle';
 import { usePushBridge } from './pushBridge';
 import { routeBase } from './tryOut';
 import { useAppLanguage, useLang } from './i18n/useLang';
-import { mark, msg, phrase, t, textOf, tn, type Msg } from './i18n';
+import { getLang, mark, msg, phrase, t, textOf, tn, type Msg } from './i18n';
 import { fmtDay, fmtList, fmtNumber, fmtWeekday } from './i18n/format';
 import { setBrand } from './brandInk';
 
@@ -3403,7 +3403,11 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     }
     return out;
   }, [wsThreads, events]); // eslint-disable-line react-hooks/exhaustive-deps
-  const calEvents = useMemo(() => (pendingInvites.length ? [...visibleEvents, ...pendingInvites] : visibleEvents), [visibleEvents, pendingInvites]);
+  // Public holidays arrive with Google's English names: shown in the reader's language (id/calendar.ts has them).
+  const calEvents = useMemo(() => {
+    const shown = visibleEvents.map((e) => (e.feed === 'holidays' ? { ...e, title: t(e.title) } : e));
+    return pendingInvites.length ? [...shown, ...pendingInvites] : shown;
+  }, [visibleEvents, pendingInvites, getLang()]); // eslint-disable-line react-hooks/exhaustive-deps
   // One date of a repeating event is found by its id too (the id says which date).
   const selectedEvent = findEvent(events, selectedEventId) ?? findEvent(calEvents, selectedEventId);
   // The event being edited (one date of a repeating one: that date, with the series' repeat).

@@ -3,6 +3,29 @@
 // The key is the exact English text in the code; the value is how it reads in Indonesian. Tone, the glossary and
 // the rules for placeholders and plurals: docs/i18n.md. Check with: node scripts/i18n-check.mjs
 const id: Record<string, string> = {
+  // Public holiday names from Google’s feed (App.tsx shows them through t()).
+  "New Year's Day": 'Tahun Baru Masehi',
+  'Christmas Day': 'Hari Raya Natal',
+  'Christmas Eve Joint Holiday': 'Cuti Bersama Malam Natal',
+  'Good Friday': 'Wafat Yesus Kristus',
+  'Joint Holiday for Good Friday': 'Cuti Bersama Wafat Yesus Kristus',
+  'International Labor Day': 'Hari Buruh Internasional',
+  'Ascension Day of Jesus Christ': 'Kenaikan Yesus Kristus',
+  'Idul Fitri Joint Holiday': 'Cuti Bersama Idul Fitri',
+  'Idul Adha (tentative)': 'Idul Adha (perkiraan)',
+  'Joint Holiday for Idul Adha': 'Cuti Bersama Idul Adha',
+  'Joint Holiday for Waisak Day': 'Cuti Bersama Hari Raya Waisak',
+  'Waisak Day (Buddha’s Anniversary)': 'Hari Raya Waisak',
+  'Pancasila Day': 'Hari Lahir Pancasila',
+  'Indonesian Independence Day': 'Hari Kemerdekaan Republik Indonesia',
+  'Chinese New Year': 'Tahun Baru Imlek',
+  'Chinese New Year Joint Holiday': 'Cuti Bersama Tahun Baru Imlek',
+  'Bali’s Day of Silence and Hindu New Year (Nyepi)': 'Hari Suci Nyepi',
+  'Isra Mi’raj': 'Isra Mikraj',
+  'Islamic New Year': 'Tahun Baru Islam',
+  'Prophet Muhammad’s Birthday': 'Maulid Nabi Muhammad',
+  'Idul Fitri': 'Hari Raya Idul Fitri',
+  'Idul Adha': 'Hari Raya Idul Adha',
   // Repeating events (src/repeat.ts, calendar/RepeatField.tsx, calendar/RepeatScope.tsx): how a repeat reads.
   'Every day': 'Setiap hari',
   'Every {n} days': 'Setiap {n} hari',
