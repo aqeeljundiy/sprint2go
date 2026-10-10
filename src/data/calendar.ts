@@ -75,7 +75,7 @@ export const EVENTS: CalEvent[] = [
   ev({ title: 'Figma plan renews', calendarId: 'reminders', start: at(11, 0), end: at(12, 0), allDay: true }),
   // Rimba Group, where James lands: a real meeting coming up (guests and a call link), so Meet and Calendar's
   // Meetings show one.
-  ev({ title: 'Website launch check-in', calendarId: 'work', workspaceId: 'elk', start: at(1, 10), end: at(1, 10, 30), meetUrl: 'https://meet.google.com/rmb-lnch-chk', guests: [{ name: 'Thomas Reyes', email: 'thomas@rimbagroup.example' }, { name: 'Ethan Brooks', email: 'ethan@rimbagroup.example' }], notes: 'Go or no-go for pointing the domain.' }),
+  ev({ title: 'Website launch check-in', calendarId: 'work', workspaceId: 'elk', start: nextWeekday(new Date().getDay() + 1, 10), end: nextWeekday(new Date().getDay() + 1, 10, 30), meetUrl: 'https://meet.google.com/rmb-lnch-chk', guests: [{ name: 'Thomas Reyes', email: 'thomas@rimbagroup.example' }, { name: 'Ethan Brooks', email: 'ethan@rimbagroup.example' }], notes: 'Go or no-go for pointing the domain.' }),
   ev({ title: 'Contabo invoice due', calendarId: 'reminders', start: at(12, 0), end: at(13, 0), allDay: true }),
 ];
 

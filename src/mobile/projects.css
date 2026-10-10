@@ -164,3 +164,9 @@
     display: none;
   }
 }
+
+@media (max-width: 767px) {
+  .tbr-row > .icon-tile {
+    margin-right: 12px;
+  }
+}

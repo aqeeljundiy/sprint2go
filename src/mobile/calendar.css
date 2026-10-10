@@ -1380,10 +1380,8 @@
 
 /* Dark: the colours a little deeper behind white text, so it stays readable (Google's dark cards). */
 @media (max-width: 767px) {
-  :root[data-theme='dark'] .ev-card.solid:not(.pending):not(.maybe),
   :root[data-theme='dark'] .tg-phone .block-event:not(.pending):not(.maybe),
-  :root[data-theme='dark'] .tg-phone .pill-event:not(.pending),
-  :root[data-theme='dark'] .mg-chip:not(.pending) {
+  :root[data-theme='dark'] .tg-phone .pill-event:not(.pending) {
     background-color: color-mix(in srgb, var(--c) 80%, #000);
   }
 }
@@ -1679,7 +1677,7 @@
 /* Calm cards (design review): a tint of the calendar's colour with a 4 px edge in it, text in the page's ink. */
 @media (max-width: 767px) {
   .ev-card.solid {
-    background: color-mix(in srgb, var(--c) var(--tile-tint), var(--surface));
+    background: color-mix(in srgb, var(--c) calc(var(--tile-tint) * 0.6), var(--surface)); /* calmer than an app tile */
     box-shadow: inset 4px 0 0 var(--c);
     color: var(--text);
   }
@@ -1700,5 +1698,19 @@
     justify-content: center;
     min-height: var(--tap);
     border-radius: var(--r-pill);
+  }
+}
+
+@media (max-width: 767px) {
+  .is-phone .sch-task {
+    background: color-mix(in srgb, var(--accent) var(--tile-tint), var(--surface));
+    box-shadow: inset 4px 0 0 var(--accent);
+    color: var(--text);
+  }
+  .is-phone .sch-task .ev-check {
+    color: var(--accent-text);
+  }
+  .is-phone .sch-task.done .sch-task-title {
+    color: var(--text-3);
   }
 }

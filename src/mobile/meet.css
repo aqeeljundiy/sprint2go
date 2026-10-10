@@ -543,7 +543,7 @@
 @media (max-width: 767px) {
   .mh-event .mhe-line {
     margin: 0;
-    padding: 4px 0;
+    padding: 4px 16px;
     font: var(--t-body);
     color: var(--text-2);
   }
