@@ -1,0 +1,788 @@
+/* Mail attachments: the files in an email, the viewer, files being sent, Insert from Drive, the folder picker and the
+   Files view. Phone rules for these are in src/mobile/mail.css ("Attachments"). */
+
+/* ---------- the files in an email (desktop) ---------- */
+
+.mf {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+.mf-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 28px;
+  margin-bottom: 8px;
+  font-size: 13px;
+  color: var(--text-2);
+}
+.mf-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  font-weight: 600;
+}
+.mf-scan {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 400;
+  color: var(--text-3);
+}
+.mf-all {
+  display: inline-flex;
+  align-items: center;
+  gap: 16px;
+}
+.mf-all .link-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  text-decoration: none;
+}
+.mf-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
+  gap: 8px;
+  max-width: 760px;
+}
+.mf-card {
+  position: relative;
+  border: 1px solid var(--border);
+  border-radius: var(--r-tile);
+  background: var(--surface);
+  overflow: hidden;
+  animation: cardIn 0.2s var(--ease) backwards;
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
+}
+.mf-card:hover,
+.mf-card:focus-within {
+  border-color: color-mix(in oklab, var(--text-3) 40%, var(--border));
+  box-shadow: var(--shadow-lg);
+}
+.mf-open {
+  display: grid;
+  grid-template-rows: 96px auto auto;
+  width: 100%;
+  text-align: left;
+  color: var(--text);
+}
+.mf-preview {
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background: var(--surface-2);
+  color: var(--text-3);
+}
+.mf-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.25s var(--ease);
+}
+.mf-card:hover .mf-preview img {
+  transform: scale(1.03);
+}
+.mf-ext {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+}
+.mf-ext b {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: var(--text-3);
+}
+.mf-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px 0;
+  font-size: 13px;
+  font-weight: 600;
+  min-width: 0;
+}
+.mf-name > span {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.mf-name svg {
+  flex: none;
+}
+.mf-size {
+  padding: 2px 10px 8px;
+  font-size: 12px;
+  color: var(--text-3);
+}
+.mf-warn {
+  color: var(--warn-solid);
+}
+.mf-card.blocked .mf-preview {
+  color: var(--danger);
+  background: var(--danger-soft);
+}
+.mf-card.blocked .mf-size {
+  color: var(--danger);
+}
+/* Download and Save to Drive: over the preview's corner, on hover or focus. */
+.mf-tools {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transform: translateY(-2px);
+  transition:
+    opacity 0.15s,
+    transform 0.15s var(--ease);
+}
+.mf-card:hover .mf-tools,
+.mf-card:focus-within .mf-tools {
+  opacity: 1;
+  transform: none;
+}
+.mf-tool {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  background: color-mix(in oklab, var(--surface) 92%, transparent);
+  color: var(--text-2);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.16);
+  transition:
+    background 0.15s,
+    color 0.15s;
+}
+.mf-tool:hover {
+  background: var(--surface);
+  color: var(--text);
+}
+.mf-tool.done {
+  color: var(--ok);
+}
+.prose img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 4px;
+}
+.rich-body img {
+  max-width: 100%;
+  height: auto;
+}
+
+/* ---------- the viewer ---------- */
+
+.mail-viewer {
+  outline: none;
+}
+.mv-bar .lb-title small {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.mv-unscanned {
+  padding: 0 8px;
+  border-radius: var(--r-pill);
+  background: rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.85);
+}
+.mv-bar .lb-btn {
+  transition:
+    background 0.15s,
+    color 0.15s;
+}
+.mv-bar .lb-btn.done {
+  color: #6ee7a8;
+}
+.mv-bar .lb-btn:disabled {
+  cursor: default;
+}
+.mv-warn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 auto 8px;
+  max-width: min(720px, calc(100% - 32px));
+  padding: 8px 12px;
+  border-radius: var(--r-tile);
+  background: rgba(227, 154, 38, 0.18);
+  color: #ffd99a;
+  font-size: 13px;
+}
+.mv-warn svg {
+  flex: none;
+}
+.mv-viewport {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+.mv-track {
+  display: flex;
+  height: 100%;
+  will-change: transform;
+}
+.mv-track.settling {
+  transition: transform 0.22s var(--ease);
+}
+.mv-slide {
+  flex: 0 0 100%;
+  height: 100%;
+  min-width: 0;
+  display: grid;
+  place-items: center;
+  padding: 8px 80px 48px;
+  overflow: hidden;
+}
+.mv-slide[aria-hidden='false'] {
+  animation: zoomIn 0.25s var(--ease);
+}
+.mv-image {
+  max-width: 100%;
+  max-height: 100%;
+  display: grid;
+  place-items: center;
+  cursor: zoom-in;
+}
+.mv-image img {
+  display: block;
+  max-width: min(1200px, 100%);
+  max-height: calc(100dvh - 150px);
+  object-fit: contain;
+  border-radius: 6px;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.5);
+  user-select: none;
+  transition: transform 0.2s var(--ease);
+}
+.mv-image.zoomed {
+  cursor: zoom-out;
+  overflow: auto;
+  width: 100%;
+  height: 100%;
+  place-items: start center;
+}
+.mv-image.zoomed img {
+  max-width: none;
+  max-height: none;
+}
+.mv-video {
+  max-width: min(1100px, 100%);
+  max-height: calc(100dvh - 150px);
+  border-radius: 6px;
+  background: #000;
+}
+.mv-frame,
+.mv-pdf {
+  width: min(900px, 100%);
+  height: 100%;
+  border: 0;
+  border-radius: 6px;
+  background: var(--surface);
+}
+.mv-frame {
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.45);
+  animation: fadeIn 0.2s;
+}
+.mv-pdf {
+  overflow: auto;
+  background: transparent;
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  padding-bottom: 24px;
+  overscroll-behavior: contain;
+}
+.mv-page {
+  width: 100%;
+  background: #fff;
+  border-radius: 4px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.35);
+  overflow: hidden;
+}
+.mv-page canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  animation: fadeIn 0.2s;
+}
+.mv-card {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  max-width: 360px;
+  padding: 40px 48px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.07);
+  text-align: center;
+}
+.mv-card strong {
+  overflow-wrap: anywhere;
+}
+.mv-card p {
+  margin: 4px 0 8px;
+  font-size: 13.5px;
+  opacity: 0.75;
+}
+.mv-card .mv-size {
+  font-size: 12px;
+  opacity: 0.6;
+}
+.mv-card .primary-btn {
+  text-decoration: none;
+}
+.mv-card audio {
+  margin-top: 8px;
+  width: 280px;
+  max-width: 100%;
+}
+.mv-loading {
+  display: grid;
+  place-items: center;
+  color: rgba(255, 255, 255, 0.7);
+  min-height: 120px;
+}
+.mv-foot {
+  position: absolute;
+  left: 50%;
+  bottom: max(12px, env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  color: rgba(255, 255, 255, 0.75);
+}
+
+/* ---------- files being sent (Compose, reply boxes) ---------- */
+
+.df {
+  display: grid;
+  gap: 8px;
+  padding: 8px 14px;
+  border-top: 1px solid var(--border);
+}
+.reply-box .df,
+.gm-reply .df {
+  padding-inline: 0;
+  border-top: 0;
+}
+.df-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.df-chip {
+  position: relative;
+  overflow: hidden;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
+}
+.df-chip.uploading {
+  color: var(--text-2);
+}
+.df-chip.failed {
+  border-color: color-mix(in oklab, var(--danger) 40%, var(--border));
+}
+.df-chip.failed .fc-size,
+.df-chip svg.df-bad {
+  color: var(--danger);
+}
+.df-chip.link {
+  background: var(--accent-soft);
+  border-color: color-mix(in oklab, var(--accent) 30%, var(--border));
+}
+.df-chip .spin {
+  color: var(--text-3);
+}
+/* Uploading: a bar that runs along the chip's bottom (live status, it stops when the file is in). */
+.df-bar {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 2px;
+  width: 40%;
+  background: var(--accent);
+  animation: dfBar 1.1s ease-in-out infinite;
+}
+@keyframes dfBar {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(260%);
+  }
+}
+.df-note {
+  display: flex;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: var(--r-tile);
+  background: var(--info-soft);
+  color: var(--text-2);
+  font-size: 13px;
+  animation: fadeIn 0.2s;
+}
+.df-note > svg {
+  flex: none;
+  margin-top: 2px;
+  color: var(--info);
+}
+.df-note p {
+  margin: 0 0 6px;
+}
+.df-note .df-sub {
+  margin: 0;
+  color: var(--text-3);
+}
+.df-access {
+  display: inline-flex;
+}
+
+/* ---------- Insert from Drive and the folder picker ---------- */
+
+.dfp-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 8px 8px;
+  padding: 0 12px;
+  height: 36px;
+  border-radius: var(--r-pill);
+  background: var(--surface-2);
+  color: var(--text-3);
+}
+.dfp-search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: none;
+  outline: none;
+  color: var(--text);
+  font: inherit;
+}
+.dfp-list {
+  max-height: 320px;
+  overflow: auto;
+}
+.drive-pick .dp-search {
+  margin: 0 0 8px;
+}
+.dp-trail {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+  margin-bottom: 8px;
+  color: var(--text-3);
+  font-size: 13px;
+}
+.dp-crumb-wrap {
+  display: inline-flex;
+  align-items: center;
+}
+.dp-crumb {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-radius: var(--r-pill);
+  color: var(--text-2);
+  transition: background 0.15s;
+}
+.dp-crumb:hover {
+  background: var(--hover);
+}
+.dp-crumb.on {
+  color: var(--text);
+  font-weight: 600;
+}
+.dp-list {
+  display: grid;
+  min-height: 240px;
+  align-content: start;
+}
+.dp-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+  padding: 0 8px;
+  border-radius: var(--r-tile);
+  text-align: left;
+  color: var(--text);
+  transition: background 0.15s;
+}
+.dp-row:hover:not(:disabled) {
+  background: var(--hover);
+}
+.dp-row.on {
+  background: var(--accent-soft);
+}
+.dp-row:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.dp-icon {
+  color: var(--accent);
+}
+.dp-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.dp-size,
+.dp-go {
+  color: var(--text-3);
+  font-size: 12px;
+}
+.dp-check {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  flex: none;
+  border: 1.5px solid var(--border);
+  border-radius: 5px;
+  color: #fff;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
+}
+.dp-check.on {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.dp-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+.dp-count {
+  flex: 1;
+  min-width: 0;
+  color: var(--text-3);
+  font-size: 13px;
+}
+
+/* ---------- Files view ---------- */
+
+.files-pane {
+  min-height: 0;
+}
+.fv-tools {
+  display: grid;
+  gap: 10px;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--border);
+}
+.fv-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 420px;
+  height: 36px;
+  padding: 0 12px;
+  border-radius: var(--r-pill);
+  background: var(--surface-2);
+  color: var(--text-3);
+  transition: box-shadow 0.15s;
+}
+.fv-search:focus-within {
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+.fv-search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: none;
+  color: var(--text);
+  font: inherit;
+}
+.fv-clear {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  color: var(--text-3);
+}
+.fv-clear:hover {
+  background: var(--hover);
+}
+.fv-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.fv-sep {
+  width: 1px;
+  height: 20px;
+  margin: 0 4px;
+  background: var(--border);
+}
+.fv-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-pill);
+  color: var(--text-2);
+  font-size: 13px;
+  white-space: nowrap;
+  transition:
+    background 0.15s,
+    border-color 0.15s,
+    color 0.15s;
+}
+.fv-chip:hover {
+  background: var(--hover);
+}
+.fv-chip.on {
+  background: var(--accent-soft);
+  border-color: color-mix(in oklab, var(--accent) 35%, var(--border));
+  color: var(--accent-text);
+}
+.fv-chip > span {
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.fv-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 16px 20px 32px;
+}
+.fv-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 12px;
+}
+.fv-grid .fv-item {
+  display: grid;
+  grid-template-rows: 120px auto;
+  grid-template-columns: 1fr auto;
+  text-align: left;
+  border: 1px solid var(--border);
+  border-radius: var(--r-tile);
+  overflow: hidden;
+  background: var(--surface);
+  color: var(--text);
+  animation: cardIn 0.2s var(--ease) backwards;
+  animation-delay: calc(var(--i, 0) * 15ms);
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
+}
+.fv-grid .fv-item:hover {
+  border-color: color-mix(in oklab, var(--text-3) 40%, var(--border));
+  box-shadow: var(--shadow-lg);
+}
+.fv-grid .fv-thumb {
+  grid-column: 1 / -1;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background: var(--surface-2);
+}
+.fv-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.fv-grid .fv-text {
+  display: grid;
+  min-width: 0;
+  padding: 8px 0 10px 10px;
+}
+.fv-name {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 13px;
+  font-weight: 600;
+}
+.fv-meta {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 12px;
+  color: var(--text-3);
+}
+.fv-grid .fv-size {
+  align-self: end;
+  padding: 0 10px 10px 8px;
+  font-size: 12px;
+  color: var(--text-3);
+}
+.fv-list {
+  display: grid;
+}
+.fv-list .fv-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 64px;
+  text-align: left;
+  color: var(--text);
+}
+.fv-list .fv-thumb {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  overflow: hidden;
+  border-radius: var(--r-tile);
+  background: var(--surface-2);
+}
+.fv-list .fv-text {
+  flex: 1;
+  display: grid;
+  min-width: 0;
+}
+.fv-list .fv-size {
+  flex: none;
+  font-size: 12px;
+  color: var(--text-3);
+}
+.fv-more {
+  display: flex;
+  justify-content: center;
+  padding: 16px 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mf-card,
+  .fv-grid .fv-item,
+  .mv-slide[aria-hidden='false'],
+  .mv-frame,
+  .mv-page canvas,
+  .df-note {
+    animation: none;
+  }
+  .mv-track.settling,
+  .mf-tools,
+  .mf-preview img {
+    transition: none;
+  }
+  .df-bar {
+    animation-duration: 3s;
+  }
+}

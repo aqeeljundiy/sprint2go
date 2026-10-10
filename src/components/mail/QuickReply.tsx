@@ -9,6 +9,9 @@ import { TemplatesPicker } from './Templates';
 import { startAtTop } from './caret';
 import { hasOwnText, htmlToText, textToHtml } from '../../sanitize';
 import { t } from '../../i18n';
+import { AttachButton, DraftFilesList, useDraftFiles, type OutFile } from './DraftFiles';
+import { uploadForMail } from './attachApi';
+import { toast } from '../../toast';
 
 /**
  * Reply and Reply all on a phone: Gmail's full-screen compose, with the people filled in and the subject shown as
@@ -37,7 +40,7 @@ export function QuickReply({
   myName: string;
   /** Read tracking, when it's offered for these recipients: whether it's on, and switching it. */
   track: { on: boolean; set: (on: boolean) => void } | null;
-  onSend: (html: string, text: string) => void;
+  onSend: (html: string, text: string, files: OutFile[]) => void;
   onKeep: (draft: { html: string; text: string } | null) => void; // closed without sending: what's written, or null
   onClose: () => void;
 }) {
@@ -51,7 +54,11 @@ export function QuickReply({
   const moreBtn = useRef<HTMLButtonElement>(null);
   const latest = useRef(body);
   latest.current = body;
-  const typed = hasOwnText(body.text, signature);
+  // Files: uploaded when added, big ones as Drive links (DraftFiles.tsx).
+  const files = useDraftFiles([], body.html.length);
+  const typed = hasOwnText(body.text, signature) || files.files.length > 0;
+  const ready = typed && !files.busy;
+  const inlineImages = (pics: File[]) => Promise.all(pics.map((f) => uploadForMail(f).then((up) => ({ url: up.url, name: f.name }), (e: Error) => (toast({ text: e.message }), null))));
   const sigText = signature ? htmlToText(signature) : '';
   const own = (sigText ? body.text.replace(sigText, '') : body.text).trim();
   const re = /^re:/i.test(subject) ? subject : `Re: ${subject}`;
@@ -62,8 +69,9 @@ export function QuickReply({
   };
   const close = () => leave(() => (onKeep(hasOwnText(latest.current.text, signature) ? latest.current : null), onClose()));
   const send = () => {
-    if (!typed) return;
-    leave(() => (onSend(latest.current.html, latest.current.text), onKeep(null), onClose()));
+    if (!ready) return;
+    const out = files.out();
+    leave(() => (onSend(latest.current.html, latest.current.text, out), onKeep(null), onClose()));
   };
   const insert = (text: string) => {
     editor.current?.setHtml(textToHtml(text) + (signature ? `<p><br></p>${signature}` : ''));
@@ -82,7 +90,8 @@ export function QuickReply({
             <X size={22} />
           </button>
           <span className="compose-title">{all ? t('Reply all') : t('Reply')}</span>
-          <button type="button" className={`icon-btn compose-send-icon${typed ? ' ready' : ''}`} onClick={send} aria-disabled={!typed} aria-label={t('Send the reply')} title={t('Send')}>
+          <AttachButton onFiles={(f) => files.add(f)} size={22} />
+          <button type="button" className={`icon-btn compose-send-icon${ready ? ' ready' : ''}`} onClick={send} aria-disabled={!ready} aria-label={t('Send the reply')} title={files.busy ? t('Wait for the files to finish uploading') : t('Send')}>
             <SendHorizontal size={22} />
           </button>
           <button type="button" ref={moreBtn} className="icon-btn" onClick={() => setMore(true)} aria-label={t('More')} title={t('More')}>
@@ -99,8 +108,9 @@ export function QuickReply({
             <span className="gm-fixed-value muted">{re}</span>
           </div>
           <div className="compose-body" onClick={(e) => startAtTop(e, typed)}>
-            <RichEditor ref={editor} autoFocus initialHtml={initialHtml} placeholder={t('Compose email')} onChange={(html, text) => setBody({ html, text })} onSubmit={send} />
+            <RichEditor ref={editor} autoFocus initialHtml={initialHtml} placeholder={t('Compose email')} onChange={(html, text) => setBody({ html, text })} onSubmit={send} onImages={inlineImages} />
           </div>
+          <DraftFilesList state={files} />
         </div>
         {aiOpen && <AIWriter hasText={!!own} currentText={own} me={myName} to={to[0]?.name} subject={re} onClose={() => setAiOpen(false)} onResult={(text) => (insert(text), setAiOpen(false))} />}
         <footer className="compose-foot kb-bar" onMouseDown={(e) => e.preventDefault()}>

@@ -27,20 +27,21 @@ import { readZip, openEntry } from './zip.ts';
 import { preview as makePreview } from './officePreview.ts';
 import { BLOCKED_EXTS, extOf, fileIdOf, fileKind, filenameMatches, fitsInEmail, isBlockedName, mailFiles, type FileFilter, type FileKind } from '../src/mailAttachments.ts';
 import { kindOf } from '../src/data/drive.ts';
+import { mark } from '../src/i18n/index.ts';
 
 type Doc = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
 type Att = ParsedMail['attachments'][number];
 
 /** Sentences people read (src/i18n/id/mail.files.ts has them in Indonesian, keyed by these exact words). */
 export const WHY = {
-  type: 'Blocked: this kind of file can run programs, so it wasn’t kept.',
-  inZip: 'Blocked: the zip holds a file that can run programs, so it wasn’t kept.',
-  program: 'Blocked: it’s a program with another name, so it wasn’t kept.',
-  virus: 'Blocked: a virus was found in it, so it wasn’t kept.',
-  sendType: 'This kind of file can’t be sent, because it can run programs (as in Gmail). Put it in Drive and send a link, or ask the person to get it another way.',
-  sendZip: 'One of the zips holds a file that can run programs, so it can’t be sent (as in Gmail).',
-  sendProgram: 'One of the files is a program with another name, so it can’t be sent.',
-  tooBig: 'This email is over 25 MB with its files. Send the big files as Drive links instead.',
+  type: mark('Blocked: this kind of file can run programs, so it wasn’t kept.'),
+  inZip: mark('Blocked: the zip holds a file that can run programs, so it wasn’t kept.'),
+  program: mark('Blocked: it’s a program with another name, so it wasn’t kept.'),
+  virus: mark('Blocked: a virus was found in it, so it wasn’t kept.'),
+  sendType: mark('This kind of file can’t be sent, because it can run programs (as in Gmail). Put it in Drive and send a link, or ask the person to get it another way.'),
+  sendZip: mark('One of the zips holds a file that can run programs, so it can’t be sent (as in Gmail).'),
+  sendProgram: mark('One of the files is a program with another name, so it can’t be sent.'),
+  tooBig: mark('This email is over 25 MB with its files. Send the big files as Drive links instead.'),
 };
 
 /* ---------- what's dangerous ---------- */
@@ -412,9 +413,9 @@ export async function handle(req: IncomingMessage, res: ServerResponse, url: URL
   // Download all: one zip of a message's files (or the whole conversation's).
   if (p === '/api/mail/zip' && req.method === 'GET') {
     const hit = threadFor(me, String(url.searchParams.get('threadId') ?? ''));
-    if (!hit) return (json(res, 404, { error: 'No such email.' }), true);
+    if (!hit) return (json(res, 404, { error: mark('No such email.') }), true);
     const files = messageFiles(hit.thread, url.searchParams.get('messageId'), hit.ws.id);
-    if (!files.length) return (json(res, 404, { error: 'There are no files to download in this email.' }), true);
+    if (!files.length) return (json(res, 404, { error: mark('There are no files to download in this email.') }), true);
     const base = String(hit.thread.subject || 'Attachments').replace(/[^\p{L}\p{N} _.-]+/gu, ' ').trim().slice(0, 80) || 'Attachments';
     res.writeHead(200, { 'content-type': 'application/zip', 'content-disposition': `attachment; filename*=UTF-8''${encodeURIComponent(base)}.zip`, 'cache-control': 'private, no-store' });
     await streamZip(res, files.map((f) => ({ name: f.a.name, path: db.filePath(f.id) })));
@@ -430,15 +431,15 @@ export async function handle(req: IncomingMessage, res: ServerResponse, url: URL
   if (p === '/api/mail/files/drive' && req.method === 'POST') {
     const b = await readBody(req);
     const hit = threadFor(me, String(b.threadId ?? ''));
-    if (!hit) return (json(res, 404, { error: 'No such email.' }), true);
+    if (!hit) return (json(res, 404, { error: mark('No such email.') }), true);
     const ro = deps.readOnly(hit.ws);
     if (ro) return (json(res, 403, { error: ro }), true);
     const want = Array.isArray(b.urls) ? new Set(b.urls.map(String)) : null;
     const files = messageFiles(hit.thread, b.messageId ? String(b.messageId) : null, hit.ws.id).filter((f) => !want || want.has(f.a.url));
-    if (!files.length) return (json(res, 404, { error: 'There are no files to save in this email.' }), true);
+    if (!files.length) return (json(res, 404, { error: mark('There are no files to save in this email.') }), true);
     const folderId = b.folderId ? String(b.folderId) : null;
     const folder = folderId ? (db.getDoc('drive', folderId) as Doc | undefined) : null;
-    if (folderId && (!folder || folder.kind !== 'folder' || folder.trashed || folder.workspaceId !== hit.ws.id)) return (json(res, 404, { error: 'That folder isn’t in Drive any more.' }), true);
+    if (folderId && (!folder || folder.kind !== 'folder' || folder.trashed || folder.workspaceId !== hit.ws.id)) return (json(res, 404, { error: mark('That folder isn’t in Drive any more.') }), true);
     const bytes = files.reduce((n, f) => n + (db.fileInfo(f.id)?.size ?? 0), 0);
     const room = deps.storageRoom(hit.ws.id, me);
     if (bytes > room.left) return (json(res, 413, { error: room.unlimited ? 'There’s no room left for these files.' : 'They don’t fit: the company’s storage is full. An admin can add more in Settings, Plan & billing.' }), true);
@@ -459,12 +460,12 @@ export async function handle(req: IncomingMessage, res: ServerResponse, url: URL
   if (p === '/api/mail/links' && req.method === 'POST') {
     const b = await readBody(req);
     const ws = workspaces().find((w) => w.id === b.workspaceId && (w.members ?? []).some((m: Doc) => m.userId === me));
-    if (!ws) return (json(res, 403, { error: 'Not in this company.' }), true);
+    if (!ws) return (json(res, 403, { error: mark('Not in this company.') }), true);
     const ro = deps.readOnly(ws);
     if (ro) return (json(res, 403, { error: ro }), true);
     const access = b.access === 'recipients' ? 'recipients' : 'anyone';
     const recipients = (Array.isArray(b.recipients) ? b.recipients : []).map((e: unknown) => String(e).trim().toLowerCase()).filter((e: string) => e.includes('@')).slice(0, 200);
-    if (access === 'recipients' && !recipients.length) return (json(res, 400, { error: 'Add who the email is for first.' }), true);
+    if (access === 'recipients' && !recipients.length) return (json(res, 400, { error: mark('Add who the email is for first.') }), true);
     const list = (Array.isArray(b.files) ? b.files : []).slice(0, 50);
     const out: Doc[] = [];
     const drive: Doc[] = [];
@@ -474,9 +475,9 @@ export async function handle(req: IncomingMessage, res: ServerResponse, url: URL
       const id = fileIdOf(String(f?.url ?? ''));
       const info = id ? db.fileInfo(id) : null;
       // Only the company's files, and only ones this person put there or could already see (their upload, or one in Drive).
-      if (!id || !info || info.workspaceId !== ws.id) return (json(res, 403, { error: 'One of the files isn’t a file of this company.' }), true);
+      if (!id || !info || info.workspaceId !== ws.id) return (json(res, 403, { error: mark('One of the files isn’t a file of this company.') }), true);
       const inDrive = (db.allDocs('drive') as Doc[]).find((d) => d.workspaceId === ws.id && d.url === `/api/files/${id}` && !d.trashed);
-      if (info.by !== me && !inDrive) return (json(res, 403, { error: 'One of the files isn’t a file of this company.' }), true);
+      if (info.by !== me && !inDrive) return (json(res, 403, { error: mark('One of the files isn’t a file of this company.') }), true);
       if (isBlockedName(String(f.name ?? info.name))) return (json(res, 400, { error: WHY.sendType }), true);
       let driveId = inDrive?.id ?? null;
       if (!inDrive) {

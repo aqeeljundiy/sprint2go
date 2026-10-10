@@ -20,6 +20,7 @@
     "mailauth": "^7.1.1",
     "mailparser": "^3.9.37",
     "nodemailer": "^10.0.16",
+    "pdfjs-dist": "^6.4.299",
     "qrcode": "^1.5.4",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",

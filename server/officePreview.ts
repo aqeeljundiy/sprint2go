@@ -7,16 +7,17 @@
 import { readFile, stat } from 'node:fs/promises';
 import { readZip, openEntry, type ZipEntry } from './zip.ts';
 import { extOf } from '../src/mailAttachments.ts';
+import { mark } from '../src/i18n/index.ts';
 
 /** What a preview gives: a whole HTML page, or why there is none (a sentence the app shows). */
 export type Preview = { html: string } | { none: string };
 
 /** Sentences the app shows (src/i18n/id/mail.files.ts has them in Indonesian). */
 export const NO_PREVIEW = {
-  kind: 'There’s no preview for this kind of file. Download it to open it.',
-  big: 'This file is too big to preview. Download it to open it.',
-  damaged: 'This file couldn’t be read, so there’s no preview. Download it to open it.',
-  locked: 'This file is protected with a password, so there’s no preview.',
+  kind: mark('There’s no preview for this kind of file. Download it to open it.'),
+  big: mark('This file is too big to preview. Download it to open it.'),
+  damaged: mark('This file couldn’t be read, so there’s no preview. Download it to open it.'),
+  locked: mark('This file is protected with a password, so there’s no preview.'),
 };
 
 /** Limits: the file itself, one part of it unpacked, all of it unpacked, and pictures shown inside. */

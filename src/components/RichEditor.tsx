@@ -33,6 +33,11 @@ interface Props {
   onSubmit?: () => void;
   /** Extra buttons shown at the end of the toolbar (e.g. attach). */
   extra?: React.ReactNode;
+  /**
+   * Pictures pasted or dropped into the words: uploaded by the caller (Mail's compose and reply boxes), each answered
+   * with its address or null; they're put where the caret was. Without it, pasted pictures are left out as before.
+   */
+  onImages?: (files: File[]) => Promise<({ url: string; name: string } | null)[]>;
 }
 
 type Cmd = 'bold' | 'italic' | 'underline' | 'strikeThrough' | 'insertUnorderedList' | 'insertOrderedList';
@@ -60,7 +65,7 @@ const SIZES = [
 const exec = (cmd: string, value?: string) => document.execCommand(cmd, false, value);
 
 export const RichEditor = forwardRef<RichEditorHandle, Props>(function RichEditor(
-  { initialHtml = '', placeholder, autoFocus, onChange, onSubmit, extra },
+  { initialHtml = '', placeholder, autoFocus, onChange, onSubmit, extra, onImages },
   ref,
 ) {
   const el = useRef<HTMLDivElement>(null);
@@ -142,6 +147,24 @@ export const RichEditor = forwardRef<RichEditorHandle, Props>(function RichEdito
     exec(cmd, value);
     emit();
     refreshActive();
+  };
+
+  /** Pictures from a paste or a drop: uploaded, then put in at the caret. Anything else is left to the caller. */
+  const takeImages = (list: FileList, saved = false) => {
+    const pics = [...list].filter((f) => /^image\/(png|jpe?g|gif|webp)$/.test(f.type));
+    if (!pics.length || !onImages) return false;
+    if (!saved) saveSelection();
+    void onImages(pics).then((ups) => {
+      const html = ups
+        .filter((u): u is { url: string; name: string } => !!u)
+        .map((u) => `<img src="${u.url.replace(/"/g, '')}" alt="${u.name.replace(/[<>"&]/g, '')}">`)
+        .join('');
+      if (!html) return;
+      restoreSelection();
+      exec('insertHTML', sanitize(html));
+      emit();
+    });
+    return true;
   };
 
   const toggleQuote = () => run('formatBlock', active.has('quote') ? 'P' : 'BLOCKQUOTE');
@@ -286,6 +309,15 @@ export const RichEditor = forwardRef<RichEditorHandle, Props>(function RichEdito
         data-placeholder={placeholder}
         onInput={emit}
         onBlur={saveSelection}
+        onDrop={(e) => {
+          if (!onImages || ![...e.dataTransfer.files].some((f) => f.type.startsWith('image/'))) return;
+          e.preventDefault();
+          e.stopPropagation();
+          // Where it was dropped, not where the caret was.
+          const at = document.caretRangeFromPoint?.(e.clientX, e.clientY);
+          if (at && el.current?.contains(at.startContainer)) savedRange.current = at;
+          takeImages(e.dataTransfer.files, true);
+        }}
         onKeyDown={(e) => {
           if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
             e.preventDefault();
@@ -296,6 +328,7 @@ export const RichEditor = forwardRef<RichEditorHandle, Props>(function RichEdito
           }
         }}
         onPaste={(e) => {
+          if (onImages && takeImages(e.clipboardData.files)) return e.preventDefault();
           const html = e.clipboardData.getData('text/html');
           if (!html) return;
           e.preventDefault();
