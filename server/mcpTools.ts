@@ -17,6 +17,8 @@ import type { CalEvent, StageKind, TaskStage } from '../src/types.ts';
 import { expandEvents, repeatWords, specToRule, startOnRule, type RepeatSpec } from '../src/repeat.ts';
 import { parseRRule } from '../src/recurrence.ts';
 import { msg, phrase } from '../src/i18n/index.ts';
+import { chatRecipients, isGroupDm } from '../src/chatFollow.ts';
+import { noticeWords, whereOf } from './chatLater.ts';
 
 export interface ToolDeps {
   /** What one person may see of a document (null: nothing), as the app shows it to them (index.ts teamLens). */
@@ -42,6 +44,8 @@ const no = (text: string): never => {
 
 type Doc = Record<string, any>;
 const doers = (t: Doc): string[] => (t.assignees?.length ? t.assignees : t.userId ? [t.userId] : []);
+/** "820 KB", "1.4 MB": a file's size the way people say it. */
+const fileSize = (b: number) => (b >= 1024 ** 3 ? `${(b / 1024 ** 3).toFixed(1)} GB` : b >= 1024 ** 2 ? `${(b / 1024 ** 2).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1024))} KB`);
 const clip = (s: unknown, n: number) => {
   const t = String(s ?? '').replace(/\s+/g, ' ').trim();
   return t.length > n ? `${t.slice(0, n - 1)}…` : t;
@@ -273,6 +277,14 @@ class View {
     const s = lower(q).trim().replace(/^#/, '');
     const hit = list.find((c) => c.id === q) ?? list.find((c) => c.kind === 'channel' && lower(c.name) === s);
     if (hit) return hit;
+    // Several names ("Rizky, Faisal and Nanda"): your group message with exactly those people.
+    const names = s.split(/\s*(?:,|&|\band\b|\bdan\b)\s*/).map((x) => x.trim()).filter(Boolean);
+    if (names.length > 1) {
+      const ids = names.map((n) => this.person(n).id).filter((id) => id !== this.me);
+      const want = new Set([this.me, ...ids]);
+      const group = list.find((c) => c.kind === 'dm' && c.members.length === want.size && c.members.every((m: string) => want.has(m)));
+      return group ?? no(`You don’t have a group message with ${names.join(', ')} yet. Start it in sprint2go first.`);
+    }
     // A person's name: your direct messages with them.
     const people = this.members().filter((u) => u.id !== this.me && (lower(u.name) === s || lower(u.name).split(' ')[0] === s || lower(u.email) === s));
     if (people.length === 1) {
@@ -377,8 +389,8 @@ function threadLine(v: View, t: Doc) {
 }
 function channelName(v: View, c: Doc) {
   if (c.kind !== 'dm') return `#${c.name}`;
-  const others = (c.members ?? []).filter((m: string) => m !== v.me);
-  return `Direct message with ${others.map(v.nameOf).join(', ') || 'yourself'}`;
+  const others = [...(c.members ?? []).filter((m: string) => m !== v.me).map(v.nameOf), ...(c.guests ?? []).map((g: Doc) => `${g.name || g.email} (guest)`)];
+  return `${isGroupDm(c as any) ? 'Group message' : 'Direct message'} with ${others.join(', ') || 'yourself'}`;
 }
 /** A channel whose messages reach people outside the company: guests, or another company it's shared with. */
 const reachesGuests = (c: Doc) => (c.guests ?? []).length > 0 || !!c.sharedWith;
@@ -775,7 +787,7 @@ export function registerTools(server: McpServer, deps: ToolDeps, ctx: ToolCtx) {
     'read_task',
     {
       title: 'Read a task',
-      description: 'One task in full: stage, people, dates, notes, checklist, approval, its comments and history, and for a brief its tasks.',
+      description: 'One task in full: stage, people, dates, notes, checklist, approval, its comments (with the files attached to them) and history, and for a brief its tasks.',
       inputSchema: { task_id: z.string() },
       annotations: READ,
     },
@@ -795,7 +807,14 @@ export function registerTools(server: McpServer, deps: ToolDeps, ctx: ToolCtx) {
         ...(t.approval ? { approval: { status: t.approval.status, ...(t.approval.note ? { note: t.approval.note } : {}) } } : {}),
         ...(t.checklist?.length ? { checklist: t.checklist.map((c: Doc) => `${c.done ? '[x]' : '[ ]'} ${c.text}`) } : {}),
         ...(subtasks.length ? { tasks: subtasks.map((x) => taskLine(v, x)) } : {}),
-        history: (t.history ?? []).slice(-40).map((h: Doc) => ({ at: v.when(h.at), who: String(h.by).includes('@') ? `${h.by} (guest)` : v.nameOf(h.by), [h.kind === 'comment' ? 'comment' : 'did']: h.text, ...(h.toClient ? { guests_see_it: true } : {}) })),
+        history: (t.history ?? []).slice(-40).map((h: Doc) => ({
+          at: v.when(h.at),
+          who: String(h.by).includes('@') ? `${h.by} (guest)` : v.nameOf(h.by),
+          [h.kind === 'comment' ? 'comment' : 'did']: h.text,
+          ...(h.toClient ? { guests_see_it: true } : {}),
+          // Files attached to the comment: what they are (opening one needs a sign-in in the app).
+          ...(Array.isArray(h.files) && h.files.length ? { attachments: h.files.map((f: Doc) => ({ name: String(f.name ?? 'file'), type: String(f.type ?? ''), size: fileSize(Number(f.size) || 0) })) } : {}),
+        })),
       };
     },
   );
@@ -804,7 +823,7 @@ export function registerTools(server: McpServer, deps: ToolDeps, ctx: ToolCtx) {
     'list_channels',
     {
       title: 'List chat channels',
-      description: 'The chat channels and direct messages you can see, most recently active first. guests: true means people outside the company read it (so posting there makes a draft).',
+      description: 'The chat channels, direct messages and group messages you can see (group messages only when you are in them), most recently active first. guests: true means people outside the company read it (so posting there makes a draft).',
       inputSchema: { include_archived: z.boolean().optional() },
       annotations: READ,
     },
@@ -836,9 +855,9 @@ export function registerTools(server: McpServer, deps: ToolDeps, ctx: ToolCtx) {
     'read_channel',
     {
       title: 'Read a channel',
-      description: 'Recent messages in a channel or direct message, oldest first (each with its id and how many replies its thread has), or one thread in full.',
+      description: 'Recent messages in a channel, direct message or group message, oldest first (each with its id and how many replies its thread has), or one thread in full.',
       inputSchema: {
-        channel: z.string().describe('The channel’s id or name (#design), or a teammate’s name for your direct messages'),
+        channel: z.string().describe('The channel’s id or name (#design), a teammate’s name for your direct messages, or several names ("Rizky, Faisal") for your group message with them'),
         thread: z.string().optional().describe('A message id: read that message and its thread'),
         before: z.string().optional().describe('Only messages before this time (ISO), to read further back'),
         limit: limit(100, 30),
@@ -1284,9 +1303,9 @@ export function registerTools(server: McpServer, deps: ToolDeps, ctx: ToolCtx) {
     {
       title: 'Post in chat',
       description:
-        'Posts a message in a team channel or a direct message with a teammate, or replies in a thread. Channels with guests (people outside the company) only get a draft: it waits in the channel’s message box in sprint2go for you to check and send.',
+        'Posts a message in a team channel, a direct message with a teammate or a group message you are in, or replies in a thread. Channels with guests (people outside the company) only get a draft: it waits in the channel’s message box in sprint2go for you to check and send.',
       inputSchema: {
-        channel: z.string().describe('The channel’s id or name (#design), or a teammate’s name for your direct messages'),
+        channel: z.string().describe('The channel’s id or name (#design), a teammate’s name for your direct messages, or several names ("Rizky, Faisal") for your group message with them'),
         text: z.string().min(1).max(10_000),
         thread: z.string().optional().describe('Reply in the thread of this message id'),
       },
@@ -1311,16 +1330,12 @@ export function registerTools(server: McpServer, deps: ToolDeps, ctx: ToolCtx) {
       }
       const m = { id: v.newId(), channelId: c.id, userId: v.me, text, at: new Date().toISOString(), ...(root ? { parentId: root } : {}) };
       v.save('messages', [m], `posted in ${channelName(v, c)}`);
-      // Who hears about it, as when it's sent from the app: the other person in a DM, people mentioned, the thread's author.
-      const me = v.firstOf(v.me);
-      const where = c.kind === 'dm' ? phrase('a message') : `#${c.name}`;
+      // Who hears about it, as when it's sent from the app: the others in a DM or group message, people mentioned, the
+      // thread's followers (src/chatFollow.ts).
       const rootMsg = root ? v.docs('messages').find((x) => x.id === root) : null;
-      if (rootMsg && rootMsg.userId !== v.me && rootMsg.userId !== 'guest') v.notify([rootMsg.userId], 'mention', msg('{name} replied to your message in {where}: {quote}', { name: me, where, quote: `“${clip(text, 80)}”` }), { app: 'chat', id: c.id, msg: m.id });
-      for (const id of c.members ?? []) {
-        if (id === v.me) continue;
-        if (c.kind === 'dm') v.notify([id], 'mention', msg('{name} messaged you: {quote}', { name: me, quote: `“${clip(text, 80)}”` }), { app: 'chat', id: c.id, msg: m.id });
-        else if (new RegExp(`@${v.firstOf(id).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(text)) v.notify([id], 'mention', msg('{name} mentioned you in {channel}: {quote}', { name: me, channel: `#${c.name}`, quote: `“${clip(text, 80)}”` }), { app: 'chat', id: c.id, msg: m.id });
-      }
+      const replies = rootMsg ? v.docs('messages').filter((x) => x.parentId === rootMsg.id && !x.sendAt) : [];
+      for (const { id, why } of chatRecipients(m, { kind: c.kind, members: c.members ?? [], guests: c.guests }, rootMsg ? { root: rootMsg as any, replies: replies as any } : null, v.firstOf))
+        v.notify([id], 'mention', noticeWords(why, v.firstOf(v.me), whereOf(c as any), `“${clip(text, 80)}”`), { app: 'chat', id: c.id, msg: m.id });
       return { posted: { id: m.id, channel: channelName(v, c), ...(root ? { thread: root } : {}), link: v.link('chat', c.id, m.id) } };
     },
   );

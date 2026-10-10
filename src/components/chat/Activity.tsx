@@ -13,6 +13,7 @@ import { preview } from './Message';
 import { WhenSheet, chanName } from './Sheets';
 import { shortTime, whenText, type ChatState } from './chatPrefs';
 import { t, textOf } from '../../i18n';
+import { followsThread, isGroupDm } from '../../chatFollow';
 
 type Filter = 'all' | 'mentions' | 'threads' | 'unread';
 type Kind = 'mention' | 'thread' | 'dm' | 'other';
@@ -23,7 +24,7 @@ type Item = { n: Notice; m?: ChatMessage; root?: ChatMessage; ch?: Channel; kind
  * first. Tap opens the message in its conversation (or thread) and marks it read; hold for more; swipe left to clear.
  * Built from this company's chat notices, so it matches the notifications you get.
  */
-export function ChatActivity({ notices, messages, channels, users, me, myFirst, chat, onOpen, onRead }: { notices: Notice[]; messages: ChatMessage[]; channels: Channel[]; users: User[]; me: string; myFirst: string; chat: ChatState; onOpen: (n: Notice) => void; onRead: (ids: string[], read: boolean) => void }) {
+export function ChatActivity({ notices, messages, channels, users, me, myFirst, chat, onOpen, onRead, onFollow }: { notices: Notice[]; messages: ChatMessage[]; channels: Channel[]; users: User[]; me: string; myFirst: string; chat: ChatState; onOpen: (n: Notice) => void; onRead: (ids: string[], read: boolean) => void; onFollow?: (rootId: string, on: boolean) => void }) {
   const [filter, setFilter] = useState<Filter>('all');
   const [cleared, setCleared] = usePersisted<string[]>(`s2g-chat-cleared:${me}`, []);
   const [menu, setMenu] = useState<{ it: Item; at: { x: number; y: number } } | null>(null);
@@ -60,6 +61,11 @@ export function ChatActivity({ notices, messages, channels, users, me, myFirst, 
   const actions = (it: Item): SheetAction[] => {
     const list: SheetAction[] = [it.n.read ? { label: t('Mark unread'), icon: MailOpen, run: () => onRead([it.n.id], false) } : { label: t('Mark read'), icon: CheckCheck, run: () => onRead([it.n.id], true) }];
     if (it.ch) list.push(chat.isMuted(it.ch.id) ? { label: t('Unmute conversation'), icon: Bell, run: () => (chat.unmute(it.ch!.id), toast({ text: t('Notifications back on') })) } : { label: t('Mute conversation…'), icon: BellOff, run: () => setSub({ kind: 'mute', it }) });
+    // A thread's notices come while you follow it (src/chatFollow.ts): stop them here, or start again.
+    if (it.root && onFollow) {
+      const on = followsThread(it.root, messages.filter((x) => x.parentId === it.root!.id && !x.sendAt), me, myFirst);
+      list.push(on ? { label: t('Unfollow thread'), icon: BellOff, run: () => (onFollow(it.root!.id, false), toast({ text: t('You won’t be notified about new replies'), action: { label: t('Undo'), run: () => onFollow(it.root!.id, true) } })) } : { label: t('Follow thread'), icon: Bell, run: () => (onFollow(it.root!.id, true), toast({ text: t('You’ll be notified about new replies') })) });
+    }
     if (it.m) {
       list.push({ label: t('Remind me'), icon: Clock, run: () => setSub({ kind: 'remind', it }) });
       list.push(chat.isSaved(it.m.id) ? { label: t('Remove from saved'), icon: Bookmark, run: () => chat.unsave(it.m!.id) } : { label: t('Save'), icon: Bookmark, run: () => (chat.save(it.m!), toast({ text: t('Saved') })) });
@@ -127,7 +133,7 @@ function ActivityRow({ it, users, me, myFirst, onOpen, onMenu }: { it: Item; use
   const press = useLongPress((pt) => onMenu({ x: pt.x, y: pt.y }));
   const where = it.ch ? chanName(it.ch, users, me) : '';
   const context =
-    it.kind === 'thread' ? (where ? t('Thread in {where}', { where }) : t('Thread')) : it.kind === 'dm' ? t('Direct message') : it.kind === 'mention' ? (where ? t('Mention in {where}', { where }) : t('Mention')) : where || t('Chat');
+    it.kind === 'thread' ? (where ? t('Thread in {where}', { where }) : t('Thread')) : it.kind === 'dm' ? (it.ch && isGroupDm(it.ch) ? t('Group message') : t('Direct message')) : it.kind === 'mention' ? (where ? t('Mention in {where}', { where }) : t('Mention')) : where || t('Chat');
   const Icon = it.kind === 'thread' ? MessagesSquare : it.kind === 'dm' ? MessageCircle : it.kind === 'mention' ? AtSign : Bell;
   const text = it.m ? preview(it.m) || t('Sent something') : textOf(it.n);
   return (

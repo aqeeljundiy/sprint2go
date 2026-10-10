@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { ArrowUp, Bookmark, CheckCheck, Clock, Hash, Lock, MessagesSquare, MoreHorizontal, PenLine, RotateCcw, SendHorizontal, SkipForward, Trash2, Undo2, X, Handshake, Send } from 'lucide-react';
+import { ArrowUp, BellOff, Bookmark, CheckCheck, Clock, Hash, Lock, MessagesSquare, MoreHorizontal, PenLine, RotateCcw, SendHorizontal, SkipForward, Trash2, Undo2, X, Handshake, Send } from 'lucide-react';
 import type { Channel, ChatMessage, User } from '../../types';
 import { relative } from '../../utils';
 import { toast, toastUndo } from '../../toast';
@@ -13,6 +13,8 @@ import { ConfirmSheet, WhenSheet, chanName } from './Sheets';
 import { authorOf, preview, Text } from './Message';
 import { dmOther, followedThreads, readFallback, TILE_NAMES, useChatState, whenText, type ChatState, type SavedItem } from './chatPrefs';
 import type { ChatPage } from '../ChatApp';
+import { GroupAvatar } from './GroupAvatar';
+import { isGroupDm } from '../../chatFollow';
 import { t, tn, tx } from '../../i18n';
 
 export interface PagesProps {
@@ -29,6 +31,8 @@ export interface PagesProps {
   onSendTo: (channelId: string, text: string) => void;
   /** Phones, Threads: reply in a thread right from the list (Slack). */
   onReplyTo?: (channelId: string, rootId: string, text: string) => void;
+  /** Threads: follow or unfollow one (src/chatFollow.ts). */
+  onFollow?: (rootId: string, on: boolean) => void;
   onSendNow: (id: string) => void;
   onReschedule: (id: string, at: string) => void;
   onDelete: (id: string) => void;
@@ -57,7 +61,7 @@ export function ChatPages(p: PagesProps) {
       <header className="chat-head">
         <div className="th-text">
           <h1>{title}</h1>
-          <p>{p.page === 'catchup' ? t('Unread conversations, one at a time') : p.page === 'threads' ? t('Threads you started, replied in or were mentioned in') : p.page === 'drafts' ? t('What you started writing, what waits to be sent, and what you sent') : t('Messages you saved, and their reminders')}</p>
+          <p>{p.page === 'catchup' ? t('Unread conversations, one at a time') : p.page === 'threads' ? t('Threads you follow: ones you started, replied in, were mentioned in or chose to follow') : p.page === 'drafts' ? t('What you started writing, what waits to be sent, and what you sent') : t('Messages you saved, and their reminders')}</p>
         </div>
         <button className="icon-btn sm" onClick={p.onClose} aria-label={t('Close')} title={t('Close')}>
           <X size={16} />
@@ -75,6 +79,7 @@ const nameOf = (p: PagesProps, channelId: string) => {
 };
 const ChanIcon = ({ c, users, me, size = 16 }: { c?: Channel; users: User[]; me: string; size?: number }) => {
   if (!c) return <Hash size={size} />;
+  if (c.kind === 'dm' && isGroupDm(c)) return <GroupAvatar c={c} users={users} me={me} size={size + 6} />;
   if (c.kind === 'dm') {
     const u = users.find((x) => x.id === dmOther(c, me));
     return u ? <Avatar person={u} size={size + 6} /> : <Hash size={size} />;
@@ -321,17 +326,29 @@ function CardHead({ c, n, p }: { c: Channel; n: number; p: PagesProps }) {
 
 function Threads(p: PagesProps & { chat: ChatState }) {
   const list = useMemo(() => followedThreads(p.messages, p.me, p.myFirst, p.chat), [p.messages, p.me, p.myFirst, p.chat.read]); // eslint-disable-line react-hooks/exhaustive-deps
-  if (!list.length) return <EmptyState icon={<MessagesSquare size={22} />} title={t('No threads yet')} text={t('Threads you start, reply in or are mentioned in show up here, with new replies on top.')} />;
+  if (!list.length) return <EmptyState icon={<MessagesSquare size={22} />} title={t('No threads yet')} text={t('Threads you start, reply in, are mentioned in or follow show up here, with new replies on top.')} />;
   return (
     <div className="page-list">
-      {list.map(({ root, replies, unread }) => {
-        const c = p.channels.find((x) => x.id === root.channelId);
-        const last = replies[replies.length - 1];
-        const ctx = { me: p.me, users: p.users, channel: c ?? ({ id: root.channelId, members: [], kind: 'channel', name: '', workspaceId: '' } as Channel) };
-        const draft = p.chat.drafts[`${root.channelId}/${root.id}`];
-        return (
-          <div key={root.id} className="thread-item">
-          <button className={`page-row${unread ? ' unread' : ''}`} onClick={() => p.onOpen(root.channelId, last.id)}>
+      {list.map((x) => (
+        <ThreadItem key={x.root.id} {...x} p={p} />
+      ))}
+    </div>
+  );
+}
+
+/** One thread you follow. Hold it (right-click on desktop) to open it or unfollow it. */
+function ThreadItem({ root, replies, unread, p }: { root: ChatMessage; replies: ChatMessage[]; unread: number; p: PagesProps & { chat: ChatState } }) {
+  const c = p.channels.find((x) => x.id === root.channelId);
+  const last = replies[replies.length - 1];
+  const ctx = { me: p.me, users: p.users, channel: c ?? ({ id: root.channelId, members: [], kind: 'channel', name: '', workspaceId: '' } as Channel) };
+  const draft = p.chat.drafts[`${root.channelId}/${root.id}`];
+  const m = useActionMenu(() => [
+    { label: t('Open thread'), icon: MessagesSquare, run: () => p.onOpen(root.channelId, last.id) },
+    ...(p.onFollow ? [{ label: t('Unfollow thread'), hint: t('No more notifications about its replies'), icon: BellOff, run: () => (p.onFollow!(root.id, false), toastUndo(t('Unfollowed. It leaves this list.'), () => p.onFollow!(root.id, true))) }] : []),
+  ], { title: t('Thread') });
+  return (
+          <div className="thread-item">
+          <button className={`page-row lp${unread ? ' unread' : ''}`} onClick={() => p.onOpen(root.channelId, last.id)} {...m.bind}>
             <span className="pr-where">
               <ChanIcon c={c} users={p.users} me={p.me} size={13} /> {nameOf(p, root.channelId)}
               <time>{relative(last.at)}</time>
@@ -349,10 +366,8 @@ function Threads(p: PagesProps & { chat: ChatState }) {
             </span>
           </button>
           {p.phone && p.onReplyTo && <InlineReply onSend={(text) => (p.onReplyTo!(root.channelId, root.id, text), p.chat.markThreadRead(root.id), toast({ text: t('Reply sent') }))} />}
+          {m.menu}
           </div>
-        );
-      })}
-    </div>
   );
 }
 

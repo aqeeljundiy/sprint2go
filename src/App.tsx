@@ -15,7 +15,7 @@ import { ProjectsHome } from './components/ProjectsHome';
 import { Popover } from './components/ui/Popover';
 import { Brain, Briefcase, Building2, CalendarPlus, Copy, FileText, Hash, ListChecks, Mail, PenLine, Send, Sparkles, Timer, Trash2, Undo2, Upload, User as UserIcon, Video, Table2, MessagesSquare, AlertTriangle, Menu } from 'lucide-react';
 import { DEFAULT_PERMISSIONS } from './types';
-import type { Quote, Team, Note, Account, AppId, Attachment, BlockRule, CalEvent, Channel, ChannelCategory, Client, ClientPerson, ChatFile, ChatMessage, Meeting, Message, Notice, RsvpStatus, TaskEvent, TaskStatus, Todo, DriveItem, DriveSection, Location, Person, Thread, User, View, Workspace } from './types';
+import type { Quote, Team, Note, Account, AppId, Attachment, BlockRule, CalEvent, Channel, ChannelCategory, Client, ClientPerson, ChatFile, ChatMessage, CommentFile, Meeting, Message, Notice, RsvpStatus, TaskEvent, TaskStatus, Todo, DriveItem, DriveSection, Location, Person, Thread, User, View, Workspace } from './types';
 import { LABELS } from './data/mock';
 import { CALENDARS, externalEvents } from './data/calendar';
 import { JOBS, costPer100 } from './data/aiCatalog';
@@ -73,10 +73,11 @@ import { TaskDrawer } from './components/TaskDrawer';
 import { TasksView, dueLabel, isBrief, type TaskScope } from './components/TasksView';
 import { TasksSidebar } from './components/TasksSidebar';
 import type { DumpResult } from './components/BrainDump';
-import { ChatSidebar, ChatView, NewMessageSheet, StatusPicker, statusText, fullLayout, sectionIdOf, sectionPeople, sectionTitle, type ChatPage, type Presence, type SendPayload } from './components/ChatApp';
+import { ChatSidebar, ChatView, NewMessageSheet, StatusPicker, statusText, fullLayout, sectionIdOf, sectionPeople, sectionTitle, type ChatPage, type GuestOption, type Presence, type Recipients, type SendPayload } from './components/ChatApp';
 import { ChatPages } from './components/chat/Pages';
 import { useDockRef } from './components/chat/huddleDock';
 import { ChatPrefsHost, isMutedValue } from './components/chat/chatPrefs';
+import { chatRecipients, isGroupDm } from './chatFollow';
 import { chanName } from './components/chat/Sheets';
 import { preview as msgPreview } from './components/chat/Message';
 import { ChannelDialog, CATEGORY_ONE, categoryText } from './components/ChannelDialog';
@@ -1650,12 +1651,33 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const seesAllProjects = isAdmin || perms.seeAllProjects;
 
   /** The DM channel between me and someone (created on first use). */
-  const dmWith = (otherId: string) => {
-    const found = channels.find((c) => c.workspaceId === ws.id && c.kind === 'dm' && c.members.includes(user.id) && c.members.includes(otherId));
+  const dmWith = (otherId: string) => dmFor({ userIds: [otherId], guests: [] });
+  /**
+   * The direct or group message with exactly these people (and guests of one project), made on first use. The server
+   * checks who may be in it (server/chatRules.ts).
+   */
+  const dmFor = (to: Recipients) => {
+    const want = new Set([user.id, ...to.userIds]);
+    const mails = new Set(to.guests.map((g) => g.email.toLowerCase()));
+    const found = channels.find((c) => c.workspaceId === ws.id && c.kind === 'dm' && c.members.length === want.size && c.members.every((m) => want.has(m)) && (c.guests ?? []).length === mails.size && (c.guests ?? []).every((g) => mails.has(g.email.toLowerCase())));
     if (found) return found.id;
     const id = uid();
-    setChannels((cs) => [...cs, { id, workspaceId: ws.id, kind: 'dm', name: '', members: [user.id, otherId] }]);
+    const guests = to.guests.length ? { clientId: to.guests[0].clientId, guests: to.guests.map((g) => ({ email: g.email, name: g.name, status: 'joined' as const, invitedBy: user.id, at: nowIso() })) } : {};
+    setChannels((cs) => [...cs, { id, workspaceId: ws.id, kind: 'dm', name: '', members: [...want], createdAt: nowIso(), ...guests }]);
     return id;
+  };
+  /** Guests I may write to: people who joined a project where I may invite guests (the server's rule, chatRules.ts). */
+  const dmGuests: GuestOption[] = wsClients
+    .filter((c) => c.status !== 'ended' && (isAdmin || perms.inviteGuests || c.ownerId === user.id || (c.members ?? []).some((m) => m.userId === user.id && m.role === 'lead')))
+    .flatMap((c) => clientPeople(c, channels).filter((x) => x.status === 'joined').map((x) => ({ email: x.email, name: x.name, clientId: c.id, project: c.name })));
+  /** A group message becomes a private channel: the same people and history, more people may come in (Slack). */
+  const convertToChannel = (id: string, name: string, add: string[]) => {
+    const c = channels.find((x) => x.id === id);
+    if (!c) return;
+    setChannels((cs) => cs.map((x) => (x.id === id ? { ...x, kind: 'channel', private: true, name, members: [...new Set([...x.members, ...add])], ownerId: user.id, ...(x.guests?.length ? { category: 'shared' as const } : {}) } : x)));
+    // A system line, as when a channel is made (Message.tsx puts the author's name in front).
+    setMessages((ms) => [...ms, { id: uid(), channelId: id, userId: user.id, text: `made this a private channel, #${name}`, tr: phrase('{name} made this a private channel, #{channel}', { name: myFirst, channel: name }), at: nowIso(), kind: 'system' }]);
+    add.forEach((m) => notify(m, 'mention', msg('{name} added you to #{channel}', { name: myFirst, channel: name }), { app: 'chat', id }));
   };
 
   const postChat = (channelId: string, text: string, taskId?: string, fromId = user.id, tr?: Msg) =>
@@ -1908,10 +1930,12 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   };
 
   /** A comment on a task: everyone on it hears about it (mentions too). */
-  const commentTask = (id: string, text: string, toClient = false) => {
+  const commentTask = (id: string, text: string, toClient = false, files?: CommentFile[]) => {
     const t = todos.find((x) => x.id === id);
     if (!t) return;
-    setTodos((ts) => ts.map((x) => (x.id === id ? { ...x, history: [...(x.history ?? []), { id: uid(), at: nowIso(), by: user.id, kind: 'comment', text, ...(toClient ? { toClient: true } : {}) }] } : x)));
+    setTodos((ts) => ts.map((x) => (x.id === id ? { ...x, history: [...(x.history ?? []), { id: uid(), at: nowIso(), by: user.id, kind: 'comment', text, ...(toClient ? { toClient: true } : {}), ...(files?.length ? { files } : {}) }] } : x)));
+    // A comment that is only files: the notices name them.
+    if (!text) text = (files ?? []).map((f) => f.name).join(', ');
     if (toClient) {
       const c = clients.find((x) => x.id === t.clientId);
       // "{company} team" is read in each guest's own language; a name is a name.
@@ -2396,17 +2420,25 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   /** Who hears about a message as it goes out: the other side of a DM, people it mentions, whoever wrote what it answers. */
   const chatNotices = (m: ChatMessage, ch: Channel) => {
     const text = m.text;
-    const where = ch.kind === 'dm' ? phrase('a message') : `#${ch.name}`;
+    const where = ch.kind === 'dm' ? (isGroupDm(ch) ? phrase('a group message') : phrase('a message')) : `#${ch.name}`;
     if (m.kind === 'kudos' && m.kudosFor) notify(m.kudosFor, 'mention', text ? msg('🙌 {name} gave you kudos in {where}: “{text}”', { name: myFirst, where, text: text.slice(0, 80) }) : msg('🙌 {name} gave you kudos in {where}', { name: myFirst, where }), { app: 'chat', id: ch.id, msg: m.id });
-    if (m.parentId) {
-      const root = messages.find((x) => x.id === m.parentId);
-      if (root && root.userId !== user.id && root.userId !== 'guest') notify(root.userId, 'mention', msg('{name} replied to your message in {where}: “{text}”', { name: myFirst, where, text: text.slice(0, 80) }), { app: 'chat', id: ch.id, msg: m.id });
-    }
-    for (const id of ch.members) {
-      if (id === user.id) continue;
-      const fn = firstOf(id);
-      if (ch.kind === 'dm') notify(id, 'mention', msg('{name} messaged you: “{text}”', { name: myFirst, text: (text || msgPreview(m)).slice(0, 80) }), { app: 'chat', id: ch.id, msg: m.id });
-      else if (text && new RegExp(`@${fn}\\b`, 'i').test(text)) notify(id, 'mention', msg('{name} mentioned you in #{channel}: “{text}”', { name: myFirst, channel: ch.name, text: text.slice(0, 80) }), { app: 'chat', id: ch.id, msg: m.id });
+    // Once each: the others in a DM or group message, people mentioned, a thread's followers (src/chatFollow.ts).
+    const root = m.parentId ? messages.find((x) => x.id === m.parentId) : undefined;
+    const thread = root ? { root, replies: messages.filter((x) => x.parentId === root.id && x.id !== m.id && !x.sendAt) } : null;
+    const said = (text || msgPreview(m)).slice(0, 80);
+    for (const { id, why } of chatRecipients(m, ch, thread, firstOf)) {
+      if (id === m.kudosFor && m.kind === 'kudos') continue;
+      const words =
+        why === 'dm'
+          ? msg('{name} messaged you: “{text}”', { name: myFirst, text: said })
+          : why === 'group'
+            ? msg('{name} in a group message: “{text}”', { name: myFirst, text: said })
+            : why === 'reply'
+              ? msg('{name} replied to your message in {where}: “{text}”', { name: myFirst, where, text: said })
+              : why === 'thread'
+                ? msg('{name} replied in a thread you follow in {where}: “{text}”', { name: myFirst, where, text: said })
+                : msg('{name} mentioned you in {where}: “{text}”', { name: myFirst, where, text: said });
+      notify(id, 'mention', words, { app: 'chat', id: ch.id, msg: m.id });
     }
   };
   const sendChat = (pl: SendPayload) => chatId && sendChatTo(chatId, pl);
@@ -2491,6 +2523,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         return { ...m, reactions: r };
       }),
     );
+  /** Follow or unfollow a thread: my own choice on its root message (the server keeps everyone else's as it was). */
+  const followThread = (rootId: string, on: boolean) => setMessages((ms) => ms.map((m) => (m.id === rootId ? { ...m, follow: { ...(m.follow ?? {}), [user.id]: on } } : m)));
   const votePoll = (id: string, option: number) =>
     setMessages((ms) =>
       ms.map((m) =>
@@ -4050,7 +4084,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
               setSidebarOpen(false);
             }}
             onNewChannel={canStartChannels ? () => setChanDialog({}) : undefined}
-            onNewDm={(uidOther) => setChatId(dmWith(uidOther))}
+            onNewMessage={(to) => setChatId(dmFor(to))}
+            dmGuests={dmGuests}
             canManage={canManageChannel}
             onMove={moveChannel}
             onSettings={(id) => setChanDialog({ id })}
@@ -4161,8 +4196,10 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
                 setChatId(id);
               }}
               onNewChannel={canStartChannels ? () => setChanDialog({}) : undefined}
-              onNewDm={(uidOther) => setChatId(dmWith(uidOther))}
+              onNewMessage={(to) => setChatId(dmFor(to))}
+              dmGuests={dmGuests}
               dmIdFor={dmWith}
+              onFollow={followThread}
               notices={myNotices.filter((n) => n.link?.app === 'chat')}
               onOpenNotice={openNotice}
               onReadNotices={(ids, read) => setNotices((ns) => ns.map((n) => (ids.includes(n.id) ? { ...n, read } : n)))}
@@ -4471,6 +4508,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             onOpen={(id, msg) => (setChatId(id), setChatPage(null), msg && setFocusMsg(msg))}
             onSendTo={(id, text) => sendChatTo(id, { text })}
             onSendNow={sendChatNow}
+            onFollow={followThread}
             onReschedule={(id, at) => setMessages((ms) => ms.map((m) => (m.id === id && m.sendAt ? { ...m, sendAt: at } : m)))}
             onDelete={(id) => setMessages((ms) => ms.filter((m) => m.id !== id))}
           />
@@ -4489,6 +4527,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             onSendTo={(id, text) => sendChatTo(id, { text })}
             onReplyTo={(id, rootId, text) => sendChatTo(id, { text, parentId: rootId })}
             onSendNow={sendChatNow}
+            onFollow={followThread}
             onReschedule={(id, at) => setMessages((ms) => ms.map((m) => (m.id === id && m.sendAt ? { ...m, sendAt: at } : m)))}
             onDelete={(id) => setMessages((ms) => ms.filter((m) => m.id !== id))}
           />
@@ -4502,6 +4541,14 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             onOpenRef={openChatRef}
             onOpenScheduled={() => setChatPage('drafts')}
             onLeave={() => chatId && leaveChannel(chatId)}
+            onNewGroup={(to) => setChatId(dmFor(to))}
+            onConvert={canStartChannels ? (name, add) => chatId && convertToChannel(chatId, name, add) : undefined}
+            onLeaveGroup={() => {
+              if (!chatId) return;
+              setChannels((cs) => cs.map((c) => (c.id === chatId ? { ...c, members: c.members.filter((m) => m !== user.id) } : c)));
+              setChatId(null);
+              showToast({ text: t('You left the group message') });
+            }}
             huddle={
               server.on && chatId
                 ? {
@@ -4558,6 +4605,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             }
             since={sinceRead}
             onReact={reactTo}
+            onFollow={followThread}
             onVote={votePoll}
             onMakeTask={makeTaskFromMessage}
             onCreateTask={(t) => {
@@ -5242,7 +5290,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
           </div>
         </Sheet>
       )}
-      {newMessage && <NewMessageSheet users={members} me={user.id} onPick={(id) => openChannel(dmWith(id))} onNewChannel={canStartChannels ? () => setChanDialog({}) : undefined} onClose={() => setNewMessage(false)} />}
+      {newMessage && <NewMessageSheet users={members} me={user.id} guests={dmGuests} onPick={(to) => openChannel(dmFor(to))} onNewChannel={canStartChannels ? () => setChanDialog({}) : undefined} onClose={() => setNewMessage(false)} />}
       {ownSettings && (
         <PushScreen title={ownSettings.label} onBack={() => setPushed(null)}>
           {ownSettings.render()}

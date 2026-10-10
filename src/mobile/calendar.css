@@ -234,55 +234,6 @@
     color: var(--text-3);
   }
 
-  /* ---------- The + menu: Event, Task, Out of office as pills above the button ---------- */
-
-  .cal-create-menu {
-    position: fixed;
-    inset: 0;
-    z-index: var(--z-panel);
-    background: color-mix(in srgb, var(--surface) 86%, transparent);
-    animation: fade-in 0.18s ease-out backwards;
-  }
-  .ccm-list {
-    position: absolute;
-    right: 16px;
-    bottom: calc(var(--bar-space) + 16px + 56px + 12px);
-    display: flex;
-    flex-direction: column;
-    align-items: flex-end;
-    gap: 8px;
-  }
-  .ccm-pill {
-    display: inline-flex;
-    align-items: center;
-    gap: 12px;
-    min-height: 56px;
-    padding: 0 24px 0 16px;
-    border-radius: var(--r-pill);
-    background: color-mix(in srgb, var(--accent) 16%, var(--surface));
-    color: var(--accent-text, var(--accent));
-    box-shadow: 0 4px 14px -6px rgb(0 0 0 / 0.25);
-    font-size: var(--fs-body);
-    font-weight: 600;
-    animation: ccm-rise 0.18s cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
-    animation-delay: calc(var(--i) * 30ms);
-    transition: transform 0.12s;
-  }
-  .ccm-pill:active {
-    transform: scale(0.97);
-  }
-  /* The + turns into an X on a deeper fill, above the whitened page. */
-  .fab svg {
-    transition: transform 0.2s var(--ease, ease-out);
-  }
-  .cal-create-open .fab.on {
-    z-index: calc(var(--z-panel) + 1);
-    background: color-mix(in srgb, var(--accent) 82%, #000);
-  }
-  .cal-create-open .fab.on svg {
-    transform: rotate(45deg);
-  }
-
   /* ---------- The mini month under the bar (month ▾): no heading, month chips under it ---------- */
 
   .month-drop.bare {
@@ -594,10 +545,6 @@
   .sel.er-time {
     font-variant-numeric: tabular-nums;
   }
-  .er-date-text {
-    font-size: var(--fs-body);
-    color: var(--text-3);
-  }
   .er-row.bad .sel.er-time,
   .er-error {
     color: var(--danger);
@@ -874,12 +821,6 @@
   }
 }
 
-@keyframes ccm-rise {
-  from {
-    opacity: 0;
-    transform: translateY(12px);
-  }
-}
 @keyframes md-next {
   from {
     opacity: 0.4;
@@ -894,13 +835,11 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .ccm-pill,
   .guest-row,
   .month-drop.bare .md-grid.slide-next,
   .month-drop.bare .md-grid.slide-prev {
     animation: none;
   }
-  .fab svg,
   .rp-radio::after {
     transition: none;
   }
@@ -1322,12 +1261,16 @@
     flex: 1;
     min-height: 0;
     display: grid;
-    grid-template-columns: repeat(7, minmax(0, 1fr));
+    grid-template-columns: minmax(0, 1fr);
     grid-template-rows: repeat(6, minmax(0, 1fr));
     padding: 0;
     overflow: hidden;
     touch-action: pan-y;
     animation: fade 0.18s ease-out;
+  }
+  .mg-chips .mg-week {
+    --mg-num: 32px;
+    --mg-lane: 17px; /* system: a 16 px chip and the 1 px between chips (Google's month) */
   }
   .mg-chips .mg-cell {
     display: flex;
@@ -1345,8 +1288,9 @@
     background: none;
     cursor: pointer;
     text-align: center;
+    transition: background-color 0.15s;
   }
-  .mg-chips .mg-cell:nth-child(7n + 1) {
+  .mg-chips .mg-cell:nth-child(1) {
     border-left: 0;
   }
   .mg-chips .mg-cell.out {
@@ -1376,11 +1320,15 @@
     background: var(--accent);
     color: #fff;
   }
+  /* Chips and bars sit over the days; a tap goes through to the day under the finger. */
+  .mg-chips .mg-week > :not(.mg-cell) {
+    margin: 0 4px 1px; /* system: the 1 px between chips */
+    pointer-events: none;
+  }
   .mg-chip {
     flex: none;
     display: block;
     height: 16px;
-    margin: 0 4px;
     padding: 0 4px;
     border-radius: var(--r-tile);
     background: var(--c);
@@ -1397,6 +1345,16 @@
     background: var(--surface);
     box-shadow: inset 0 0 0 1.5px var(--c);
     color: color-mix(in srgb, var(--c) 80%, var(--text));
+  }
+  .mg-chips .mg-week > .mg-go-l {
+    margin-left: 0;
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+  }
+  .mg-chips .mg-week > .mg-go-r {
+    margin-right: 0;
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
   }
   .mg-more-n {
     flex: none;

@@ -7,7 +7,8 @@
 //  - Mute: whether someone muted a conversation (prefs, `s2g-chat-muted:<id>`), for the push rules.
 import { randomBytes } from 'node:crypto';
 import * as db from './db.ts';
-import { msg, phrase } from '../src/i18n/index.ts';
+import { msg, phrase, type Msg } from '../src/i18n/index.ts';
+import { chatRecipients, isGroupDm, type NoticeWhy } from '../src/chatFollow.ts';
 
 type Doc = db.Doc;
 const MAX_AHEAD = 120 * 86_400_000; // a message can wait up to 120 days
@@ -48,34 +49,40 @@ const quote = (text: string) => `“${text.replace(/\s+/g, ' ').trim().slice(0, 
 /** A notice saved with msg(): the English `text`, and `tr` so each reader sees it in their own language. */
 const notice = (userId: string, workspaceId: string, kind: string, words: { text: string; tr?: unknown }, link: Record<string, string>, at: string): Doc => ({ id: `n-${randomBytes(6).toString('hex')}`, userId, workspaceId, kind, text: words.text.slice(0, 300), ...(words.tr ? { tr: words.tr } : {}), at, read: false, link });
 
-/** Who hears about a message that just went out: the other side of a direct message, people it mentions, and whoever wrote the message it answers. */
+const repliesOf = db.db.prepare("SELECT data FROM docs WHERE coll = 'messages' AND json_extract(data, '$.parentId') = ?");
+
+/** Who hears about a message that just went out: the others in a direct or group message, people it mentions, and a thread's followers (src/chatFollow.ts). */
 export function noticesFor(m: any, at: string, users: Map<string, any>): Doc[] {
   const ch = db.getDoc('channels', String(m.channelId)) as any;
   if (!ch) return [];
   const who = firstName(users, m.userId);
-  const where = ch.kind === 'dm' ? phrase('a message') : `#${ch.name}`;
+  const where = whereOf(ch);
   const body = String(m.text ?? '') || (m.voice ? 'a voice note' : m.files?.length ? 'a file' : '');
   // What a message without words is, in the reader's language ("a voice note"); its own words stay as written.
   const said = String(m.text ?? '') ? quote(body) : body ? phrase('“{what}”', { what: phrase(body) }) : quote(body);
   const link = { app: 'chat', id: String(ch.id), msg: String(m.id) };
-  const out: Doc[] = [];
-  const told = new Set<string>([m.userId]);
-  if (m.parentId) {
-    const root = db.getDoc('messages', String(m.parentId)) as any;
-    if (root && root.userId !== m.userId && root.userId !== 'guest' && (ch.members ?? []).includes(root.userId)) {
-      out.push(notice(root.userId, ch.workspaceId, 'mention', msg('{name} replied to your message in {where}: {quote}', { name: who, where, quote: said }), link, at));
-      told.add(root.userId);
-    }
+  const root = m.parentId ? (db.getDoc('messages', String(m.parentId)) as any) : null;
+  const replies = root ? (repliesOf.all(String(root.id)) as { data: string }[]).map((r) => JSON.parse(r.data)).filter((x) => x.id !== m.id && !scheduled(x)) : [];
+  return chatRecipients(m, { kind: ch.kind, members: ch.members ?? [], guests: ch.guests }, root ? { root, replies } : null, (id) => firstName(users, id)).map(({ id, why }) =>
+    notice(id, ch.workspaceId, 'mention', noticeWords(why, who, where, said), link, at),
+  );
+}
+/** Where a message was, as a notice says it: "#design", "a message" (a DM) or "a group message". */
+export const whereOf = (ch: { kind: string; name?: string; members?: string[]; guests?: unknown[] }) => (ch.kind === 'dm' ? (isGroupDm(ch as any) ? phrase('a group message') : phrase('a message')) : `#${ch.name}`);
+/** A chat notice's words for each reason (chatRecipients), saved with msg() so each reader sees their own language. */
+export function noticeWords(why: NoticeWhy, who: string, where: string | Msg, said: string | Msg) {
+  switch (why) {
+    case 'dm':
+      return msg('{name} messaged you: {quote}', { name: who, quote: said });
+    case 'group':
+      return msg('{name} in a group message: {quote}', { name: who, quote: said });
+    case 'mention':
+      return msg('{name} mentioned you in {channel}: {quote}', { name: who, channel: where, quote: said });
+    case 'reply':
+      return msg('{name} replied to your message in {where}: {quote}', { name: who, where, quote: said });
+    case 'thread':
+      return msg('{name} replied in a thread you follow in {where}: {quote}', { name: who, where, quote: said });
   }
-  for (const id of (ch.members ?? []) as string[]) {
-    if (told.has(id)) continue;
-    if (ch.kind === 'dm') out.push(notice(id, ch.workspaceId, 'mention', msg('{name} messaged you: {quote}', { name: who, quote: said }), link, at));
-    else {
-      const first = firstName(users, id).replace(/[.*+?^$()|[\]\\{}]/g, '\\$&');
-      if (body && new RegExp(`@${first}\\b`, 'i').test(body)) out.push(notice(id, ch.workspaceId, 'mention', msg('{name} mentioned you in {channel}: {quote}', { name: who, channel: `#${ch.name}`, quote: said }), link, at));
-    }
-  }
-  return out;
 }
 
 /** Messages whose time has come: they go out now, with the notices they bring. */

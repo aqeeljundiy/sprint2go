@@ -1,4 +1,4 @@
-import { cloneElement, isValidElement, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactElement, type ReactNode } from 'react';
+import { cloneElement, isValidElement, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactElement, type ReactNode } from 'react';
 import { flushSync } from 'react-dom';
 import { CalendarDays, CalendarPlus, CalendarX, Check, ChevronDown, ChevronLeft, ChevronRight, CircleCheck, Copy, CopyPlus, Link2, Mail, Menu, Pencil, Plus, SkipForward, Trash2, Video, X } from 'lucide-react';
 import type { CalEvent, CalendarDef, Person, RsvpStatus, User, Workspace } from '../types';
@@ -9,7 +9,6 @@ import { useCreateAction } from '../mobile/chrome';
 import { TopBar, TopBarButton } from '../mobile/TopBar';
 import { useEdgeSwipe } from './ui/SideDrawer';
 import type { CalDrawer } from './CalendarSidebar';
-import { CreateMenu } from './calendar/CreateMenu';
 import { EventEditor, type EditorKind } from './EventEditor';
 import type { Draft } from './calendar/EventForm';
 import { usePhone } from '../mobile/media';
@@ -169,7 +168,6 @@ export function CalendarView(props: Props) {
 
   /* ---------- phones: the + menu (Event, Task, Out of office) and the full-screen editor ---------- */
   const [createOpen, setCreateOpen] = useState(false);
-  const closeCreate = useCallback(() => setCreateOpen(false), []);
   const [editor, setEditor] = useState<{ start: Date; end?: Date; kind: EditorKind; seed?: Partial<Draft> } | null>(null);
   const newOf = (kind: EditorKind) => {
     setQuick(null);
@@ -177,10 +175,17 @@ export function CalendarView(props: Props) {
     if (kind === 'ooo') return setEditor({ start: startOfDay(sameDay(cursor, new Date()) || cursor < new Date() ? new Date() : cursor), kind });
     setEditor({ start: nextSlot(cursor), kind });
   };
+  // Google Calendar's + on phones: a small sheet with what to make (Drive's New works the same way); long-press offers
+  // the same list.
+  const createChoices: SheetAction[] = [
+    { id: 'event', label: t('Event'), icon: CalendarDays, run: () => newOf('event') },
+    { id: 'task', label: t('Task'), icon: CircleCheck, run: () => newOf('task') },
+    { id: 'ooo', label: t('Out of office'), icon: CalendarX, run: () => newOf('ooo') },
+  ];
   useCreateAction(
     'calendar',
     phone
-      ? { label: t('Create'), icon: Plus, run: () => setCreateOpen((o) => !o) }
+      ? { label: t('Create'), icon: Plus, run: () => setCreateOpen(true), more: createChoices }
       : { label: t('New event'), icon: CalendarPlus, run: () => create(nextSlot(cursor)) },
   );
 
@@ -502,16 +507,7 @@ export function CalendarView(props: Props) {
       <ActionSheet open={!!menu} onClose={() => setMenu(null)} title={menu?.e.title} actions={menu ? actionsFor(menu.e) : []} at={menu && !phone ? { x: menu.x, y: menu.y } : null} className="cal-menu-sheet" />
 
       {panel}
-      {createOpen && (
-        <CreateMenu
-          onClose={closeCreate}
-          choices={[
-            { id: 'event', label: t('Event'), icon: CalendarDays, run: () => newOf('event') },
-            { id: 'task', label: t('Task'), icon: CircleCheck, run: () => newOf('task') },
-            { id: 'ooo', label: t('Out of office'), icon: CalendarX, run: () => newOf('ooo') },
-          ]}
-        />
-      )}
+      <ActionSheet open={createOpen} onClose={() => setCreateOpen(false)} title={t('Create')} actions={createChoices} className="cal-create-sheet" />
       {editor && (
         <EventEditor
           start={editor.start}

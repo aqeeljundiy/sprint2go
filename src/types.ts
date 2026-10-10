@@ -516,6 +516,16 @@ export interface TaskEvent {
   toClient?: boolean; // a comment the client can read (team comments are internal unless marked)
   /** What the app wrote, for each reader in their own language (msg() and textOf() in src/i18n). Older entries have none. */
   tr?: Msg;
+  /** Files attached to a comment: uploads, seen by whoever sees the comment (server/taskFiles.ts). */
+  files?: CommentFile[];
+}
+
+/** A file on a task's comment (an upload: /api/files/<id>; a data URL in the demo company). */
+export interface CommentFile {
+  name: string;
+  size: number; // bytes
+  type: string; // mime
+  url: string;
 }
 
 export interface Approval {
@@ -705,6 +715,8 @@ export interface ChatMessage {
   via?: 'whatsapp'; // came in from, or went out on, WhatsApp
   edited?: boolean;
   pinned?: boolean;
+  /** A thread's root: who chose to follow (true) or unfollow (false) it; everyone else follows by taking part (src/chatFollow.ts). */
+  follow?: Record<string, boolean>;
   /** Send later: it waits, seen only by its author, until this time; the server then sends it (server/chatLater.ts). */
   sendAt?: string;
   /** Forwarded from another conversation: what it said there, and who said it. */

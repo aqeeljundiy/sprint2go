@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { AlertTriangle, Headphones, MessageSquare, Mic, MicOff, PhoneOff, SmilePlus } from 'lucide-react';
+import { AlertTriangle, Headphones, Maximize2, MessageSquare, Mic, MicOff, Minimize2, PhoneOff, ScreenShare, ScreenShareOff, SmilePlus, Video, VideoOff } from 'lucide-react';
 import type { Channel, User } from '../types';
 import { Avatar } from './Avatar';
 import { sendSignal } from '../sync';
@@ -9,10 +9,15 @@ import { iceConfig, redacted } from '../ice';
 import { usePhone } from '../mobile/media';
 import { PushScreen } from './ui/PushScreen';
 import { useHuddleDock } from './chat/huddleDock';
+import { chanName } from './chat/Sheets';
 import { mark, t, tn } from '../i18n';
 import { fmtList, fmtNumber } from '../i18n/format';
+import { attach, cameraStarved, canShareScreen, ensureSlots, openSlots, slotOfMid, VIDEO_MAX, type Level, type Slot } from './chat/huddleVideo';
+import { HuddleStage, VideoEl, type TileInfo } from './chat/HuddleStage';
 
-type Note = { channelId: string; kind: 'offer' | 'answer' | 'ice' | 'bye' | 'react'; sdp?: RTCSessionDescriptionInit; ice?: RTCIceCandidateInit; emoji?: string };
+// media: what someone has on (camera, screen), so a slot without frames shows their picture instead of black.
+type Note = { channelId: string; kind: 'offer' | 'answer' | 'ice' | 'bye' | 'react' | 'media'; sdp?: RTCSessionDescriptionInit; ice?: RTCIceCandidateInit; emoji?: string; cam?: boolean; screen?: boolean };
+type Media = { cam: boolean; screen: boolean };
 const REACTIONS = ['👍', '😂', '👏', '❤️', '🎉', '👀'];
 
 /** Who's talking right now: the level of each voice, checked a few times a second (live status, so it may move). */
@@ -92,6 +97,17 @@ export function Huddle({ channel, users, me, onLeave, onOpenChannel }: { channel
   const [streams, setStreams] = useState<Record<string, MediaStream>>({});
   const [lines, setLines] = useState<Record<string, Line>>({});
   const [relay, setRelay] = useState(caps.relay);
+  // Video: our camera and screen, what the others have on, and their video as it arrives (huddleVideo.ts).
+  const [cam, setCam] = useState<'off' | 'asking' | 'on'>('off');
+  const [sharing, setSharing] = useState(false);
+  const [videoNote, setVideoNote] = useState<string | null>(null);
+  const [media, setMedia] = useState<Record<string, Media>>({});
+  const [vids, setVids] = useState<Record<string, Partial<Record<Slot, MediaStream>>>>({});
+  const [expanded, setExpanded] = useState(false); // wider screens: the call as a full view over the app
+  const camTrack = useRef<MediaStreamTrack | null>(null);
+  const screenTrack = useRef<MediaStreamTrack | null>(null);
+  const level = useRef<Level>(0);
+  const [mine, setMine] = useState<{ cam: MediaStream | null; screen: MediaStream | null }>({ cam: null, screen: null });
   const local = useRef<MediaStream | null>(null);
   const peers = useRef(new Map<string, Peer>());
   const queues = useRef(new Map<string, Promise<void>>());
@@ -100,6 +116,7 @@ export function Huddle({ channel, users, me, onLeave, onOpenChannel }: { channel
   const others = members.filter((id) => id !== me);
   const othersNow = useRef(others);
   othersNow.current = others;
+  const tooMany = members.length > VIDEO_MAX;
 
   const note = (to: string, n: Omit<Note, 'channelId'>) => sendSignal(to, { channelId: channel.id, ...n } satisfies Note);
   const setLine = (id: string, l: Line | null) =>
@@ -134,7 +151,11 @@ export function Huddle({ channel, users, me, onLeave, onOpenChannel }: { channel
     const s = local.current;
     s?.getTracks().forEach((t) => pc.addTrack(t, s));
     pc.onicecandidate = (e) => e.candidate && note(id, { kind: 'ice', ice: e.candidate.toJSON() });
-    pc.ontrack = (e) => setStreams((st) => ({ ...st, [id]: e.streams[0] ?? new MediaStream([e.track]) }));
+    pc.ontrack = (e) => {
+      if (e.track.kind !== 'video') return setStreams((st) => ({ ...st, [id]: e.streams[0] ?? new MediaStream([e.track]) }));
+      const slot = slotOfMid(pc, e.transceiver.mid);
+      if (slot) setVids((v) => ({ ...v, [id]: { ...v[id], [slot]: new MediaStream([e.track]) } }));
+    };
     pc.oniceconnectionstatechange = () => watch(id);
     pc.onconnectionstatechange = () => watch(id);
     setLine(id, 'connecting');
@@ -161,6 +182,8 @@ export function Huddle({ channel, users, me, onLeave, onOpenChannel }: { channel
       p.restarted = false;
       p.wasUp = true;
       setLine(id, 'connected');
+      note(id, { kind: 'media', ...ourMedia() });
+      void attach(p.pc, ourTracks(), level.current);
     } else if (s === 'failed') recover(id);
     else if (s === 'down') {
       setLine(id, p.wasUp ? 'retrying' : 'connecting');
@@ -194,7 +217,9 @@ export function Huddle({ channel, users, me, onLeave, onOpenChannel }: { channel
         /* keep the list it has */
       }
     }
-    if (!pc.getTransceivers().length) pc.addTransceiver('audio', { direction: 'recvonly' }); // no microphone: listen only
+    if (!pc.getTransceivers().some((t) => t.receiver.track?.kind === 'audio')) pc.addTransceiver('audio', { direction: 'recvonly' }); // no microphone: listen only
+    ensureSlots(pc); // the camera and the screen, from the first offer on
+    await attach(pc, ourTracks(), level.current);
     await pc.setLocalDescription(await pc.createOffer({ iceRestart }));
     const d = pc.localDescription;
     if (!d) return;
@@ -218,6 +243,8 @@ export function Huddle({ channel, users, me, onLeave, onOpenChannel }: { channel
       p.offeredAt = 0;
       await pc.setRemoteDescription(n.sdp);
       await addEarly(p);
+      openSlots(pc);
+      await attach(pc, ourTracks(), level.current);
       await pc.setLocalDescription(await pc.createAnswer());
       const d = pc.localDescription;
       if (d) note(from, { kind: 'answer', sdp: { type: d.type, sdp: d.sdp } });
@@ -248,6 +275,16 @@ export function Huddle({ channel, users, me, onLeave, onOpenChannel }: { channel
       delete n[id];
       return n;
     });
+    setVids((v) => {
+      const n = { ...v };
+      delete n[id];
+      return n;
+    });
+    setMedia((m) => {
+      const n = { ...m };
+      delete n[id];
+      return n;
+    });
     setLine(id, null);
   };
 
@@ -271,6 +308,8 @@ export function Huddle({ channel, users, me, onLeave, onOpenChannel }: { channel
       all.forEach((p) => (clearTimeout(p.timer), p.pc.close()));
       all.clear();
       local.current?.getTracks().forEach((t) => t.stop());
+      camTrack.current?.stop();
+      screenTrack.current?.stop();
     };
   }, []);
 
@@ -302,6 +341,7 @@ export function Huddle({ channel, users, me, onLeave, onOpenChannel }: { channel
       const { from, data } = (e as CustomEvent<{ from: string; data: Note }>).detail;
       if (data.channelId !== channel.id) return;
       if (data.kind === 'react') return void (data.emoji && REACTIONS.includes(data.emoji) && float(from, data.emoji));
+      if (data.kind === 'media') return setMedia((m) => ({ ...m, [from]: { cam: !!data.cam, screen: !!data.screen } }));
       enqueue(from, () => receive(from, data));
     };
     window.addEventListener('s2g:signal', on);
@@ -337,6 +377,8 @@ export function Huddle({ channel, users, me, onLeave, onOpenChannel }: { channel
     peers.current.forEach((p) => (clearTimeout(p.timer), p.pc.close()));
     peers.current.clear();
     local.current?.getTracks().forEach((t) => t.stop());
+    camTrack.current?.stop();
+    screenTrack.current?.stop();
     onLeave();
   };
   const toggleMute = () => {
@@ -344,6 +386,95 @@ export function Huddle({ channel, users, me, onLeave, onOpenChannel }: { channel
     local.current?.getAudioTracks().forEach((t) => (t.enabled = !next));
     setMuted(next);
   };
+  /* ---------- Camera and screen ---------- */
+  function ourTracks() {
+    return { cam: camTrack.current, screen: screenTrack.current };
+  }
+  function ourMedia(): Media {
+    return { cam: !!camTrack.current, screen: !!screenTrack.current };
+  }
+  /** Our camera and screen into every line, and the others told. */
+  const publish = () => {
+    for (const p of peers.current.values()) void attach(p.pc, ourTracks(), level.current);
+    const m = ourMedia();
+    for (const id of othersNow.current) note(id, { kind: 'media', ...m });
+    setMine({ cam: camTrack.current ? new MediaStream([camTrack.current]) : null, screen: screenTrack.current ? new MediaStream([screenTrack.current]) : null });
+  };
+  const camOff = (why?: string) => {
+    camTrack.current?.stop();
+    camTrack.current = null;
+    setCam('off');
+    publish();
+    if (why) setVideoNote(why);
+  };
+  const toggleCam = async () => {
+    if (cam === 'on') return camOff();
+    if (tooMany) return setVideoNote(t('Video is for up to {n} people. With more it’s voice only; screen share still works.', { n: fmtNumber(VIDEO_MAX) }));
+    setCam('asking');
+    setVideoNote(null);
+    try {
+      const s = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 640 }, height: { ideal: 360 }, frameRate: { ideal: 24, max: 30 } } });
+      if (!alive.current) return s.getTracks().forEach((x) => x.stop());
+      const track = s.getVideoTracks()[0];
+      track.onended = () => camTrack.current === track && camOff(t('Your camera stopped. Turn it on again when it’s back.'));
+      camTrack.current = track;
+      level.current = members.length > 3 ? 1 : 0;
+      setCam('on');
+      publish();
+    } catch (e) {
+      setCam('off');
+      const name = (e as DOMException)?.name;
+      setVideoNote(name === 'NotAllowedError' || name === 'SecurityError' ? t('Camera blocked. Allow it in your browser’s settings for this site, then try again.') : name === 'NotFoundError' || name === 'OverconstrainedError' ? t('No camera found on this device.') : name === 'NotSupportedError' ? t('This browser can’t use a camera here.') : t('Your camera didn’t start. Another app may be using it.'));
+    }
+  };
+  const stopShare = () => {
+    screenTrack.current?.stop();
+    screenTrack.current = null;
+    setSharing(false);
+    publish();
+  };
+  const toggleShare = async () => {
+    if (sharing) return stopShare();
+    const other = others.find((id) => media[id]?.screen);
+    if (other) return setVideoNote(t('{name} is sharing their screen. One screen at a time.', { name: first(other) }));
+    setVideoNote(null);
+    try {
+      const s = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: { ideal: 15, max: 15 } }, audio: false });
+      if (!alive.current) return s.getTracks().forEach((x) => x.stop());
+      const track = s.getVideoTracks()[0];
+      if ('contentHint' in track) track.contentHint = 'detail';
+      track.onended = () => screenTrack.current === track && stopShare(); // the browser's own "Stop sharing"
+      screenTrack.current = track;
+      setSharing(true);
+      setExpanded(true);
+      publish();
+    } catch (e) {
+      if ((e as DOMException)?.name !== 'NotAllowedError') setVideoNote(t('Screen share didn’t start. Try again, or pick another window.'));
+    }
+  };
+  // More than VIDEO_MAX people: cameras go off (voice only), screen share stays.
+  useEffect(() => {
+    if (tooMany && camTrack.current) camOff(t('Video is for up to {n} people. With more it’s voice only; screen share still works.', { n: fmtNumber(VIDEO_MAX) }));
+  }, [tooMany]); // eslint-disable-line react-hooks/exhaustive-deps
+  // A weak network: the camera steps down twice, then goes off so the voice keeps going.
+  useEffect(() => {
+    if (cam !== 'on') return;
+    let starved = 0;
+    const timer = setInterval(async () => {
+      const lines = [...peers.current.values()].filter((p) => isUp(p.pc));
+      if (!lines.length) return;
+      const any = (await Promise.all(lines.map((p) => cameraStarved(p.pc)))).some(Boolean);
+      starved = any ? starved + 1 : 0;
+      if (starved < 2) return;
+      starved = 0;
+      if (level.current < 2) {
+        level.current = (level.current + 1) as Level;
+        for (const p of peers.current.values()) void attach(p.pc, ourTracks(), level.current);
+      } else camOff(t('Your connection is weak, so your camera is off. Your voice stays on.'));
+    }, 3000);
+    return () => clearInterval(timer);
+  }, [cam]); // eslint-disable-line react-hooks/exhaustive-deps
+
   /** Try the failed lines again, each with a fresh route. */
   const retry = () => {
     for (const id of others) {
@@ -356,7 +487,7 @@ export function Huddle({ channel, users, me, onLeave, onOpenChannel }: { channel
     }
   };
 
-  const name = channel.kind === 'dm' ? t('Direct message') : `#${channel.name}`;
+  const name = channel.kind === 'dm' ? chanName(channel, users, me) : `#${channel.name}`;
   const lineOf = (id: string): Line => lines[id] ?? 'connecting';
   const first = (id: string) => users.find((u) => u.id === id)?.name.split(' ')[0] ?? t('Someone');
   const names = (ids: string[]) => (ids.length <= 2 ? fmtList(ids.map(first)) : t('{name} and {n} others', { name: first(ids[0]), n: fmtNumber(ids.length - 1) }));
@@ -423,6 +554,22 @@ export function Huddle({ channel, users, me, onLeave, onOpenChannel }: { channel
       </div>
     </div>
   );
+  // What went wrong with the camera or screen, and why (dismissable; it folds away like the line note).
+  const videoShown = useRef(videoNote);
+  if (videoNote) videoShown.current = videoNote;
+  const videoNoteEl = (
+    <div className={`fold huddle-fold${videoNote ? ' open' : ''}`} role="status" aria-live="polite">
+      <div className="fold-in">
+        <div className="huddle-note">
+          <VideoOff size={14} />
+          <span>{videoShown.current}</span>
+          <button type="button" className="ghost-btn sm" onClick={() => setVideoNote(null)} tabIndex={videoNote ? 0 : -1}>
+            {t('OK')}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
   const reactRow = (
     <div className={`fold hs-react-fold${reacting ? ' open' : ''}`} aria-hidden={!reacting}>
       <div>
@@ -437,6 +584,59 @@ export function Huddle({ channel, users, me, onLeave, onOpenChannel }: { channel
     </div>
   );
 
+  /* The call's tiles: everyone's camera or picture; a shared screen takes the stage. */
+  const sharer = sharing ? me : others.find((id) => media[id]?.screen && vids[id]?.screen);
+  const screen = sharer ? { id: sharer, self: sharer === me, name: sharer === me ? t('Your screen') : t('{name}’s screen', { name: first(sharer) }), video: sharer === me ? mine.screen : (vids[sharer]?.screen ?? null) } : null;
+  const tiles: TileInfo[] = members.map((id) => {
+    const self = id === me;
+    const camOn = self ? cam === 'on' : !!media[id]?.cam;
+    return { id, self, name: self ? t('You') : first(id), person: users.find((u) => u.id === id), video: camOn ? (self ? mine.cam : (vids[id]?.cam ?? null)) : null, muted: self && muted, speaking: speaking.includes(id), dim: !self && lineOf(id) !== 'connected' };
+  });
+  const anyVideo = !!screen || tiles.some((x) => x.video);
+  const stage = <HuddleStage tiles={tiles} screen={screen} floating={floating} phone={phone} />;
+  // The small picture for the minimised call: the shared screen, else someone else's camera, else ours.
+  const peek = screen?.video ?? tiles.find((x) => !x.self && x.video)?.video ?? (cam === 'on' ? mine.cam : null);
+  const peekSelf = !screen && !tiles.some((x) => !x.self && x.video);
+  const shareOk = canShareScreen();
+  const camLabel = cam === 'on' ? t('Stop video') : t('Video');
+  const camHint = tooMany ? t('Video is for up to {n} people', { n: fmtNumber(VIDEO_MAX) }) : camLabel;
+  const shareBusy = !sharing && others.some((id) => media[id]?.screen);
+
+  /** The round controls under the call (phones, and the full view on wider screens). */
+  const controls = (extra?: React.ReactNode) => (
+    <div className="hs-controls">
+      <button type="button" className={`hs-ctl${muted ? ' on' : ''}`} onClick={toggleMute} disabled={mic !== 'on'} aria-pressed={muted}>
+        <span>{muted ? <MicOff size={22} /> : <Mic size={22} />}</span>
+        {muted ? t('Unmute') : t('Mute')}
+      </button>
+      <button type="button" className={`hs-ctl${cam === 'on' ? ' on' : ''}`} onClick={() => void toggleCam()} disabled={cam === 'asking'} aria-pressed={cam === 'on'} title={camHint}>
+        <span>{cam === 'on' ? <Video size={22} /> : <VideoOff size={22} />}</span>
+        {camLabel}
+      </button>
+      {shareOk && (
+        <button type="button" className={`hs-ctl${sharing ? ' on' : ''}`} onClick={() => void toggleShare()} aria-pressed={sharing} title={shareBusy ? t('Someone else is sharing') : undefined}>
+          <span>{sharing ? <ScreenShareOff size={22} /> : <ScreenShare size={22} />}</span>
+          {sharing ? t('Stop sharing') : t('Share')}
+        </button>
+      )}
+      <button type="button" className={`hs-ctl${reacting ? ' on' : ''}`} onClick={() => setReacting((r) => !r)} aria-expanded={reacting}>
+        <span>
+          <SmilePlus size={22} />
+        </span>
+        {t('React')}
+      </button>
+      {extra}
+    </div>
+  );
+
+  // Wider screens: Escape takes the full view back to the small card.
+  useEffect(() => {
+    if (!expanded || phone) return;
+    const on = (e: KeyboardEvent) => e.key === 'Escape' && setExpanded(false);
+    window.addEventListener('keydown', on);
+    return () => window.removeEventListener('keydown', on);
+  }, [expanded, phone]);
+
   /* Phones: a slim bar in its own row (under the channel's header, or under the top bar elsewhere), never over the
      message box. Tapping it opens the call screen. */
   if (phone)
@@ -447,10 +647,10 @@ export function Huddle({ channel, users, me, onLeave, onOpenChannel }: { channel
           createPortal(
             <div className="huddle-bar" role="region" aria-label={t('Huddle in {name}', { name })}>
               <button type="button" className="hb-main" onClick={() => setFull(true)} aria-label={t('Huddle in {name}: {status}. Open the call', { name, status: line })}>
-                <Headphones size={16} className="hb-icon" />
+                {peek ? <VideoEl stream={peek} mirror={peekSelf} className="hb-video" /> : <Headphones size={16} className="hb-icon" />}
                 <span className="hb-text">
                   <strong>{name}</strong>
-                  <small>{line}</small>
+                  <small>{screen ? screen.name : line}</small>
                 </span>
                 <span className="hb-avs">{members.slice(0, 3).map((id) => avatar(id, 24))}</span>
               </button>
@@ -480,38 +680,31 @@ export function Huddle({ channel, users, me, onLeave, onOpenChannel }: { channel
                 {t('Leave')}
               </button>
             }
-            footer={
-              <div className="hs-controls">
-                <button type="button" className={`hs-ctl${muted ? ' on' : ''}`} onClick={toggleMute} disabled={mic !== 'on'} aria-pressed={muted}>
-                  <span>{muted ? <MicOff size={22} /> : <Mic size={22} />}</span>
-                  {muted ? t('Unmute') : t('Mute')}
-                </button>
-                <button type="button" className={`hs-ctl${reacting ? ' on' : ''}`} onClick={() => setReacting((r) => !r)} aria-expanded={reacting}>
+            footer={controls(
+              onOpenChannel && (
+                <button type="button" className="hs-ctl" onClick={() => (setFull(false), onOpenChannel())}>
                   <span>
-                    <SmilePlus size={22} />
+                    <MessageSquare size={22} />
                   </span>
-                  {t('React')}
+                  {t('Chat')}
                 </button>
-                {onOpenChannel && (
-                  <button type="button" className="hs-ctl" onClick={() => (setFull(false), onOpenChannel())}>
-                    <span>
-                      <MessageSquare size={22} />
-                    </span>
-                    {t('Chat')}
-                  </button>
-                )}
-              </div>
-            }
+              ),
+            )}
           >
             {problemNote}
-            <div className="hs-people">
-              {members.map((id) => (
-                <div key={id} className="hs-person">
-                  {avatar(id, 72)}
-                  <span>{id === me ? t('You') : first(id)}</span>
-                </div>
-              ))}
-            </div>
+            {videoNoteEl}
+            {anyVideo ? (
+              stage
+            ) : (
+              <div className="hs-people">
+                {members.map((id) => (
+                  <div key={id} className="hs-person">
+                    {avatar(id, 72)}
+                    <span>{id === me ? t('You') : first(id)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
             {reactRow}
           </PushScreen>
         )}
@@ -519,33 +712,83 @@ export function Huddle({ channel, users, me, onLeave, onOpenChannel }: { channel
     );
 
   return (
-    <aside className="huddle" role="region" aria-label={t('Huddle in {name}', { name })}>
-      <header>
-        <Headphones size={15} />
-        {onOpenChannel ? (
-          <button type="button" className="huddle-name" onClick={onOpenChannel} title={t('Open {name}', { name })}>
-            {name}
+    <>
+      <aside className={`huddle${peek ? ' has-video' : ''}`} role="region" aria-label={t('Huddle in {name}', { name })}>
+        <header>
+          <Headphones size={15} />
+          {onOpenChannel ? (
+            <button type="button" className="huddle-name" onClick={onOpenChannel} title={t('Open {name}', { name })}>
+              {name}
+            </button>
+          ) : (
+            <strong>{name}</strong>
+          )}
+          <button type="button" className="icon-btn sm huddle-expand" onClick={() => setExpanded(true)} aria-label={t('Open the full view')} title={t('Open the full view')}>
+            <Maximize2 size={14} />
           </button>
-        ) : (
-          <strong>{name}</strong>
+          <small className="muted">{screen ? screen.name : line}</small>
+          {problemNote}
+          {videoNoteEl}
+        </header>
+        <div className={`fold huddle-peek-fold${peek && !expanded ? ' open' : ''}`}>
+          <div className="fold-in">
+            {peek && (
+              <button type="button" className="huddle-peek" onClick={() => setExpanded(true)} aria-label={t('Open the full view')}>
+                <VideoEl stream={peek} mirror={peekSelf} className="hp-video" />
+              </button>
+            )}
+          </div>
+        </div>
+        <div className="huddle-people">{members.map((id) => avatar(id, 32))}</div>
+        {audio}
+        <div className="huddle-actions">
+          <button type="button" className={`ghost-btn sm huddle-react${reacting ? ' on' : ''}`} onClick={() => setReacting((r) => !r)} aria-expanded={reacting} aria-label={t('React')} title={t('React')}>
+            <SmilePlus size={14} />
+          </button>
+          <button type="button" className={`ghost-btn sm${cam === 'on' ? ' on' : ''}`} onClick={() => void toggleCam()} disabled={cam === 'asking'} aria-pressed={cam === 'on'} aria-label={camLabel} title={camHint}>
+            {cam === 'on' ? <Video size={14} /> : <VideoOff size={14} />}
+          </button>
+          {shareOk && (
+            <button type="button" className={`ghost-btn sm${sharing ? ' on' : ''}`} onClick={() => void toggleShare()} aria-pressed={sharing} aria-label={sharing ? t('Stop sharing') : t('Share your screen')} title={sharing ? t('Stop sharing') : shareBusy ? t('Someone else is sharing') : t('Share your screen')}>
+              {sharing ? <ScreenShareOff size={14} /> : <ScreenShare size={14} />}
+            </button>
+          )}
+          <button type="button" className={`ghost-btn sm${muted ? ' on' : ''}`} onClick={toggleMute} disabled={mic !== 'on'} aria-pressed={muted} aria-label={muted ? t('Unmute') : t('Mute')} title={muted ? t('Unmute') : t('Mute')}>
+            {muted ? <MicOff size={14} /> : <Mic size={14} />}
+          </button>
+          <button type="button" className="primary-btn sm danger" onClick={leave}>
+            <PhoneOff size={14} /> {t('Leave')}
+          </button>
+        </div>
+        {!expanded && reactRow}
+      </aside>
+      {expanded &&
+        createPortal(
+          // The full view: the tiles, the shared screen, the controls. Minimise (or Escape) goes back to the card.
+          <div className="huddle-full" role="dialog" aria-modal="false" aria-label={t('Huddle in {name}', { name })}>
+            <header className="hf-head">
+              <Headphones size={18} />
+              <span className="hf-title">
+                <strong>{name}</strong>
+                <small>{line}</small>
+              </span>
+              <button type="button" className="icon-btn" onClick={() => setExpanded(false)} aria-label={t('Make it small')} title={t('Make it small')}>
+                <Minimize2 size={18} />
+              </button>
+              <button type="button" className="hp-leave" onClick={() => (setExpanded(false), leave())}>
+                {t('Leave')}
+              </button>
+            </header>
+            <div className="hf-body">
+              {problemNote}
+              {videoNoteEl}
+              {stage}
+              {reactRow}
+            </div>
+            <footer className="hf-foot">{controls()}</footer>
+          </div>,
+          document.body,
         )}
-        <small className="muted">{line}</small>
-        {problemNote}
-      </header>
-      <div className="huddle-people">{members.map((id) => avatar(id, 32))}</div>
-      {audio}
-      <div className="huddle-actions">
-        <button type="button" className={`ghost-btn sm huddle-react${reacting ? ' on' : ''}`} onClick={() => setReacting((r) => !r)} aria-expanded={reacting} aria-label={t('React')} title={t('React')}>
-          <SmilePlus size={14} />
-        </button>
-        <button type="button" className={`ghost-btn sm${muted ? ' on' : ''}`} onClick={toggleMute} disabled={mic !== 'on'}>
-          {muted ? <MicOff size={14} /> : <Mic size={14} />} {muted ? t('Unmute') : t('Mute')}
-        </button>
-        <button type="button" className="primary-btn sm danger" onClick={leave}>
-          <PhoneOff size={14} /> {t('Leave')}
-        </button>
-      </div>
-      {reactRow}
-    </aside>
+    </>
   );
 }

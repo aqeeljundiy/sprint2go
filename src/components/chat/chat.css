@@ -1026,3 +1026,511 @@
     transition: background 0.15s;
   }
 }
+
+/* ---------- Group messages: their picture, New message's "To:" with people picked, converting ---------- */
+
+/* Two of its people, one over the other's corner; a square with how many when it's row-sized. */
+.group-av {
+  position: relative;
+  flex: none;
+  display: inline-block;
+}
+.group-av .avatar {
+  position: absolute;
+  box-shadow: 0 0 0 2px var(--surface);
+}
+.group-av .ga-back {
+  top: 0;
+  left: 0;
+  /* Its letter sits in the corner the front picture leaves free. */
+  place-items: start;
+  padding: 12% 0 0 22%;
+}
+.group-av .ga-front {
+  right: 0;
+  bottom: 0;
+}
+.group-av.is-count {
+  display: inline-grid;
+  place-items: center;
+  border-radius: 6px;
+  background: var(--surface-2);
+  box-shadow: inset 0 0 0 1px var(--border);
+  color: var(--text-2);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.nm-to {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  min-height: 48px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border);
+  cursor: text;
+}
+.nm-to-label {
+  color: var(--text-3);
+  font-size: 14px;
+}
+.nm-to input {
+  flex: 1;
+  min-width: 120px;
+  height: 32px;
+  border: 0;
+  background: none;
+  outline: none;
+  box-shadow: none;
+  font-size: 14px;
+  color: var(--text);
+}
+.nm-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 8px 0 4px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  font-size: 13px;
+  font-weight: 600;
+  animation: nm-chip-in 0.18s ease-out backwards;
+  transition: background 0.15s;
+}
+@media (hover: hover) {
+  .nm-chip:hover:not(:disabled) {
+    background: color-mix(in oklab, var(--accent) 18%, transparent);
+  }
+  .nm-row:hover:not(:disabled) {
+    background: var(--hover);
+  }
+}
+.nm-chip.locked {
+  background: var(--surface-2);
+  color: var(--text-2);
+  cursor: default;
+}
+@keyframes nm-chip-in {
+  from {
+    opacity: 0;
+    transform: scale(0.85);
+  }
+}
+.newmsg-sheet .nm-to {
+  margin: 0 -4px 4px;
+  padding: 4px 4px 8px;
+}
+.nm-list {
+  display: grid;
+  padding: 4px 0 8px;
+}
+.nm-group {
+  padding: 12px 8px 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-3);
+}
+.nm-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 0 8px;
+  border-radius: 8px;
+  text-align: left;
+  transition: background 0.15s, opacity 0.15s;
+}
+.nm-row:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.nm-row.picked:disabled {
+  opacity: 1;
+}
+.nm-glyph {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  flex: none;
+  color: var(--text-2);
+}
+.nm-name {
+  flex: none;
+  max-width: 55%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+}
+.nm-sub {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12.5px;
+  color: var(--text-3);
+}
+.nm-check {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  margin-left: auto;
+  border: 1.5px solid var(--border);
+  border-radius: 50%;
+  color: #fff;
+  transition: background 0.15s, border-color 0.15s;
+}
+.nm-check svg {
+  opacity: 0;
+  transform: scale(0.6);
+  transition: opacity 0.15s, transform 0.15s ease-out;
+}
+.nm-check.on {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+.nm-check.on svg {
+  opacity: 1;
+  transform: none;
+}
+.nm-full {
+  margin: 8px 0 4px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--warn-soft);
+  color: var(--text-2);
+  font-size: 13px;
+}
+.nm-foot {
+  display: flex;
+  justify-content: flex-end;
+  width: 100%;
+}
+.convert-note {
+  margin: 0 16px 12px;
+  color: var(--text-2);
+  font-size: 14px;
+  line-height: 1.5;
+}
+.convert-field {
+  display: grid;
+  margin: 0 16px 8px;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-2);
+}
+.convert-field .cf-input {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text-3);
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.convert-field .cf-input:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.convert-field input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: none;
+  outline: none;
+  box-shadow: none;
+  font-size: 14px;
+  font-weight: 400;
+  color: var(--text);
+}
+@media (prefers-reduced-motion: reduce) {
+  .nm-chip {
+    animation: none;
+  }
+  .nm-check svg {
+    transition: opacity 0.15s;
+  }
+}
+
+/* ---------- Huddles with video: the tiles, a shared screen, the full view and the small card ---------- */
+
+.mirror {
+  transform: scaleX(-1);
+}
+.huddle header {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+}
+.huddle header small {
+  grid-column: 2 / -1;
+}
+.huddle-expand {
+  grid-row: 1;
+  grid-column: 3;
+  margin: -6px -6px -6px 0;
+}
+.huddle-peek {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #000;
+}
+.hp-video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.huddle-actions .ghost-btn.sm.on {
+  background: var(--text);
+  color: var(--surface);
+}
+
+.huddle-stage {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  align-content: center;
+  gap: 12px;
+}
+.huddle-stage.with-screen {
+  grid-template-rows: minmax(0, 1fr) auto;
+  align-content: stretch;
+}
+.ht-grid {
+  display: grid;
+  grid-template-columns: repeat(var(--cols, 2), minmax(0, 1fr));
+  gap: 12px;
+}
+.with-screen .ht-grid {
+  grid-template-columns: repeat(var(--cols, 2), 168px);
+  justify-content: center;
+  overflow-x: auto;
+}
+.ht-tile {
+  position: relative;
+  display: grid;
+  place-items: center;
+  aspect-ratio: 16 / 9;
+  border-radius: 16px;
+  overflow: hidden;
+  background: var(--surface-2);
+  box-shadow: inset 0 0 0 1px var(--border);
+  animation: ht-in 0.22s ease-out backwards;
+  transition: box-shadow 0.15s, opacity 0.2s;
+}
+.ht-tile.has-video {
+  background: #000;
+}
+.ht-tile.speaking {
+  box-shadow: inset 0 0 0 3px var(--ok-solid);
+}
+.ht-tile.dim {
+  opacity: 0.55;
+}
+@keyframes ht-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+}
+.ht-video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  animation: ht-fade 0.25s ease-out backwards;
+}
+.ht-video.screen {
+  object-fit: contain;
+}
+@keyframes ht-fade {
+  from {
+    opacity: 0;
+  }
+}
+.ht-name {
+  position: absolute;
+  left: 8px;
+  bottom: 8px;
+  max-width: calc(100% - 16px);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 6px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.ht-name > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ht-name small {
+  font-weight: 400;
+  opacity: 0.85;
+}
+.ht-tile .huddle-float {
+  bottom: 40%;
+  font-size: 32px;
+}
+.hs-screen {
+  position: relative;
+  min-height: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 16px;
+  overflow: hidden;
+  background: #000;
+}
+.hs-screen-wait {
+  color: #fff;
+  font-size: 13px;
+  opacity: 0.8;
+}
+.with-screen .ht-tile .avatar {
+  transform: scale(0.75);
+}
+
+/* The full view over the app (wider screens). */
+.huddle-full {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-dialog);
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  background: var(--bg);
+  animation: hf-in 0.22s cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
+}
+@keyframes hf-in {
+  from {
+    opacity: 0;
+    transform: scale(0.985);
+  }
+}
+.is-leaving.huddle-full {
+  animation: hf-out 0.18s cubic-bezier(0.4, 0, 1, 1) forwards;
+}
+@keyframes hf-out {
+  to {
+    opacity: 0;
+    transform: scale(0.985);
+  }
+}
+.hf-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 20px;
+}
+.hf-head > svg {
+  color: var(--ok, #0f9d6b);
+}
+.hf-title {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+}
+.hf-title strong {
+  font-size: 16px;
+}
+.hf-title small {
+  font-size: 12.5px;
+  color: var(--text-3);
+}
+.hf-body {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 0 20px 8px;
+  max-width: 1200px;
+  width: 100%;
+  margin: 0 auto;
+}
+.hf-foot .hs-controls {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  padding: 8px 16px 20px;
+}
+.hp-leave {
+  height: 32px;
+  padding: 0 16px;
+  border-radius: 999px;
+  background: var(--danger);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  transition: transform 0.15s, background 0.15s;
+}
+.hp-leave:active {
+  transform: scale(0.96);
+}
+.hs-ctl {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  min-width: 64px;
+  font-size: 12px;
+  color: var(--text);
+}
+.hs-ctl > span {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: var(--surface-2);
+  box-shadow: inset 0 0 0 1px var(--border);
+  transition: background 0.15s, color 0.15s;
+}
+.hs-ctl.on > span {
+  background: var(--text);
+  color: var(--surface);
+}
+.hs-ctl:disabled {
+  opacity: 0.5;
+}
+@media (hover: hover) {
+  .hs-ctl:hover:not(:disabled):not(.on) > span {
+    background: var(--hover);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ht-tile,
+  .ht-video,
+  .huddle-full {
+    animation: none;
+  }
+}
+/* The card keeps its width whatever the video's own size is. */
+.huddle > *,
+.huddle-peek-fold .fold-in {
+  min-width: 0;
+}
+.huddle-peek-fold .fold-in > .huddle-peek {
+  margin-top: 2px;
+}
+.huddle {
+  width: 320px;
+}
+.huddle-actions {
+  gap: 4px;
+}

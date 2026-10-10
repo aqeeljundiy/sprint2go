@@ -53,6 +53,8 @@ import { DEFAULT_STAGES, cleanStages, stageIdFor, stagesFrom } from '../src/stag
 import * as autojoin from './autojoin.ts';
 import * as summaries from './summaries.ts';
 import * as chatLater from './chatLater.ts';
+import * as chatRules from './chatRules.ts';
+import * as taskFiles from './taskFiles.ts';
 import * as digest from './digest.ts';
 import * as retention from './retention.ts';
 import * as sandbox from './sandbox.ts';
@@ -449,7 +451,15 @@ function clientLens(me: Person) {
       case 'teams':
         return d.workspaceId === workspaceId ? { id: d.id, workspaceId: d.workspaceId, name: d.name, color: d.color, leadId: d.leadId, members: d.members, taskStages: Array.isArray(d.taskStages) ? d.taskStages.map((x: any) => ({ id: x.id, kind: x.kind })) : undefined } : null;
       case 'channels':
-        return myChannels.has(d.id) ? { id: d.id, workspaceId: d.workspaceId, kind: d.kind, name: d.name, topic: d.topic, clientId: d.clientId, category: d.category, members: [], guests: d.guests, materials: d.materials, bookmarks: d.bookmarks } : null;
+        if (!myChannels.has(d.id)) return null;
+        // A group message the team started with them: named after its people as they may see them, with the team's
+        // ids so their messages reach them (chatRules.ts decides who's in it).
+        if (d.kind === 'dm') {
+          const shown = (id: string) => (access.teamNames === 'hide' ? `${w.name} team` : access.teamNames === 'first' ? String(personOf(id)?.name ?? '').split(' ')[0] : String(personOf(id)?.name ?? ''));
+          const names = [...new Set([...(d.members ?? []).map(shown), ...(d.guests ?? []).filter((g: any) => String(g.email).toLowerCase() !== email).map((g: any) => String(g.name).split(' ')[0])])].filter(Boolean);
+          return { id: d.id, workspaceId: d.workspaceId, kind: 'dm', name: names.join(', '), clientId: d.clientId, members: d.members ?? [], guests: d.guests };
+        }
+        return { id: d.id, workspaceId: d.workspaceId, kind: d.kind, name: d.name, topic: d.topic, clientId: d.clientId, category: d.category, members: [], guests: d.guests, materials: d.materials, bookmarks: d.bookmarks };
       case 'messages':
         return myChannels.has(d.channelId) && !chatLater.scheduled(d) ? d : null;
       case 'quotes':
@@ -544,7 +554,14 @@ function clientWrite(me: Person, coll: string, d: any): any | null {
       const approval = can(person, 'approve') && before.approval?.status === 'waiting' && d.approval && d.approval.status !== 'waiting' ? { ...before.approval, status: d.approval.status, by: email, at: new Date().toISOString(), note: d.approval.note } : before.approval;
       // Changes asked on finished work: it goes back to the company's first "in progress" stage (by kind, whatever it's called).
       const reopen = approval !== before.approval && approval?.status === 'changes' && before.done ? { done: false, status: stageIdFor(before, 'active', taskStagesOf(before, w)), doneAt: undefined, doneBy: undefined } : {};
-      return { ...before, ...reopen, approval, history: [...(before.history ?? []), ...added.map((h: any) => ({ ...h, toClient: true }))] };
+      // Files on their comments only where the project lets them add files (which files: server/taskFiles.ts).
+      const filesOk = !!access.uploads && can(person, 'upload');
+      const mine = (h: any) => {
+        if (filesOk || !('files' in h)) return { ...h, toClient: true };
+        const { files: _f, ...rest } = h;
+        return { ...rest, toClient: true };
+      };
+      return { ...before, ...reopen, approval, history: [...(before.history ?? []), ...added.map(mine)] };
     }
     case 'quotes': {
       // A guest with approval rights answers a quote that was sent: accepted with their name, or declined with a note.
@@ -1335,6 +1352,8 @@ function applySync(me: string, incoming: any, from: { conn?: string; operator?: 
     .filter((d) => d && typeof d.id === 'string' && !(isSandboxId(d.id) && !db.getDoc(coll, d.id)))
     .map((d) => ownProfile(d) ?? (ownRecord(d) || asTeam(d) ? d : (portals.map((pt) => clientWrite(pt, coll, d)).find(Boolean) ?? null)))
     .filter(Boolean)
+    // Files on a task's comments: only your own uploads on the comments you add (server/taskFiles.ts).
+    .map((d) => (coll === 'todos' && d ? taskFiles.keepCommentFiles(db.getDoc('todos', d.id) as any, d as any, me, db.fileInfo) : d))
     .map((d) => {
       // A project's picture: a small image only (like profile photos).
       if (coll === 'clients' && d && 'photo' in d && d.photo != null && !(typeof d.photo === 'string' && d.photo.startsWith('data:image/') && d.photo.length < 300_000)) return { ...d, photo: undefined };
@@ -1508,12 +1527,22 @@ function applySync(me: string, incoming: any, from: { conn?: string; operator?: 
       const url = (d as any).url;
       if (url !== undefined && !(typeof url === 'string' && url.startsWith('/') && !url.startsWith('//'))) return { ...d, url: undefined } as db.Doc;
     }
-    // Someone else's chat message: reactions, votes, pins and the task made from it, never what it says.
+    // Direct and group messages: who's in them, guests, leaving, and converting to a private channel (chatRules.ts).
+    if (coll === 'channels') {
+      const v = chatRules.guardDm(d, before, { me, isAdmin: isAdminOf(me, wsId), perms: permsOf(wsId), mayCreateChannel: !(limited(wsId) && wsDoc?.chat?.whoCanCreate === 'admins') });
+      if (v !== 'pass') {
+        say(v.why);
+        if (!v.doc) return null;
+        return before ? (summaries.keepSummaries(v.doc, before) as db.Doc) : v.doc;
+      }
+    }
+    // Someone else's chat message: reactions, votes, pins, the task made from it and your own follow choice, never what it says.
     if (coll === 'messages' && before && before.userId !== me) {
       const { reactions, poll, pinned, taskId, alsoInChannel } = d as any;
       const votes = poll && before.poll ? { ...before.poll, options: before.poll.options.map((o: any, i: number) => ({ ...o, votes: Array.isArray(poll.options?.[i]?.votes) ? poll.options[i].votes : o.votes })) } : before.poll;
-      return { ...before, reactions, poll: votes, pinned, taskId, alsoInChannel } as db.Doc;
+      return chatRules.guardFollow({ ...before, reactions, poll: votes, pinned, taskId, alsoInChannel, follow: (d as any).follow } as db.Doc, before, me);
     }
+    if (coll === 'messages') d = chatRules.guardFollow(d, before, me);
     if (coll === 'users') {
       if (d.id === me) return d; // own profile: already shaped
       if (before) return null; // nobody edits someone else's record
@@ -2986,17 +3015,18 @@ createServer(async (req, res) => {
             const rows = usedOn();
             if (!rows.length) return true;
             const see = teamLens(me);
-            return rows.some((r) => !!see(r.coll, JSON.parse(r.data)));
+            return rows.some((r) => taskFiles.holdsFile(see(r.coll, JSON.parse(r.data)), f.id));
           })());
       // A guest opens their own uploads, and files on something they can see (a shared file, a message in their
-      // channel, a request): never the rest of the company's files, even with the address.
+      // channel, a request, a comment shared with them): never the rest of the company's files, even with the address.
+      // What counts is their view of it: a file on a task's internal comment stays closed though the task is shared.
       const guest =
         !team &&
         portalsOf(me).some((pt) => pt.workspaceId === f.workspaceId) &&
         (f.by === me ||
           (() => {
             const see = lens(me);
-            return usedOn().some((r) => !!see(r.coll, JSON.parse(r.data)));
+            return usedOn().some((r) => taskFiles.holdsFile(see(r.coll, JSON.parse(r.data)), f.id));
           })());
       // Support tickets: the operators who work tickets (the support permission, past the console's two-step sign-in)
       // open what customers attached (their own uploads, or what came with their email), and each opening is in the

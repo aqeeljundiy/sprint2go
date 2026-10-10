@@ -18,7 +18,7 @@ import { ActionSheet, type SheetAction } from './ui/ActionSheet';
 import { EmptyState } from './ui/EmptyState';
 import { ChatActivity } from './chat/Activity';
 import { useLongPress } from './ui/useLongPress';
-import { SquarePen, Search as SearchIcon } from 'lucide-react';
+import { SquarePen } from 'lucide-react';
 import { useAppSettings, useCreateAction, useTitleMenu } from '../mobile/chrome';
 import { routeBase } from '../tryOut';
 import { toast } from '../toast';
@@ -26,6 +26,8 @@ import { dmOther, followedThreads, isMutedValue, readFallback, shortTime, STATUS
 export { statusText };
 import { preview } from './chat/Message';
 import { ConfirmSheet, chanName } from './chat/Sheets';
+import { GroupAvatar } from './chat/GroupAvatar';
+import { isGroupDm, GROUP_MAX } from '../chatFollow';
 import { mark, t, tn, tx } from '../i18n';
 import { tj } from '../i18n/tj';
 import { fmtNumber } from '../i18n/format';
@@ -104,7 +106,10 @@ interface SidebarProps {
   onJoin: (id: string) => void;
   onLeave: (id: string) => void;
   onNewChannel?: () => void; // missing: only admins start channels in this company
-  onNewDm: (userId: string) => void;
+  /** New message: a direct message with one person, or a group message (src/chatFollow.ts). */
+  onNewMessage: (to: Recipients) => void;
+  /** Guests the person may write to (joined guests of projects where they may invite guests). */
+  dmGuests?: GuestOption[];
   onStatus: (s: Status | null) => void;
   canManage: (c: Channel) => boolean; // owner or admin: may change the channel's category
   onMove: (id: string, category: ChannelCategory) => void;
@@ -122,6 +127,8 @@ interface SidebarProps {
   onHuddle?: (id: string) => void;
   /** The direct message with someone (made when there's none yet): its id. */
   dmIdFor?: (userId: string) => string;
+  /** Follow or unfollow a thread (Activity). */
+  onFollow?: (rootId: string, on: boolean) => void;
 }
 
 export function ChatSidebar(p: SidebarProps) {
@@ -132,7 +139,6 @@ export function ChatSidebar(p: SidebarProps) {
   const [starred, setStarred] = usePersisted<string[]>(`s2g-chat-starred:${p.me}:${p.workspaceId}`, []);
   const [collapsed, setCollapsed] = usePersisted<string[]>(`s2g-chat-collapsed:${p.me}:${p.workspaceId}`, []);
   const [editing, setEditing] = useState<ChatViewDef | null>(null);
-  const [addingDm, setAddingDm] = useState(false);
   const [newMsg, setNewMsg] = useState(false); // the phone's create button: who to write to
   const [browsing, setBrowsing] = useState(false);
   const [rowMenu, setRowMenu] = useState<{ id: string; at?: { x: number; y: number }; anchor?: HTMLElement } | null>(null);
@@ -162,7 +168,6 @@ export function ChatSidebar(p: SidebarProps) {
   const joinable = p.channels.filter((c) => c.kind === 'channel' && !c.private && !c.archived && !c.members.includes(p.me));
   const rooms = mine.filter((c) => c.kind === 'channel');
   const dms = mine.filter((c) => c.kind === 'dm');
-  const dmWith = new Set(dms.flatMap((d) => d.members));
   const star = new Set(starred);
   const myStatus = p.statuses[p.me];
   const custom = views.find((v) => v.id === viewId);
@@ -509,7 +514,7 @@ export function ChatSidebar(p: SidebarProps) {
           ) : part === 'dms' ? (
             <DmList dms={dmsShown} filter={dmFilter} row={(c) => <ConvoRow key={c.id} c={c} p={p} info={info[c.id]} phone two starred={star.has(c.id)} draggable={false} onDragState={setDropOn} onMenu={(where) => setRowMenu({ id: c.id, ...where })} />} onNew={() => setNewMsg(true)} />
           ) : (
-            <ChatActivity notices={p.notices ?? []} messages={p.messages} channels={p.channels} users={p.users} me={p.me} myFirst={p.myFirst} chat={chat} onOpen={(n) => p.onOpenNotice?.(n)} onRead={(ids, read) => p.onReadNotices?.(ids, read)} />
+            <ChatActivity notices={p.notices ?? []} messages={p.messages} channels={p.channels} users={p.users} me={p.me} myFirst={p.myFirst} chat={chat} onOpen={(n) => p.onOpenNotice?.(n)} onRead={(ids, read) => p.onReadNotices?.(ids, read)} onFollow={p.onFollow} />
           )}
         </TabPane>
       ) : (
@@ -593,19 +598,8 @@ export function ChatSidebar(p: SidebarProps) {
         'dms',
         t('Direct messages'),
         dms.filter((c) => !star.has(c.id) && !onTop.has(c.id)).sort((a, b) => (phone ? recency(b).localeCompare(recency(a)) : 0)),
-        phone ? undefined : addingDm ? (
-          <div className="add-client sb-label">
-            <Select
-              value={null}
-              placeholder={t('Message someone…')}
-              label={t('Message someone')}
-              searchable
-              onChange={(v) => (p.onNewDm(v), setAddingDm(false))}
-              options={p.users.filter((u) => u.id !== p.me && !dmWith.has(u.id)).map((u) => ({ value: u.id, label: u.name, hint: u.title, icon: <Avatar person={u} size={22} /> }))}
-            />
-          </div>
-        ) : (
-          <button className="nav-item" onClick={() => setAddingDm(true)} title={t('New message')}>
+        phone ? undefined : (
+          <button className="nav-item" onClick={() => setNewMsg(true)} title={t('New message')}>
             <Plus size={16} />
             <span className="sb-label">{t('New message')}</span>
           </button>
@@ -766,7 +760,7 @@ export function ChatSidebar(p: SidebarProps) {
           />
         </Layer>
       )}
-      {newMsg && (phone ? <NewMessageScreen users={p.users} me={p.me} channels={rooms} presence={p.presence} onPickPerson={p.onNewDm} onPickChannel={p.onOpen} onClose={() => setNewMsg(false)} /> : <NewMessageSheet users={p.users} me={p.me} onPick={p.onNewDm} onNewChannel={p.onNewChannel} onClose={() => setNewMsg(false)} />)}
+      {newMsg && (phone ? <NewMessageScreen users={p.users} me={p.me} channels={rooms} guests={p.dmGuests} presence={p.presence} onPick={p.onNewMessage} onPickChannel={p.onOpen} onNewChannel={p.onNewChannel} onClose={() => setNewMsg(false)} /> : <NewMessageSheet users={p.users} me={p.me} guests={p.dmGuests} onPick={p.onNewMessage} onNewChannel={p.onNewChannel} onClose={() => setNewMsg(false)} />)}
       {huddlePick && p.onHuddle && (
         <NewMessageScreen
           title={t('Start a huddle')}
@@ -775,7 +769,8 @@ export function ChatSidebar(p: SidebarProps) {
           me={p.me}
           channels={rooms}
           presence={p.presence}
-          onPickPerson={(id) => p.onHuddle!(p.dmIdFor ? p.dmIdFor(id) : id)}
+          single
+          onPick={(to) => p.onHuddle!(p.dmIdFor ? p.dmIdFor(to.userIds[0]) : to.userIds[0])}
           onPickChannel={(id) => p.onHuddle!(id)}
           onClose={() => setHuddlePick(false)}
         />
@@ -892,7 +887,8 @@ function SectionHead({ title, closed, count, onToggle, onMenu, phone, icon }: { 
  * mentions and DMs, a huddle pill when one is on). Phones, DMs (`two`): two lines with the last message and its time.
  */
 function ConvoRow({ c, p, info, phone, two = false, starred, draggable, onDragState, onMenu }: { c: Channel; p: SidebarProps; info?: ConvoInfo; phone: boolean; two?: boolean; starred: boolean; draggable: boolean; onDragState: (d: string | null) => void; onMenu: (where: { at?: { x: number; y: number }; anchor?: HTMLElement }) => void }) {
-  const other = c.kind === 'dm' ? p.users.find((u) => u.id === dmOther(c, p.me)) : undefined;
+  const group = isGroupDm(c);
+  const other = c.kind === 'dm' && !group ? p.users.find((u) => u.id === dmOther(c, p.me)) : undefined;
   const st = other ? p.statuses[other.id] : undefined;
   const press = useLongPress((pt) => onMenu({ at: { x: pt.x, y: pt.y } }), { disabled: !phone });
   const more = useRef<HTMLButtonElement>(null);
@@ -904,16 +900,20 @@ function ConvoRow({ c, p, info, phone, two = false, starred, draggable, onDragSt
       <Avatar person={other} size={phone ? (two ? 40 : 20) : 20} />
       <i className={`presence ${p.presence(other.id)}`} />
     </span>
+  ) : group ? (
+    <GroupAvatar c={c} users={p.users} me={p.me} size={phone && two ? 40 : 20} />
   ) : (
     glyph(phone ? 18 : 15)
   );
-  const name = other ? other.name : c.name;
+  const name = other ? other.name : group ? chanName(c, p.users, p.me) : c.name;
   const guestBadge = c.category === 'shared' || c.guests?.length ? <Badge small tone="warn" title={t('The {whos} can see this channel', { whos: term.whos })}>{term.Whos}</Badge> : null;
   const count = info?.mentions ? info.mentions : unread && c.kind === 'dm' ? info!.unread : 0;
   if (phone) {
     const last = info?.last;
     const mineLast = last?.userId === p.me;
     const who = last ? (mineLast ? t('You') : last.guestEmail ? (c.guests?.find((g) => g.email === last.guestEmail)?.name.split(' ')[0] ?? t('Guest')) : (p.users.find((u) => u.id === last.userId)?.name.split(' ')[0] ?? '')) : '';
+    // "You: …" on mine; in a group message, who said it (Slack).
+    const lead = last && who && (mineLast || group) ? `${who}: ` : '';
     const people = (c.huddle?.members ?? []).map((id) => p.users.find((u) => u.id === id)).filter((u): u is User => !!u);
     const rowProps = {
       ...press,
@@ -945,7 +945,7 @@ function ConvoRow({ c, p, info, phone, two = false, starred, draggable, onDragSt
                   </>
                 ) : last ? (
                   <>
-                    {mineLast ? `${who}: ` : ''}
+                    {lead}
                     {preview(last) || t('Sent something')}
                   </>
                 ) : (
@@ -960,7 +960,7 @@ function ConvoRow({ c, p, info, phone, two = false, starred, draggable, onDragSt
       );
     return (
       <button className={`cl-row lp${cls}`} {...rowProps}>
-        <span className={`cl-glyph${other ? ' is-dm' : ''}`}>{icon}</span>
+        <span className={`cl-glyph${other || group ? ' is-dm' : ''}`}>{icon}</span>
         {info?.draft && p.current !== c.id ? <PenLine size={14} className="cl-draft-icon" aria-label={t('Draft')} /> : null}
         <span className="cl-name">
           <span>{name}</span>
@@ -997,7 +997,7 @@ function ConvoRow({ c, p, info, phone, two = false, starred, draggable, onDragSt
       onDragEnd={() => onDragState(null)}
       onContextMenu={(e) => (e.preventDefault(), onMenu({ at: { x: e.clientX, y: e.clientY } }))}
     >
-      <button className={`nav-item ${p.current === c.id ? 'active' : ''} ${unread ? 'has-unread' : ''}`} onClick={() => p.onOpen(c.id)} title={other ? other.name : `#${c.name}`}>
+      <button className={`nav-item ${p.current === c.id ? 'active' : ''} ${unread ? 'has-unread' : ''}`} onClick={() => p.onOpen(c.id)} title={other ? other.name : group ? name : `#${c.name}`}>
         {icon}
         <span className="sb-label">
           {name}
@@ -1107,82 +1107,209 @@ function TilesEditor({ me }: { me: string }) {
   );
 }
 
-/** New message: pick someone to write to, or start a channel. Chat's create button, and New, Message in More. */
-export function NewMessageSheet({ users, me, onPick, onNewChannel, onClose }: { users: User[]; me: string; onPick: (userId: string) => void; onNewChannel?: () => void; onClose: () => void }) {
+/** A guest someone may write to: a person who joined one of the projects where they may invite guests. */
+export type GuestOption = { email: string; name: string; clientId: string; project: string };
+/** Who a new message goes to: teammates, and guests of one project. */
+export type Recipients = { userIds: string[]; guests: GuestOption[] };
+
+/**
+ * New message: the "To:" field with the people picked so far, then people (and guests of your projects) to add, and,
+ * before anyone is picked, channels to open. One person is a direct message; two to eight are a group message
+ * (Slack). Full screen on phones, a sheet on wider screens. `single` (Start a huddle): the first pick is the answer.
+ */
+function NewMessage(p: {
+  variant: 'screen' | 'sheet';
+  title?: string;
+  placeholder?: string;
+  users: User[];
+  me: string;
+  channels?: Channel[];
+  guests?: GuestOption[];
+  presence?: (id: string) => Presence;
+  locked?: string[]; // already in the conversation (Add people): shown picked, can't be taken out
+  done?: string; // the button's words when adding people
+  single?: boolean;
+  onPick: (to: Recipients) => void;
+  onPickChannel?: (id: string) => void;
+  onNewChannel?: () => void;
+  onClose: () => void;
+}) {
   const [q, setQ] = useState('');
+  const [picked, setPicked] = useState<string[]>([]);
+  const [guestPicked, setGuestPicked] = useState<GuestOption[]>([]);
+  const input = useRef<HTMLInputElement>(null);
   const s = q.trim().toLowerCase();
-  const people = users.filter((u) => u.id !== me && (!s || s.split(/\s+/).every((w) => `${u.name} ${u.email} ${u.title ?? ''}`.toLowerCase().includes(w))));
-  return (
-    <Sheet onClose={onClose} title={t('New message')} size="tall">
-      <label className="sheet-search">
-        <SearchIcon size={16} />
-        <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder={t('To: a name or email')} aria-label={t('Who to message')} />
-      </label>
-      <div className="as-list">
-        {onNewChannel && !s && (
-          <button type="button" className="as-item" onClick={() => (onClose(), onNewChannel())}>
-            <Hash size={18} className="as-icon" />
-            <span className="as-label">
-              {t('New channel')}
-              <small>{t('A place for a team, a {project} or a topic', { project: term.one })}</small>
-            </span>
-          </button>
-        )}
-        {people.map((u) => (
-          <button key={u.id} type="button" className="as-item" onClick={() => (onClose(), onPick(u.id))}>
-            <Avatar person={u} size={30} />
-            <span className="as-label">
-              {u.name}
-              {u.title && <small>{u.title}</small>}
-            </span>
-          </button>
-        ))}
-        {people.length === 0 && <p className="sheet-empty">{t('Nobody here is called “{q}”', { q })}</p>}
+  const match = (txt: string) => !s || s.split(/\s+/).every((w) => txt.toLowerCase().includes(w));
+  const locked = p.locked ?? [];
+  const people = p.users.filter((u) => u.id !== p.me && match(`${u.name} ${u.email} ${u.title ?? ''}`));
+  const project = guestPicked[0]?.clientId;
+  const guests = p.single ? [] : (p.guests ?? []).filter((g) => match(`${g.name} ${g.email} ${g.project}`));
+  const chans = !p.single && picked.length + guestPicked.length === 0 && !locked.length ? (p.channels ?? []).filter((c) => !c.archived && match(`${c.name} ${c.topic ?? ''}`)) : [];
+  const count = locked.filter((id) => id !== p.me).length + picked.length + guestPicked.length; // people besides me
+  const full = !p.single && count >= GROUP_MAX - 1;
+  const finish = (to: Recipients) => (p.onClose(), p.onPick(to));
+  const refocus = () => {
+    setQ('');
+    input.current?.focus();
+  };
+  const togglePerson = (id: string) => {
+    if (p.single) return finish({ userIds: [id], guests: [] });
+    if (locked.includes(id)) return;
+    setPicked((x) => (x.includes(id) ? x.filter((y) => y !== id) : full ? x : [...x, id]));
+    refocus();
+  };
+  const toggleGuest = (g: GuestOption) => {
+    setGuestPicked((x) => (x.some((y) => y.email === g.email) ? x.filter((y) => y.email !== g.email) : full || (project && project !== g.clientId) ? x : [...x, g]));
+    refocus();
+  };
+  const any = picked.length + guestPicked.length > 0;
+  const go = () => any && finish({ userIds: picked, guests: guestPicked });
+  const firstOf = (id: string) => p.users.find((u) => u.id === id)?.name.split(' ')[0] ?? '';
+  const label = p.done ?? (!any ? t('Pick who to message') : picked.length + guestPicked.length === 1 ? t('Message {name}', { name: picked[0] ? firstOf(picked[0]) : guestPicked[0].name.split(' ')[0] }) : t('Start a group message'));
+  const chip = (key: string, person: { name: string; email: string; color?: string; photo?: string }, remove: (() => void) | null) => (
+    <button key={key} type="button" className={`nm-chip${remove ? '' : ' locked'}`} onClick={(e) => (e.stopPropagation(), remove?.())} disabled={!remove} aria-label={remove ? t('Remove {name}', { name: person.name }) : person.name}>
+      <Avatar person={person} size={20} />
+      <span>{person.name.split(' ')[0]}</span>
+      {remove && <X size={14} aria-hidden />}
+    </button>
+  );
+  const to = (
+    <div className="nm-to" onClick={() => input.current?.focus()}>
+      <span className="nm-to-label">{t('To:')}</span>
+      {locked
+        .filter((id) => id !== p.me)
+        .map((id) => p.users.find((x) => x.id === id))
+        .map((u) => u && chip(u.id, u, null))}
+      {picked.map((id) => p.users.find((x) => x.id === id)).map((u) => u && chip(u.id, u, () => togglePerson(u.id)))}
+      {guestPicked.map((g) => chip(g.email, g, () => toggleGuest(g)))}
+      <input
+        ref={input}
+        autoFocus
+        value={q}
+        onChange={(e) => setQ(e.target.value)}
+        placeholder={count ? '' : (p.placeholder ?? (p.variant === 'screen' ? t('A person or channel') : t('A name or email')))}
+        aria-label={t('Who to message')}
+        enterKeyHint={p.single ? 'go' : 'next'}
+        onKeyDown={(e) => {
+          if (e.key === 'Backspace' && !q && guestPicked.length) setGuestPicked((x) => x.slice(0, -1));
+          else if (e.key === 'Backspace' && !q && picked.length) setPicked((x) => x.slice(0, -1));
+          else if (e.key === 'Enter') {
+            e.preventDefault();
+            if (s && people[0]) togglePerson(people[0].id);
+            else if (s && guests[0]) toggleGuest(guests[0]);
+            else if (s && chans[0]) (p.onClose(), p.onPickChannel?.(chans[0].id));
+            else if (!s) go();
+          }
+        }}
+      />
+    </div>
+  );
+  const check = (on: boolean) =>
+    p.single ? null : (
+      <span className={`nm-check${on ? ' on' : ''}`} aria-hidden>
+        <Check size={14} />
+      </span>
+    );
+  const list = (
+    <div className="nm-list">
+      <div className={`fold${full ? ' open' : ''}`} aria-hidden={!full}>
+        <div className="fold-in">
+          <p className="nm-full">
+            {t('A group message holds up to 9 people. For more, make a channel.')}{' '}
+            {p.onNewChannel && (
+              <button type="button" className="link-btn" tabIndex={full ? 0 : -1} onClick={() => (p.onClose(), p.onNewChannel!())}>
+                {t('New channel')}
+              </button>
+            )}
+          </p>
+        </div>
       </div>
+      {p.variant === 'sheet' && p.onNewChannel && !s && !count && (
+        <button type="button" className="nm-row" onClick={() => (p.onClose(), p.onNewChannel!())}>
+          <span className="nm-glyph">
+            <Hash size={18} />
+          </span>
+          <span className="nm-name">{t('New channel')}</span>
+          <span className="nm-sub">{t('A place for a team, a {project} or a topic', { project: term.one })}</span>
+        </button>
+      )}
+      {people.length > 0 && <div className="nm-group">{t('People')}</div>}
+      {people.map((u) => {
+        const on = picked.includes(u.id) || locked.includes(u.id);
+        return (
+          <button key={u.id} type="button" className={`nm-row${on ? ' picked' : ''}`} onClick={() => togglePerson(u.id)} disabled={(!on && full) || locked.includes(u.id)} aria-pressed={p.single ? undefined : on}>
+            <span className="dm-av">
+              <Avatar person={u} size={28} />
+              {p.presence && <i className={`presence ${p.presence(u.id)}`} />}
+            </span>
+            <span className="nm-name">{u.name}</span>
+            {u.title && <span className="nm-sub">{u.title}</span>}
+            {check(on)}
+          </button>
+        );
+      })}
+      {guests.length > 0 && <div className="nm-group">{t('Guests')}</div>}
+      {guests.map((g) => {
+        const on = guestPicked.some((x) => x.email === g.email);
+        const elsewhere = !!project && project !== g.clientId;
+        return (
+          <button key={`${g.clientId}:${g.email}`} type="button" className={`nm-row${on ? ' picked' : ''}`} onClick={() => toggleGuest(g)} disabled={!on && (full || elsewhere)} aria-pressed={on}>
+            <Avatar person={g} size={28} />
+            <span className="nm-name">{g.name}</span>
+            <span className="nm-sub">{elsewhere ? t('One project’s guests per message') : g.project}</span>
+            {check(on)}
+          </button>
+        );
+      })}
+      {chans.length > 0 && <div className="nm-group">{t('Channels')}</div>}
+      {chans.map((c) => (
+        <button key={c.id} type="button" className="nm-row" onClick={() => (p.onClose(), p.onPickChannel?.(c.id))}>
+          <span className="nm-glyph">{c.category === 'shared' ? <Handshake size={18} /> : c.private ? <Lock size={17} /> : <Hash size={18} />}</span>
+          <span className="nm-name">{c.name}</span>
+          <span className="nm-sub">{tn(c.members.length, '{n} member', '{n} members')}</span>
+        </button>
+      ))}
+      {!people.length && !chans.length && !guests.length && <p className="sheet-empty">{t('Nobody here is called “{q}”', { q })}</p>}
+    </div>
+  );
+  const footer = p.single ? undefined : (
+    <div className="nm-foot">
+      <button type="button" className="primary-btn nm-go" disabled={!any} onClick={go}>
+        {label}
+      </button>
+    </div>
+  );
+  if (p.variant === 'screen')
+    return (
+      <PushScreen title={p.title ?? t('New message')} onBack={p.onClose} closeX className="newmsg-push" footer={footer}>
+        {to}
+        {list}
+      </PushScreen>
+    );
+  return (
+    <Sheet onClose={p.onClose} title={p.title ?? t('New message')} size="tall" className="newmsg-sheet" footer={footer}>
+      {to}
+      {list}
     </Sheet>
   );
 }
 
+/** New message on wider screens (Chat's create button, and New, Message in More). */
+export function NewMessageSheet(p: { users: User[]; me: string; guests?: GuestOption[]; onPick: (to: Recipients) => void; onNewChannel?: () => void; onClose: () => void }) {
+  return <NewMessage variant="sheet" {...p} />;
+}
+
 /**
- * Phones: New message, full screen (Slack): "To:" with the keyboard up, then people and channels. Picking one opens
- * that conversation. Also "Start a huddle" (the create button's long-press): picking one starts the huddle there.
+ * Phones: New message, full screen (Slack): "To:" with the keyboard up, then people and channels. Also "Start a
+ * huddle" (the create button's long-press, `single`): picking one starts the huddle there.
  */
-export function NewMessageScreen({ title, placeholder, users, me, channels, presence, onPickPerson, onPickChannel, onClose }: { title?: string; placeholder?: string; users: User[]; me: string; channels: Channel[]; presence: (id: string) => Presence; onPickPerson: (userId: string) => void; onPickChannel: (id: string) => void; onClose: () => void }) {
-  const [q, setQ] = useState('');
-  const s = q.trim().toLowerCase();
-  const match = (txt: string) => !s || s.split(/\s+/).every((w) => txt.toLowerCase().includes(w));
-  const people = users.filter((u) => u.id !== me && match(`${u.name} ${u.email} ${u.title ?? ''}`));
-  const chans = channels.filter((c) => !c.archived && match(`${c.name} ${c.topic ?? ''}`));
-  return (
-    <PushScreen title={title ?? t('New message')} onBack={onClose} closeX className="newmsg-push">
-      <label className="nm-to">
-        <span>{t('To:')}</span>
-        <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder={placeholder ?? t('A person or channel')} aria-label={t('Who to message')} enterKeyHint="go" onKeyDown={(e) => e.key === 'Enter' && (people[0] ? (onClose(), onPickPerson(people[0].id)) : chans[0] && (onClose(), onPickChannel(chans[0].id)))} />
-      </label>
-      <div className="nm-list">
-        {people.length > 0 && <div className="nm-group">{t('People')}</div>}
-        {people.map((u) => (
-          <button key={u.id} type="button" className="nm-row" onClick={() => (onClose(), onPickPerson(u.id))}>
-            <span className="dm-av">
-              <Avatar person={u} size={28} />
-              <i className={`presence ${presence(u.id)}`} />
-            </span>
-            <span className="nm-name">{u.name}</span>
-            {u.title && <span className="nm-sub">{u.title}</span>}
-          </button>
-        ))}
-        {chans.length > 0 && <div className="nm-group">{t('Channels')}</div>}
-        {chans.map((c) => (
-          <button key={c.id} type="button" className="nm-row" onClick={() => (onClose(), onPickChannel(c.id))}>
-            <span className="nm-glyph">{c.category === 'shared' ? <Handshake size={18} /> : c.private ? <Lock size={17} /> : <Hash size={18} />}</span>
-            <span className="nm-name">{c.name}</span>
-            <span className="nm-sub">{tn(c.members.length, '{n} member', '{n} members')}</span>
-          </button>
-        ))}
-        {!people.length && !chans.length && <p className="sheet-empty">{t('Nobody here is called “{q}”', { q })}</p>}
-      </div>
-    </PushScreen>
-  );
+export function NewMessageScreen(p: { title?: string; placeholder?: string; users: User[]; me: string; channels: Channel[]; guests?: GuestOption[]; presence: (id: string) => Presence; single?: boolean; onPick: (to: Recipients) => void; onPickChannel: (id: string) => void; onNewChannel?: () => void; onClose: () => void }) {
+  return <NewMessage variant="screen" {...p} />;
+}
+
+/** Add people to a group message: pick them, then choose a new group with everyone, or this one as a private channel. */
+export function AddPeople(p: { phone: boolean; users: User[]; me: string; members: string[]; onPick: (to: Recipients) => void; onClose: () => void }) {
+  return <NewMessage variant={p.phone ? 'screen' : 'sheet'} title={t('Add people')} users={p.users} me={p.me} locked={p.members} done={t('Next')} onPick={p.onPick} onClose={p.onClose} />;
 }
 
 /** Make or edit your own chat view: name it, add sections, pick which channels go where. */

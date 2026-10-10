@@ -28,9 +28,9 @@ const isClient = (task: Todo, client: Client) => task.clientId === client.id;
 /** Briefs, tasks and requests the client can see. */
 export const tasksFor = (client: Client, tasks: Todo[]) => tasks.filter((task) => isClient(task, client) && (task.visibleToClient || task.source === 'request'));
 
-/** Shared channels this person is in. */
+/** Shared channels this person is in, and group messages the team started with them (src/chatFollow.ts). */
 export const channelsFor = (email: string, clientId: string, channels: Channel[], includeArchived = false) =>
-  channels.filter((c) => c.kind === 'channel' && (includeArchived || !c.archived) && c.clientId === clientId && c.guests?.some((g) => g.email.toLowerCase() === email.toLowerCase()));
+  channels.filter((c) => (c.kind === 'channel' || c.kind === 'dm') && (includeArchived || !c.archived) && c.clientId === clientId && c.guests?.some((g) => g.email.toLowerCase() === email.toLowerCase()));
 
 /** Meetings with this client that their people were in, or that the team shared. */
 export function meetingsFor(client: Client, people: ClientPerson[], meetings: Meeting[], access: ClientAccess) {

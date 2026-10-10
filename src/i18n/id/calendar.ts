@@ -427,6 +427,8 @@ const id: Record<string, string> = {
   '{n} no': '{n} tidak',
   '{n} yes': '{n} ya',
   '{when}. More options': '{when}. Opsi lainnya',
+  // Month: a day with more than fits ("+3 more" opens the day)
+  '+{n} more': '+{n} lagi',
 };
 
 export default id;

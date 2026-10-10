@@ -10,6 +10,7 @@ import { localDay } from '../../utils';
 import { whenText } from './chatPrefs';
 import { preview } from './Message';
 import { dmOther } from './chatPrefs';
+import { isGroupDm } from '../../chatFollow';
 import { mark, t } from '../../i18n';
 
 /* Small sheets chat uses in several places: emoji, a time (Send later, Remind me), forwarding, who reacted, asking first.
@@ -272,8 +273,12 @@ export function PickSheet<T extends { id: string }>({ title, items, label, hint,
   );
 }
 
-/** A conversation's name as people say it: #name, or the other person's name. */
+/** A conversation's name as people say it: #name, the other person's name, or a group message's people (first names). */
 export function chanName(c: Channel, users: User[], me: string) {
+  if (c.kind === 'dm' && isGroupDm(c)) {
+    const names = [...c.members.filter((id) => id !== me).map((id) => users.find((u) => u.id === id)?.name.split(' ')[0]), ...(c.guests ?? []).map((g) => (g.name || g.email).split(' ')[0])].filter(Boolean);
+    return names.length ? names.join(', ') : t('Group message');
+  }
   if (c.kind === 'dm') return users.find((u) => u.id === dmOther(c, me))?.name ?? t('Direct message');
   return c.category === 'shared' ? c.name : `#${c.name}`;
 }

@@ -51,6 +51,8 @@ jobs:
         run: node scripts/sandbox-tests.mjs
       - name: AI apps connector (OAuth with PKCE, MCP tools, who sees what, drafts)
         run: node scripts/mcp-tests.mjs
+      - name: Chat (following threads, group messages, who sees them, guests)
+        run: node --import ./server/register.mjs scripts/chat-tests.mjs
       - name: Imports (Slack, Trello, Google Drive, Undo, hostile zips)
         run: node scripts/import-tests.mjs
       - name: Tables (filters, own filters and sorts, colour rules, templates, who may change a view)

@@ -1151,7 +1151,7 @@
     font-size: var(--fs-body);
     font-weight: 600;
   }
-  .tdp-last-text span {
+  .tdp-last-text > span {
     display: -webkit-box;
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 2;
@@ -1682,5 +1682,74 @@
     max-width: 40vw;
     transform: translateX(-50%);
     pointer-events: none;
+  }
+}
+
+/* ---------- Files on a task's comments, on phones (src/components/tasks/CommentFiles.tsx) ---------- */
+
+@media (max-width: 767px) {
+  /* The paperclip sits at the start of the comment pill, like Slack's +. */
+  .tdp-field {
+    padding: 0 8px 0 0;
+  }
+  .tdp-clip {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: var(--tap);
+    height: var(--tap);
+    border-radius: var(--r-round);
+    color: var(--text-2);
+  }
+  /* Waiting files: one row that scrolls sideways (Slack's), so the comment bar stays short. */
+  .tdp-comment .cf-waiting {
+    flex-wrap: nowrap;
+    gap: 8px;
+    margin: 0 -16px;
+    padding: 0 16px 8px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .tdp-comment .cf-chip {
+    flex: none;
+    max-width: 240px;
+  }
+  .cf-waiting {
+    gap: 8px;
+  }
+  .cf-chip {
+    max-width: 100%;
+    padding: 4px 0 4px 4px;
+    border-radius: var(--r-tile);
+  }
+  .cf-chip-pic {
+    border-radius: var(--r-tile);
+  }
+  .cf-chip-x {
+    width: var(--tap);
+    height: var(--tap);
+    margin: -4px 0;
+  }
+  .cf-name {
+    font-size: var(--fs-secondary);
+    font-weight: 600;
+  }
+  .cf-card-text small,
+  .cf-chip-text small {
+    font-size: var(--fs-caption);
+  }
+  .cf-cards {
+    gap: 8px;
+  }
+  .cf-card {
+    min-height: var(--row-1);
+    padding: 8px 12px 8px 8px;
+    border-radius: var(--r-tile);
+  }
+  .cf-card.pic {
+    padding: 0;
+  }
+  .cf-card.pic .cf-card-text {
+    padding: 4px 8px;
   }
 }
