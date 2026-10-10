@@ -2,7 +2,8 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ChevronDown, ChevronLeft, ChevronRight, Plus } from 'lucide-react';
 import { Sheet } from '../ui/Sheet';
 import { useLongPress } from '../ui/useLongPress';
-import { addDays, dayDate, dayHeading, weekStart } from '../../taskDates';
+import { addDays, dayDate, dayHeading, dayHeadingDateFirst, weekStart } from '../../taskDates';
+import { usePhone } from '../../mobile/media';
 import type { Todo } from '../../types';
 import { MonthGrid } from './MonthGrid';
 import { t, tn } from '../../i18n';
@@ -33,6 +34,7 @@ export function TaskCalendar({
   const [selected, setSelected] = useState(today);
   const [end, setEnd] = useState(() => addDays(weekStart(today), 27));
   const [months, setMonths] = useState(false);
+  const phone = usePhone();
   const busy = useMemo(() => new Set(tasks.map((t) => t.due!).filter(Boolean)), [tasks]);
   const byDay = useMemo(() => {
     const m = new Map<string, Todo[]>();
@@ -104,7 +106,7 @@ export function TaskCalendar({
           <button type="button" className="icon-btn hide-phone" onClick={() => shift(-1)} disabled={week <= weekStart(today)} aria-label={t('Previous week')}>
             <ChevronLeft size={18} />
           </button>
-          <button type="button" className="ghost-btn sm" onClick={() => (setDir(today < week ? 'prev' : ''), go(today))} disabled={selected === today && week === weekStart(today)}>
+          <button type="button" className="ghost-btn sm ucal-today" onClick={() => (setDir(today < week ? 'prev' : ''), go(today))} disabled={selected === today && week === weekStart(today)}>
             {t('Today')}
           </button>
           <button type="button" className="icon-btn hide-phone" onClick={() => shift(1)} aria-label={t('Next week')}>
@@ -136,7 +138,7 @@ export function TaskCalendar({
           const items = byDay.get(d) ?? [];
           return (
             <section key={d} id={`ucal-${d}`} data-day={d} className={`ucal-day${items.length ? '' : ' empty'}`}>
-              <h3 className="t-heading">{dayHeading(d, today)}</h3>
+              <h3 className="t-heading">{phone ? dayHeadingDateFirst(d, today) : dayHeading(d, today)}</h3>
               {items.map(row)}
               <button type="button" className="ucal-add" onClick={() => onAdd(d)}>
                 <Plus size={16} /> {t('Add task')}

@@ -26,7 +26,7 @@ export interface Display {
 }
 
 export function defaultDisplay(kind: string): Display {
-  const group: GroupBy = kind === 'mine' || kind === 'today' ? 'date' : kind === 'team' ? 'person' : kind === 'project' ? 'stage' : kind === 'client' ? 'team' : 'client';
+  const group: GroupBy = kind === 'mine' ? 'date' : kind === 'today' ? 'client' : kind === 'team' ? 'person' : kind === 'project' ? 'stage' : kind === 'client' ? 'team' : 'client';
   return { layout: kind === 'upcoming' ? 'calendar' : 'list', completed: false, group, sort: 'smart', who: 'any', people: [], only: [] };
 }
 

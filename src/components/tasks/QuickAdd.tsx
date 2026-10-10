@@ -1,5 +1,5 @@
 import { useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
-import { ArrowUp, Bell, CalendarDays, Check, Flag, Hash, Repeat as RepeatIcon, UserRound, Columns3 } from 'lucide-react';
+import { ArrowUp, Bell, CalendarDays, Check, ChevronDown, Flag, Hash, Repeat as RepeatIcon, UserRound, Columns3 } from 'lucide-react';
 import { Popover } from '../ui/Popover';
 import { Sheet } from '../ui/Sheet';
 import { PeopleList } from '../ui/PeopleList';
@@ -14,6 +14,7 @@ import { quoted, type NewTask, type TaskOps } from './taskOps';
 import { t, tx } from '../../i18n';
 import { fmtList, fmtTime } from '../../i18n/format';
 import { useLang } from '../../i18n/useLang';
+import { usePhone } from '../../mobile/media';
 
 export interface QuickDefaults {
   userId?: string; // '' puts it in the team's queue
@@ -55,6 +56,10 @@ export function QuickAdd({ ops, defaults, mode, onClose, where, inputRef }: { op
   const projects = useMemo(() => ops.clients.filter((c) => c.status !== 'ended'), [ops.clients]);
   const has = (k: keyof Picks) => Object.prototype.hasOwnProperty.call(picks, k);
   const lang = useLang(); // the chips' words come from the parse: read again in a new language
+  // Phones: Todoist's Quick Add. A description line after the first character, one row of chips, the project as the
+  // footer's picker, the suggestions as a small list under the field.
+  const todo = usePhone() && mode === 'sheet';
+  const [notes, setNotes] = useState('');
 
   // "/stage" reads the stages of where the task goes: its project's or team's own, else the company's. The project
   // can come from the same text ("#kopi"), so it reads once for the project, then with that project's stages.
@@ -133,7 +138,7 @@ export function QuickAdd({ ops, defaults, mode, onClose, where, inputRef }: { op
   const submit = () => {
     const title = parsed.title.trim();
     if (!title) return;
-    const input: NewTask = { title, userId: assignees[0] ?? '', assignees, clientId, teamId: defaults.teamId, due: due ?? (repeat ? ops.today : undefined), priority, repeat, remindAt, status };
+    const input: NewTask = { title, userId: assignees[0] ?? '', assignees, clientId, teamId: defaults.teamId, due: due ?? (repeat ? ops.today : undefined), priority, repeat, remindAt, status, ...(todo && notes.trim() ? { notes: notes.trim() } : {}) };
     const id = ops.add(input);
     const who = assignees.filter((x) => x !== ops.me).map((x) => ops.users.find((u) => u.id === x)?.name.split(' ')[0]).filter(Boolean);
     const c = ops.clients.find((x) => x.id === clientId);
@@ -142,6 +147,7 @@ export function QuickAdd({ ops, defaults, mode, onClose, where, inputRef }: { op
     const bits = [due && due !== defaults.due ? t('due {day}', { day: dayWords(due, ops.today) }) : '', who.length ? t('for {names}', { names: fmtList(who as string[]) }) : ''].filter(Boolean);
     toastAdded([[t('Added {title}', { title: quoted(title) }), where].filter(Boolean).join(' '), ...bits].join(', '), () => ops.remove([id], true), () => ops.open(id));
     setText('');
+    setNotes('');
     draft = '';
     setOff([]);
     setPicks((p) => ({ ...(has('clientId') ? { clientId: p.clientId } : {}), ...(has('status') ? { status: p.status } : {}) })); // same place for the next one
@@ -204,6 +210,18 @@ export function QuickAdd({ ops, defaults, mode, onClose, where, inputRef }: { op
     return list.filter(([, v]) => v > new Date().toISOString());
   })();
 
+  // #, + and /: what fits where the caret is (on phones a small list floating under the field).
+  const suggest = trigger && suggestions.length > 0 && (
+        <div className="qa-suggest" role="listbox" aria-label={trigger.char === '#' ? term.Many : trigger.char === '+' ? t('People') : t('Stages')}>
+          {suggestions.map((s, i) => (
+            <button key={s.id} type="button" role="option" aria-selected={i === hi} className={`qa-sug${i === hi ? ' hi' : ''}`} onPointerDown={(e) => e.preventDefault()} onClick={() => applySuggestion(s.name)}>
+              <span className="qa-sug-icon">{s.icon}</span>
+              {s.name}
+            </button>
+          ))}
+        </div>
+      );
+
   const body = (
     <div className={`qa qa-${mode}`} onKeyDown={(e) => e.key === 'Escape' && picker && (e.stopPropagation(), setPicker(null))}>
       <div className="qa-field">
@@ -215,7 +233,7 @@ export function QuickAdd({ ops, defaults, mode, onClose, where, inputRef }: { op
           rows={1}
           value={text}
           enterKeyHint="send"
-          placeholder={mode === 'sheet' ? t('What needs doing?') : t('Task name, then a date, #project, +person, p1…')}
+          placeholder={todo ? t('Task name') : mode === 'sheet' ? t('What needs doing?') : t('Task name, then a date, #project, +person, p1…')}
           aria-label={t('New task')}
           onChange={(e) => {
             setText(e.target.value);
@@ -241,17 +259,16 @@ export function QuickAdd({ ops, defaults, mode, onClose, where, inputRef }: { op
             }
           }}
         />
+        {todo && suggest}
       </div>
-      {trigger && suggestions.length > 0 && (
-        <div className="qa-suggest" role="listbox" aria-label={trigger.char === '#' ? term.Many : trigger.char === '+' ? t('People') : t('Stages')}>
-          {suggestions.map((s, i) => (
-            <button key={s.id} type="button" role="option" aria-selected={i === hi} className={`qa-sug${i === hi ? ' hi' : ''}`} onPointerDown={(e) => e.preventDefault()} onClick={() => applySuggestion(s.name)}>
-              <span className="qa-sug-icon">{s.icon}</span>
-              {s.name}
-            </button>
-          ))}
+      {todo && (
+        <div className={`qa-desc-wrap${text.trim() || notes ? ' open' : ''}`}>
+          <div className="qa-chips-clip">
+            <textarea className="qa-desc" rows={1} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder={t('Description')} aria-label={t('Description')} tabIndex={text.trim() || notes ? 0 : -1} />
+          </div>
         </div>
       )}
+      {!todo && suggest}
       <div className={`qa-chips-wrap${chips ? ' open' : ''}`} aria-hidden={!chips}>
         <div className="qa-chips-clip">
         <div className="qa-chips" role="group" aria-label={t('Details')}>
@@ -263,7 +280,7 @@ export function QuickAdd({ ops, defaults, mode, onClose, where, inputRef }: { op
             assignees.length > 0 && !(assignees.length === 1 && assignees[0] === ops.me),
             !!tokenOf('person') && !picks.assignees,
           )}
-          {chip('project', proj ? <span className="dot" style={{ background: proj.color }} /> : <Hash size={15} />, proj ? proj.name : term.One, !!proj, !!tokenOf('project') && !has('clientId'))}
+          {!todo && chip('project', proj ? <span className="dot" style={{ background: proj.color }} /> : <Hash size={15} />, proj ? proj.name : term.One, !!proj, !!tokenOf('project') && !has('clientId'))}
           <button type="button" className={`qa-chip${priority === 'high' ? ' on p-high' : ''}${tokenOf('priority') && !picks.priority ? ' from-text' : ''}`} onClick={() => pick({ priority: priority === 'high' ? 'normal' : 'high' }, 'priority', false)} aria-pressed={priority === 'high'}>
             <Flag size={15} />
             <span>{priority === 'high' ? t('High priority') : t('Priority')}</span>
@@ -275,6 +292,18 @@ export function QuickAdd({ ops, defaults, mode, onClose, where, inputRef }: { op
         </div>
       </div>
       <div className="qa-foot">
+        {todo ? (
+          <button type="button" ref={(el) => void (chipRefs.current.project = el)} className={`qa-proj${tokenOf('project') && !has('clientId') ? ' from-text' : ''}`} onClick={() => setPicker(picker === 'project' ? null : 'project')} aria-expanded={picker === 'project'} aria-label={t('{project}: {name}', { project: term.One, name: proj ? proj.name : where })}>
+            <span className="qa-hash" style={{ color: proj?.color ?? 'var(--text-3)' }}>
+              #
+            </span>
+            <span className="qa-proj-name">
+              {proj ? proj.name : where}
+              {proj && stageNow && stageNow.kind !== 'open' ? ` · ${stageName(stageNow)}` : ''}
+            </span>
+            <ChevronDown size={16} />
+          </button>
+        ) : (
         <span className="qa-where">
           {proj ? (
             <>
@@ -285,6 +314,7 @@ export function QuickAdd({ ops, defaults, mode, onClose, where, inputRef }: { op
             where
           )}
         </span>
+        )}
         {mode === 'inline' && (
           <button type="button" className="ghost-btn sm" onClick={onClose}>
             {t('Cancel')}
@@ -367,7 +397,7 @@ export function QuickAdd({ ops, defaults, mode, onClose, where, inputRef }: { op
 
   if (mode === 'inline') return body;
   return (
-    <Sheet onClose={onClose} className="qa-sheet" label={t('New task')}>
+    <Sheet onClose={onClose} className={`qa-sheet${todo ? ' qa-todo' : ''}`} label={t('New task')}>
       {body}
     </Sheet>
   );

@@ -366,6 +366,10 @@
 .tm.team {
   color: color-mix(in oklab, var(--c) 70%, var(--text));
 }
+.tm-cal,
+.tm-hash {
+  display: none; /* phones only (src/mobile/tasks.css): Todoist's calendar icon and "Name #" */
+}
 .tm.proj i {
   display: inline-block;
   width: 7px;

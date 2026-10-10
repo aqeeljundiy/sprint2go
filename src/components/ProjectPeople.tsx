@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { UserPlus, X } from 'lucide-react';
+import { UserPlus, Users, X } from 'lucide-react';
 import type { Client, User } from '../types';
 import { term } from '../terms';
 import { Avatar } from './Avatar';
@@ -13,7 +13,7 @@ import { t } from '../i18n';
  * Who's on a project: the owner, teammates (Lead or Member) and guests. Teammates on it see it in their
  * sidebar and get its news; guests are invited from the Guests tab.
  */
-export function ProjectPeople({ client, users, me, canEdit, canInvite = canEdit, onPatch, onGuests }: { client: Client; users: User[]; me: string; canEdit: boolean; canInvite?: boolean; onPatch: (p: Partial<Client>) => void; onGuests: () => void }) {
+export function ProjectPeople({ client, users, me, canEdit, canInvite = canEdit, onPatch, onGuests, compact }: { client: Client; users: User[]; me: string; canEdit: boolean; canInvite?: boolean; onPatch: (p: Partial<Client>) => void; onGuests: () => void; compact?: boolean /* the phone's top bar: a people icon */ }) {
   const ref = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
   const members = client.members ?? [];
@@ -24,6 +24,11 @@ export function ProjectPeople({ client, users, me, canEdit, canInvite = canEdit,
   const add = (id: string) => onPatch({ members: [...members, { userId: id, role: 'member', addedBy: me, at: new Date().toISOString() }] });
   return (
     <>
+      {compact ? (
+        <button ref={ref} type="button" className="icon-btn tv-pill-btn" onClick={() => setOpen(true)} aria-label={t('People on this {project}', { project: term.one })} title={t('People on this {project}', { project: term.one })}>
+          <Users size={20} />
+        </button>
+      ) : (
       <button ref={ref} type="button" className="proj-people" onClick={() => setOpen(true)} title={t('People on this {project}', { project: term.one })}>
         <span className="avatar-stack">
           {team.slice(0, 4).map((u) => (
@@ -35,6 +40,7 @@ export function ProjectPeople({ client, users, me, canEdit, canInvite = canEdit,
           <UserPlus size={14} /> <span className="lbl">{t('Invite')}</span>
         </span>
       </button>
+      )}
       <Popover anchor={ref} open={open} onClose={() => setOpen(false)} width={320} align="end" title={t('People on {name}', { name: client.name })}>
         <div className="pp-list">
           <span className="pp-head">{t('Team')}</span>

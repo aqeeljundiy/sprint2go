@@ -2,7 +2,7 @@ import { ProjectBadge } from './ProjectBadge';
 import { useRef, useState } from 'react';
 import { usePersisted } from '../settings';
 import { Popover } from './ui/Popover';
-import { ArrowRight, Check, Menu, Plus, SlidersHorizontal } from 'lucide-react';
+import { Archive, ArrowRight, Check, Menu, Plus, SlidersHorizontal } from 'lucide-react';
 import type { Client, Todo, User } from '../types';
 import { PROJECT_TYPES, term } from '../terms';
 import { localDay, relative } from '../utils';
@@ -13,6 +13,8 @@ import { Select } from './ui/Select';
 import { SmoothHeight } from './ui/Smooth';
 import { EmptyState } from './ui/EmptyState';
 import { useCreateAction } from '../mobile/chrome';
+import { usePhone } from '../mobile/media';
+import { TasksBrowse, type BrowseGroup } from './tasks/TasksBrowse';
 import { t, tn, tx } from '../i18n';
 import { fmtDay } from '../i18n/format';
 
@@ -20,8 +22,9 @@ import { fmtDay } from '../i18n/format';
  * The Projects app's home: every project, the ones that need something first. Each card says what's wrong (late,
  * nobody on it, waiting on a guest) or that it's on track, and opens the project's hub.
  */
-export function ProjectsHome({ projects, tasks, users, onOpen, onCreate, onMenu, startAdding }: { startAdding?: boolean; projects: Client[]; tasks: Todo[]; users: User[]; onOpen: (id: string) => void; onCreate?: (name: string, type?: string) => void; onMenu: () => void }) {
+export function ProjectsHome({ projects, tasks, users, onOpen, onCreate, onMenu, startAdding, onPast }: { startAdding?: boolean; projects: Client[]; tasks: Todo[]; users: User[]; onOpen: (id: string) => void; onCreate?: (name: string, type?: string) => void; onPast?: () => void; onMenu: () => void }) {
   const [adding, setAdding] = useState(!!startAdding);
+  const phone = usePhone();
   useCreateAction('projects', !!onCreate && { label: t('New {project}', { project: term.one }), icon: Plus, run: () => setAdding(true) });
   const [name, setName] = useState('');
   const [type, setType] = useState('');
@@ -53,6 +56,61 @@ export function ProjectsHome({ projects, tasks, users, onOpen, onCreate, onMenu,
     setType('');
     setAdding(false);
   };
+  const newForm = (
+    <SmoothHeight>
+      {adding && (
+        <div className="proj-new">
+          <input autoFocus value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => (e.key === 'Enter' ? save() : e.key === 'Escape' && setAdding(false))} placeholder={t('{Project} name', { project: term.one })} />
+          <Select<string> value={type} onChange={setType} label={t('Type')} className="sel-flat" options={[{ value: '', label: t('No type') }, ...PROJECT_TYPES.map((ty) => ({ value: ty, label: t(ty) }))]} />
+          <button className="ghost-btn sm" onClick={() => setAdding(false)}>
+            {t('Cancel')}
+          </button>
+          <button className="primary-btn sm" disabled={!name.trim()} onClick={save}>
+            {t('Add')}
+          </button>
+        </div>
+      )}
+    </SmoothHeight>
+  );
+
+  // Phones: the projects as rows (Todoist's Browse), by status, with what needs a look at the right.
+  if (phone) {
+    const hint = (s: ReturnType<typeof stats>) =>
+      s.late ? { hint: tn(s.late, '{n} late', '{n} late'), tone: 'danger' as const } : s.guest ? { hint: t('Waiting on {who}', { who: term.who }) } : s.nobody ? { hint: tn(s.nobody, '{n} not picked up', '{n} not picked up') } : {};
+    const row = ({ c, s }: (typeof rows)[number]) => ({
+      id: c.id,
+      label: c.name,
+      icon: c.photo ? <span className="tbr-photo"><ProjectBadge p={c} kind="client-badge" /></span> : <span className="tbr-hash" style={{ color: c.color }}>#</span>,
+      ...hint(s),
+      run: () => onOpen(c.id),
+    });
+    const groups: BrowseGroup[] = [
+      { id: 'active', title: t('Active'), rows: rows.filter((r) => r.c.status === 'active').map(row) },
+      { id: 'lead', title: t('Leads'), rows: rows.filter((r) => r.c.status === 'lead').map(row) },
+      { id: 'paused', title: t('Paused'), rows: rows.filter((r) => r.c.status === 'paused').map(row) },
+      ...(onPast ? [{ id: 'past', rows: [{ id: 'past', label: t('Past {projects}', { projects: term.many }), icon: <Archive size={22} />, muted: true, run: onPast }] }] : []),
+    ];
+    return (
+      <TasksBrowse
+        app="projects"
+        title={term.Many}
+        groups={groups}
+        top={
+          <>
+            {newForm}
+            {rows.length === 0 && (
+              <EmptyState
+                icon={<Plus size={20} />}
+                title={t('No {projects} yet', { projects: term.many })}
+                text={t('A {project} holds everything about one piece of work: its tasks, chat, mail, meetings, files, notes, logins and the {whos} you invite.', { project: term.one, whos: term.whos })}
+              />
+            )}
+          </>
+        }
+      />
+    );
+  }
+
   return (
     <section className="tasks-pane view-enter">
       <header className="tracking-head tasks-head">
@@ -92,20 +150,7 @@ export function ProjectsHome({ projects, tasks, users, onOpen, onCreate, onMenu,
         )}
       </header>
       <div className="tracking-scroll">
-        <SmoothHeight>
-          {adding && (
-            <div className="proj-new">
-              <input autoFocus value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => (e.key === 'Enter' ? save() : e.key === 'Escape' && setAdding(false))} placeholder={t('{Project} name', { project: term.one })} />
-              <Select<string> value={type} onChange={setType} label={t('Type')} className="sel-flat" options={[{ value: '', label: t('No type') }, ...PROJECT_TYPES.map((ty) => ({ value: ty, label: t(ty) }))]} />
-              <button className="ghost-btn sm" onClick={() => setAdding(false)}>
-                {t('Cancel')}
-              </button>
-              <button className="primary-btn sm" disabled={!name.trim()} onClick={save}>
-                {t('Add')}
-              </button>
-            </div>
-          )}
-        </SmoothHeight>
+        {newForm}
         {rows.length === 0 ? (
           <EmptyState
             icon={<Plus size={20} />}

@@ -4,57 +4,166 @@
    !important. As a screen is redone, move its old phone rules here and delete them where they were.
    Phones: @media (max-width: 767px). Narrow: (max-width: 599px). Panes: @container on an inner element.
    The shared look of rows, boards, Quick Add and the sheets is in src/tasks.css.
+
+   The phone's Tasks copies Todoist (research/mobile/fix/tasks/spec.md): Browse's grouped cards as the root, then each
+   list with a large title and one "…" in the top bar, Todoist's row sizes, a task sheet of icon-and-value rows.
    ========================================================================== */
 
 @media (max-width: 767px) {
-  /* The top bar says which tasks these are: no second title row (a project's own page keeps its header). */
-  .tasks-pane:not(.scope-client):not(.scope-grid):not(.scope-briefs) > .tasks-head {
-    display: none !important;
-  }
-  .tasks-pane:not(.scope-client) > .tracking-scroll {
-    padding: 4px 12px calc(24px + var(--fab-space));
-  }
-
-  /* ---------- Toolbar: one row ---------- */
-  .tq-bar {
-    position: sticky;
-    top: -4px;
-    z-index: 4;
-    gap: 6px;
-    min-height: 52px;
-    margin: -4px -12px 0;
-    padding: 4px 12px;
-    background: var(--surface);
-  }
-  .tq-bar .tq-display,
-  .tq-layout.icon-seg > button {
-    width: var(--tap);
-    height: var(--tap);
-  }
-  .tq-layout {
-    flex: none;
-  }
-  .tq-new kbd {
+  /* The top bar and the large title say which tasks these are: no header row (a project's overview keeps its own). */
+  .tasks-pane:not(.tab-overview):not(.scope-grid) > .tasks-head {
     display: none;
   }
-  .tq-plan,
-  .tq-open,
-  .tq-new {
+  /* One background for the page, the bar and the rows (Home does the same), so a swiped row has no edge. */
+  .tasks-pane {
+    background: var(--bg);
+  }
+  .tasks-pane:not(.has-list):not(.scope-briefs):not(.tasks-browse) > .tracking-scroll {
+    padding: 4px 12px calc(24px + var(--fab-space));
+  }
+  .tasks-pane.has-list > .tracking-scroll,
+  .tasks-pane.scope-briefs > .tracking-scroll,
+  .tasks-browse > .tracking-scroll {
+    padding: 0 0 calc(24px + var(--fab-space));
+  }
+  .tasks-pane .trow,
+  .tasks-pane .trow-swipe > .swipe-face {
+    background: var(--bg);
+  }
+
+  /* ---------- The large title (Apple's; Todoist's "Today") ---------- */
+  .tv-title {
+    margin: 0 0 12px;
+    font-size: 32px;
+    font-weight: 700;
+    line-height: 40px;
+    letter-spacing: -0.02em;
+    color: var(--text);
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  /* ---------- The top bar's parts: "…", a project's pill, selecting ---------- */
+  .tv-actions {
+    display: inline-flex;
+    align-items: center;
+  }
+  .tv-dots {
+    color: var(--accent);
+  }
+  /* Todoist's project pill: people, layout and "…" in one capsule. */
+  .tv-pill {
+    height: var(--tap);
+    margin-right: 4px;
+    padding: 0 2px;
+    border-radius: 999px;
+    background: var(--surface);
+    box-shadow: 0 0 0 1px var(--border);
+  }
+  .tv-pill .tv-dots,
+  .tv-pill-btn {
+    width: 42px;
+    height: var(--tap);
+    border-radius: 999px;
+    color: var(--text);
+    transition: background-color 0.15s ease, color 0.15s ease;
+  }
+  .tv-pill-btn.on {
+    color: var(--accent);
+  }
+  .tv-pill .tv-dots:active,
+  .tv-pill-btn:active {
+    background: var(--hover);
+  }
+  .mt-text {
+    flex: none;
     min-height: var(--tap);
-    padding-inline: 12px;
+    padding: 0 10px;
+    border-radius: 12px;
+    color: var(--accent);
+    font: inherit;
+    font-size: 17px;
+    transition: background-color 0.15s ease;
+  }
+  .mt-text.strong {
+    font-weight: 600;
+  }
+  .mt-text:active {
+    background: var(--hover);
+  }
+  .tq-chips {
+    padding: 0 16px 8px;
   }
   .tq-filters {
     min-height: 32px;
   }
 
-  /* ---------- Rows: three lines at most, a 44px ring, dividers ---------- */
+  /* ---------- Section headers: 17 px semibold, a hairline under them ---------- */
+  .tasks-pane .t-group {
+    margin-bottom: 0;
+  }
+  .t-heading {
+    gap: 4px;
+    min-height: 44px;
+    padding: 20px 16px 8px;
+    border-bottom: 1px solid var(--line);
+    color: var(--text);
+    font-size: 17px;
+    font-weight: 600;
+  }
+  .t-heading > b {
+    display: none; /* the rows show how many */
+  }
+  .t-h-label {
+    gap: 8px;
+  }
+  .t-h-label .dot {
+    width: 10px;
+    height: 10px;
+  }
+  .t-heading .t-resched {
+    min-height: var(--tap);
+    margin: -12px -8px -12px auto;
+    padding: 0 8px;
+    color: var(--accent);
+    font-size: 15px;
+    font-weight: 500;
+    text-decoration: none;
+  }
+  .t-heading .t-resched-2 {
+    margin-left: 0;
+  }
+  .t-fold-head {
+    min-height: var(--tap);
+    border-radius: 0;
+  }
+  .tasks-pane .brief-rows {
+    margin: 4px 16px 0;
+  }
+
+  /* ---------- Rows: Todoist's sizes. 24 px ring at 16, title 17 at 56, a 14 px line of details ---------- */
+  .trow-swipe {
+    border-bottom: 0;
+  }
+  .trow-swipe + .trow-swipe::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 56px;
+    right: 0;
+    z-index: 1;
+    height: 1px;
+    background: var(--line);
+    pointer-events: none;
+  }
   .trow {
     gap: 6px;
     min-height: 56px;
-    padding: 10px 2px 10px 0;
+    padding: 14px 16px 14px 6px;
   }
   .trow:hover {
-    background: var(--surface); /* touch leaves no hover behind */
+    background: var(--bg); /* touch leaves no hover behind */
   }
   .trow:active,
   .trow.lp-lifted {
@@ -66,48 +175,89 @@
   .trow-check {
     width: 44px;
     height: 44px;
-    margin: -11px -6px -11px -6px;
+    margin: -10px 0;
   }
   .trow-check .ring {
-    width: 22px;
-    height: 22px;
+    width: 24px;
+    height: 24px;
+  }
+  .trow-check .ring svg {
+    width: 14px;
+    height: 14px;
+  }
+  .trow-check.p-review .ring {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+  }
+  .trow-main {
+    gap: 0;
+    padding-top: 0;
   }
   .trow-title {
-    font-size: 15.5px;
+    font-size: 17px;
+    line-height: 22px;
   }
   .trow-meta {
-    font-size: 12.5px;
+    gap: 4px 10px;
+    margin-top: 4px;
+    font-size: 14px;
+    line-height: 18px;
+  }
+  .trow-meta svg {
+    width: 14px;
+    height: 14px;
+  }
+  .tm {
+    gap: 4px;
+  }
+  .tm[class*='due-'] {
+    font-weight: 400;
+  }
+  .tm-cal {
+    display: inline-block;
+    order: -1;
+  }
+  .tm-rep {
+    order: 1;
+  }
+  /* The project as Todoist's "Name #", right-aligned; alone on its line when there's nothing else. */
+  .tm.proj i {
+    display: none;
+  }
+  .tm-hash {
+    display: inline;
+    margin-left: 4px;
+    color: var(--c);
+    font-weight: 600;
+  }
+  .trow-act {
+    align-self: flex-start;
+    margin: -6px 0;
   }
   .trow-act .row-act {
-    min-height: 36px;
+    min-height: 32px;
     padding-inline: 12px;
-    font-size: 13px;
+    font-size: 14px;
+    font-weight: 600;
   }
+  /* Who's on it: a small avatar at the top right, on the title's line (team, queue and project views). */
   .trow-who {
-    padding-right: 4px;
-  }
-  .t-heading {
-    min-height: 44px;
-    padding: 12px 2px 4px;
-    font-size: 13px;
-  }
-  .t-resched {
-    min-height: 40px;
-    padding-inline: 8px;
+    align-self: flex-start;
+    margin-top: 1px;
   }
   .t-fold-head {
     min-height: var(--tap);
   }
 
-  /* ---------- Board: one stage at a time, the next one peeking ---------- */
+  /* ---------- Board: Todoist's, one stage at a time with the next one peeking; each stage once ---------- */
   .tboard {
     display: flex;
     gap: 12px;
-    margin: 0 -12px;
-    padding: 0 12px 16px;
+    margin: 0;
+    padding: 4px 16px 16px;
     overflow-x: auto;
     scroll-snap-type: x mandatory;
-    scroll-padding-inline: 12px;
+    scroll-padding-inline: 16px;
     overscroll-behavior-x: contain;
     scrollbar-width: none;
   }
@@ -119,92 +269,236 @@
   }
   .tcol {
     flex: 0 0 85%;
+    gap: 8px;
     min-height: 50dvh;
+    padding: 0;
+    background: none;
     scroll-snap-align: start;
   }
-  .tboard-strip {
-    position: sticky;
-    top: 48px;
-    z-index: 3;
-    display: flex;
-    gap: 6px;
-    margin: 0 -12px 8px;
-    padding: 4px 12px 8px;
-    overflow-x: auto;
-    scrollbar-width: none;
-    background: var(--surface);
+  :root[data-theme='dark'] .tcol {
+    background: none;
   }
-  .tboard-strip::-webkit-scrollbar {
-    display: none;
-  }
-  .tboard-strip button {
-    flex: none;
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    min-height: 40px;
-    padding: 0 12px;
-    border: 0;
-    border-radius: 999px;
-    background: var(--hover);
-    color: var(--text-2);
-    font: inherit;
-    font-size: 13.5px;
-    font-weight: 600;
-    transition: background-color 0.18s ease, color 0.18s ease;
-  }
-  .tboard-strip button.on {
+  .tcol.over {
     background: var(--accent-soft);
-    color: var(--accent);
   }
-  .tboard-strip b {
-    color: var(--text-3);
+  .tcol-head {
+    gap: 8px;
+    min-height: var(--tap);
+    padding: 0 0 0 4px;
+    font-size: 15px;
     font-weight: 600;
+  }
+  .tcol-head .stage-dot {
+    width: 8px;
+    height: 8px;
+  }
+  .tcol-n {
+    color: var(--text-3);
+    font-weight: 400;
+  }
+  .tcol-more {
+    margin-left: auto;
+    color: var(--text-3);
+  }
+  .tcol-cards {
+    gap: 8px;
   }
   .tcard {
+    display: grid;
+    gap: 4px;
     padding: 12px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    box-shadow: none;
   }
   .tcard:hover {
-    box-shadow: 0 1px 2px rgba(16, 16, 30, 0.04);
+    box-shadow: none;
+  }
+  .tcard.high {
+    padding-left: 12px;
+    border-left: 1px solid var(--line);
+  }
+  .tcard-high {
+    display: none;
+  }
+  .tcard-top {
+    gap: 10px;
+  }
+  .tcard-check {
+    width: 32px;
+    height: 32px;
+    margin: -6px -6px -6px -6px;
+  }
+  .tcard-check .ring {
+    width: 20px;
+    height: 20px;
   }
   .tcard-title {
+    -webkit-line-clamp: 2;
     font-size: 15px;
+    font-weight: 400;
+    line-height: 20px;
   }
-  .tcard-stage {
-    min-height: 36px;
-    padding: 0 12px 0 10px;
+  .tcard-top .doer {
+    flex: none;
+  }
+  .tcard-meta {
+    gap: 4px 10px;
+    padding-left: 30px;
     font-size: 13px;
   }
-  .tcol-add {
-    min-height: var(--tap);
+  .tcard-meta svg {
+    width: 13px;
+    height: 13px;
+  }
+  .tcard-meta .tm[class*='due-'] {
+    font-weight: 400;
+  }
+  .tcard-meta .tm.proj i {
+    display: none;
+  }
+  .tcol-empty {
+    padding: 16px 8px;
     font-size: 14px;
   }
+  .tcol-add {
+    gap: 12px;
+    min-height: var(--tap);
+    padding: 0 8px;
+    color: var(--text-3);
+    font-size: 15px;
+    font-weight: 400;
+  }
+  .tcol-add svg {
+    color: var(--accent);
+  }
+  .tcol-new {
+    flex: 0 0 60%;
+    align-self: flex-start;
+    display: flex;
+    flex-direction: row;
+    align-items: flex-start;
+    justify-content: center;
+    gap: 8px;
+    min-height: var(--tap);
+    padding: 12px;
+    border: 1.5px dashed var(--border);
+    border-radius: 12px;
+    color: var(--text-3);
+    font: inherit;
+    font-size: 15px;
+    transition: background-color 0.15s ease;
+  }
+  .tcol-new:active {
+    background: var(--hover);
+  }
 
-  /* ---------- Calendar ---------- */
+  /* ---------- Upcoming (and any calendar layout): Todoist's week strip and one list of days ---------- */
   .ucal-top {
-    top: 48px;
-    margin: 0 -12px 8px;
+    top: 0;
+    margin: 0 0 4px;
     padding: 0 12px 8px;
-  }
-  .ucal-days7 {
-    max-width: none;
-    gap: 2px;
-  }
-  .ucal-cell {
-    min-height: 58px;
+    background: var(--bg);
   }
   .ucal-month {
     min-height: var(--tap);
+    margin-left: -4px;
+    font-size: 20px;
+    font-weight: 700;
   }
-  .ucal-add {
+  .ucal-month svg {
+    color: var(--text-3);
+  }
+  .ucal-bar .ucal-today {
     min-height: var(--tap);
-    font-size: 14.5px;
+    padding: 0 8px;
+    border: 0;
+    background: none;
+    color: var(--accent);
+    font-size: 15px;
+    font-weight: 500;
+  }
+  .ucal-bar .ucal-today:disabled {
+    color: var(--text-3);
+    opacity: 1;
+  }
+  .ucal-days7 {
+    max-width: none;
+    gap: 0;
+  }
+  .ucal-cell {
+    gap: 2px;
+    min-height: 56px;
+    padding: 2px 0 0;
+    border-radius: 12px;
+  }
+  .ucal-cell:hover:not(:disabled) {
+    background: none;
+  }
+  .ucal-cell small {
+    font-weight: 500;
+  }
+  .ucal-cell b {
+    display: grid;
+    place-items: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    color: var(--text);
+    font-size: 17px;
+    font-weight: 600;
+    transition: background-color 0.18s ease, color 0.18s ease;
+  }
+  .ucal-cell.today b {
+    color: var(--accent);
+  }
+  .ucal-cell.on {
+    background: none;
+  }
+  .ucal-cell.on small {
+    color: var(--text-3);
+  }
+  .ucal-cell.on b {
+    background: var(--accent);
+    color: #fff;
+  }
+  .ucal-cell .dot {
+    width: 4px;
+    height: 4px;
+    margin-top: -2px;
+  }
+  .ucal-cell.on .dot.on {
+    background: var(--text-3);
   }
   .ucal-day {
-    scroll-margin-top: 190px;
+    scroll-margin-top: 120px;
+    padding-bottom: 0;
+  }
+  .ucal-day .t-heading {
+    margin: 0;
+    min-height: 40px;
+    padding: 16px 16px 8px;
+    font-size: 15px;
+  }
+  .ucal-day.empty .t-heading {
+    color: var(--text-3);
+  }
+  .ucal-add {
+    width: 100%;
+    gap: 16px;
+    min-height: var(--tap);
+    padding: 0 16px 0 20px;
+    border-radius: 0;
+    font-size: 15px;
+  }
+  .ucal-add svg {
+    color: var(--accent);
+  }
+  .ucal-add:active {
+    background: var(--hover);
   }
 
-  /* ---------- Quick Add: a sheet on the keyboard ---------- */
+  /* ---------- Quick Add: Todoist's sheet on the keyboard (QuickAdd, `.qa-todo`) ---------- */
   .qa-sheet .sheet-body {
     padding: 0;
   }
@@ -213,8 +507,52 @@
   }
   .qa-mirror,
   .qa-field textarea {
-    padding: 8px 16px 8px;
+    padding: 8px 16px;
     font-size: 16px; /* the field is 16px on phones (no zoom): the highlights under it match */
+  }
+  .qa-todo .qa-mirror,
+  .qa-todo .qa-field textarea {
+    padding: 16px 16px 4px;
+    font-size: 18px !important; /* larger than the 16 px floor, so no zoom; the mirror must match the field */
+    font-weight: 500;
+    line-height: 26px;
+  }
+  .qa-todo .qa-field textarea {
+    min-height: 46px;
+  }
+  /* Every parsed word gets the same soft highlight (Todoist's peach). */
+  .qa-todo .qa-tok {
+    --tok: color-mix(in oklab, var(--warn) 18%, transparent);
+    border-radius: 6px;
+  }
+  .qa-desc-wrap {
+    display: grid;
+    grid-template-rows: 0fr;
+    opacity: 0;
+    transition: grid-template-rows 0.2s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.16s ease;
+  }
+  .qa-desc-wrap.open {
+    grid-template-rows: 1fr;
+    opacity: 1;
+  }
+  .qa-desc {
+    display: block;
+    width: 100%;
+    min-height: 0;
+    max-height: 120px;
+    margin: 0;
+    padding: 0 16px 8px;
+    border: 0;
+    background: none;
+    color: var(--text-2);
+    font: inherit;
+    line-height: 22px;
+    resize: none;
+    outline: 0;
+    field-sizing: content;
+  }
+  .qa-desc::placeholder {
+    color: var(--text-3);
   }
   .qa-chips {
     padding: 2px 16px 12px;
@@ -224,12 +562,130 @@
     padding: 0 14px;
     font-size: 14px;
   }
+  .qa-todo .qa-chips {
+    gap: 8px;
+    padding: 4px 16px 12px;
+  }
+  .qa-todo .qa-chip {
+    height: 36px;
+    gap: 6px;
+    padding: 0 12px 0 10px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: none;
+    color: var(--text-2);
+    font-size: 15px;
+    font-weight: 500;
+  }
+  .qa-todo .qa-chip svg {
+    width: 16px;
+    height: 16px;
+  }
+  .qa-todo .qa-chip.on,
+  .qa-todo .qa-chip.from-text {
+    border-color: var(--line);
+    background: none;
+    color: var(--text);
+  }
+  .qa-todo .qa-chip.tone-overdue {
+    color: var(--danger);
+  }
+  .qa-todo .qa-chip.tone-today {
+    color: var(--ok);
+  }
+  .qa-todo .qa-chip.tone-tomorrow {
+    color: var(--warn);
+  }
+  .qa-todo .qa-chip.tone-week {
+    color: #7650d4;
+  }
+  :root[data-theme='dark'] .qa-todo .qa-chip.tone-week {
+    color: #a68cf1;
+  }
+  .qa-todo .qa-chip.p-high {
+    border-color: color-mix(in oklab, var(--danger) 40%, transparent);
+    background: none;
+    color: var(--danger);
+  }
+  /* #, + and / suggestions: a small list floating under the field, not a full-width row. */
+  .qa-todo .qa-suggest {
+    position: absolute;
+    left: 16px;
+    z-index: 3;
+    width: min(280px, calc(100% - 32px));
+    max-height: calc(4 * var(--tap) + 8px);
+    top: calc(100% + 2px);
+    padding: 4px;
+    overflow-y: auto;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--surface);
+    box-shadow: 0 8px 24px -8px rgb(0 0 0 / 0.25);
+  }
   .qa-sug {
     min-height: var(--tap);
     font-size: 15px;
   }
   .qa-foot {
     padding: 6px 12px 8px 16px;
+  }
+  .qa-todo .qa-foot {
+    min-height: 52px;
+    padding: 4px 16px 4px 8px;
+  }
+  .qa-proj {
+    flex: 1;
+    min-width: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    max-width: max-content;
+    min-height: var(--tap);
+    padding: 0 8px;
+    border: 0;
+    border-radius: 10px;
+    background: none;
+    color: var(--text);
+    font: inherit;
+    font-size: 15px;
+    font-weight: 500;
+    transition: background-color 0.15s ease;
+  }
+  .qa-proj:active,
+  .qa-proj[aria-expanded='true'] {
+    background: var(--hover);
+  }
+  .qa-proj.from-text {
+    background: color-mix(in oklab, var(--warn) 18%, transparent);
+  }
+  .qa-hash {
+    font-weight: 600;
+  }
+  .qa-proj-name {
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  .qa-proj svg {
+    flex: none;
+    color: var(--text-3);
+  }
+  .qa-todo .qa-foot .qa-send {
+    margin-left: auto;
+    width: 36px;
+    height: 36px;
+    min-height: 36px;
+    transition: opacity 0.15s ease, transform 0.15s ease;
+  }
+  .qa-todo .qa-foot .qa-send::before {
+    content: '';
+    position: absolute;
+    width: var(--tap);
+    height: var(--tap);
+  }
+  .qa-todo .qa-foot .qa-send:disabled {
+    opacity: 0.4;
   }
 
   /* ---------- Sheets ---------- */
@@ -254,30 +710,469 @@
   }
 
 
-  /* ---------- A task, opened: a sheet ---------- */
-  .td-row {
-    grid-template-columns: 112px minmax(0, 1fr);
+  /* ---------- A task, opened: Todoist's task view in a sheet (TaskDetail, phones) ---------- */
+  .tdp-sheet .sheet-head {
+    gap: 8px;
     min-height: 48px;
+    padding-inline: 8px 12px;
   }
-  .td-label {
-    font-size: 14px;
+  .tdp-sheet .sheet-head > .icon-btn {
+    flex: none;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: var(--surface-2);
+    color: var(--text-2);
   }
-  .sel.td-chip,
-  button.td-chip,
-  .td-chip-people .people-btn {
-    height: 40px;
-    padding: 0 14px;
-    font-size: 14px;
+  .tdp-sheet .sheet-head > .icon-btn::before {
+    content: '';
+    position: absolute;
+    inset: -4px; /* a 44 px target around the 36 px circle */
+  }
+  .tdp-sheet .sheet-head > .icon-btn {
+    position: relative;
   }
   .sel.td-crumb {
+    height: var(--tap);
+    padding: 0 6px;
+    color: var(--text-2);
+    font-size: 15px;
+    font-weight: 400;
+  }
+  .tdp-sheet .sheet-body {
+    padding: 0 0 16px;
+  }
+  .tdp {
+    gap: 0;
+  }
+  .tdp > .td-title-row {
+    display: flex;
+    gap: 6px;
+    padding: 4px 16px 8px 6px;
+  }
+  .tdp .td-check {
+    width: 44px;
+    height: 44px;
+    margin: -6px 0 -6px;
+  }
+  .tdp .td-check .ring {
+    width: 24px;
+    height: 24px;
+  }
+  .tdp .drawer-title {
+    flex: 1;
+    min-width: 0;
+    padding: 4px 0;
+    border: 0;
+    background: none;
+    color: var(--text);
+    font-size: 20px !important; /* the 16 px field floor is for typing fields; a title reads larger */
+    font-weight: 600;
+    line-height: 26px;
+    resize: none;
+    field-sizing: content;
+  }
+  .tdp > .parent-brief,
+  .tdp > .review-banner,
+  .tdp > .smooth-height {
+    margin: 0 16px 8px;
+  }
+
+  /* Set fields: an icon at 16 and the value at 56, no labels; hairlines from the value. */
+  .tdp-rows {
+    display: grid;
+  }
+  .tdp-row {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    min-height: 48px;
+    padding: 0 16px;
+    animation: fadeIn 0.2s ease-out backwards;
+  }
+  .tdp-row + .tdp-row::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 56px;
+    right: 0;
+    height: 1px;
+    background: var(--line);
+  }
+  .tdp-icon {
+    flex: none;
+    color: var(--text-3);
+  }
+  .tdp-val {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    color: var(--text);
+    font-size: 17px;
+  }
+  .tdp-val .sel,
+  .tdp-val .people-btn {
+    min-width: 0;
+    max-width: 100%;
+    height: var(--tap);
+    margin-left: -8px;
+    padding: 0 8px;
+    border: 0;
+    background: none;
+    box-shadow: none;
+    color: inherit;
+    font-size: 17px;
+  }
+  .tdp-val .sel-chev,
+  .tdp-val .sel > svg:last-child,
+  .tdp-val .date-sel > svg,
+  .tdp-row.td-priority .st-dot {
+    display: none; /* a value, not a dropdown: tap it to change it; the row's own icon says what it is */
+  }
+  .tdp-val .td-due {
+    display: flex;
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  .tdp-val .sel {
+    flex: 0 0 auto;
+    width: auto;
+  }
+  .tdp-val .td-val-col small {
+    display: none;
+  }
+  .tdp-row.td-due .tdp-icon {
+    color: inherit;
+  }
+  .tdp-row.td-priority .tdp-icon,
+  .tdp-row.td-priority .tdp-val {
+    color: var(--danger);
+  }
+  .tdp-desc {
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+    padding: 12px 0;
+    border: 0;
+    background: none;
+    color: var(--text);
+    font: inherit;
+    font-size: 16px;
+    line-height: 22px;
+    resize: none;
+    outline: 0;
+    field-sizing: content;
+  }
+  .tdp-row.td-notes {
+    align-items: flex-start;
+  }
+  .tdp-row.td-notes .tdp-icon {
+    margin-top: 13px;
+  }
+  .tdp-btn {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    min-height: 48px;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--text);
+    font: inherit;
+    font-size: 17px;
+    text-align: left;
+  }
+  .tdp-ap.waiting .tdp-icon,
+  .tdp-ap.waiting .tdp-val {
+    color: var(--warn);
+  }
+  .tdp-ap.approved .tdp-icon {
+    color: var(--ok);
+  }
+  .tdp-ap.changes .tdp-icon,
+  .tdp-ap.changes .tdp-val {
+    color: var(--danger);
+  }
+
+  /* Empty fields: one row of filled chips that scrolls sideways. */
+  .tdp-chips {
+    display: flex;
+    gap: 8px;
+    padding: 8px 16px 16px;
+    overflow-x: auto;
+    scrollbar-width: none;
+    overscroll-behavior-x: contain;
+  }
+  .tdp-chips::-webkit-scrollbar {
+    display: none;
+  }
+  .tdp-chips .sel.td-chip,
+  .tdp-chips button.td-chip,
+  .tdp-chips .td-chip-people .people-btn {
+    flex: none;
     height: 40px;
-    font-size: 14px;
+    gap: 8px;
+    padding: 0 14px 0 12px;
+    border: 0;
+    border-radius: 10px;
+    background: var(--surface-2);
+    color: var(--text-2);
+    font-size: 15px;
+    font-weight: 500;
+    white-space: nowrap;
   }
-  .td-c-row textarea {
-    min-height: var(--tap);
+  :root[data-theme='dark'] .tdp-chips .sel.td-chip,
+  :root[data-theme='dark'] .tdp-chips button.td-chip,
+  :root[data-theme='dark'] .tdp-chips .td-chip-people .people-btn {
+    background: var(--hover);
   }
-  .td-c-row .primary-btn {
+  .tdp-chips .td-chip svg,
+  .tdp-chips .td-chip-in svg,
+  .tdp-chips .td-chip-people .people-btn svg {
+    width: 18px;
+    height: 18px;
+    color: var(--text-2);
+  }
+  .tdp-chips .td-chip-in {
+    gap: 8px;
+  }
+  .tdp-chips .sel.td-chip:active,
+  .tdp-chips button.td-chip:active,
+  .tdp-chips .td-chip-people .people-btn:active {
+    background: var(--hover);
+  }
+
+  /* Parts below: an 8 px band between them (Todoist's sub-tasks and comments). */
+  .tdp-sec {
+    border-top: 8px solid var(--surface-2);
+    padding-bottom: 4px;
+  }
+  :root[data-theme='dark'] .tdp-sec {
+    border-top-color: var(--bg);
+  }
+  .tdp-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    min-height: 52px;
+    padding: 0 16px;
+    border: 0;
+    background: none;
+    color: var(--text);
+    font: inherit;
+    font-size: 17px;
+    font-weight: 600;
+    text-align: left;
+  }
+  .tdp-count {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    color: var(--text-3);
+    font-size: 15px;
+    font-weight: 400;
+  }
+  .tdp-chev {
+    margin-left: auto;
+    color: var(--text-3);
+  }
+  .tdp-citem-swipe > .swipe-face {
+    background: var(--surface);
+  }
+  .tdp-citem {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 48px;
+    padding: 0 16px 0 8px;
+  }
+  .tdp-citem-swipe + .tdp-citem-swipe::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 56px;
+    right: 0;
+    z-index: 1;
+    height: 1px;
+    background: var(--line);
+    pointer-events: none;
+  }
+  .tdp-citem .trow-check {
+    width: 40px;
+    height: 44px;
+    margin: 0;
+  }
+  .tdp-citem .trow-check .ring {
+    width: 20px;
+    height: 20px;
+  }
+  .tdp-citem.lp-lifted {
+    background: var(--hover);
+  }
+  .tdp-ctext {
+    flex: 1;
+    min-width: 0;
+    color: var(--text);
+    font-size: 17px;
+    transition: color 0.18s ease;
+  }
+  input.tdp-ctext {
+    height: 40px;
+    padding: 0;
+    border: 0;
+    background: none;
+    outline: 0;
+    font: inherit;
+    font-size: 17px;
+  }
+  .tdp-citem.done .tdp-ctext {
+    color: var(--text-3);
+    text-decoration: line-through;
+  }
+  .tdp-add {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    min-height: 48px;
+    padding: 0 16px 0 18px;
+    color: var(--accent);
+  }
+  .tdp-add input {
+    flex: 1;
+    min-width: 0;
+    height: 44px;
+    border: 0;
+    background: none;
+    outline: 0;
+    color: var(--text);
+    font: inherit;
+    font-size: 16px;
+  }
+  .tdp-add input::placeholder {
+    color: var(--accent);
+    font-weight: 500;
+  }
+  .tdp-last {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 0 16px 4px;
+  }
+  .tdp-last-text {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+  }
+  .tdp-last-text b {
+    font-size: 15px;
+    font-weight: 600;
+  }
+  .tdp-last-text span {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    overflow: hidden;
+    color: var(--text);
+    font-size: 15px;
+    line-height: 20px;
+  }
+  .tdp-none {
+    margin: 0;
+    padding: 0 16px;
+    color: var(--text-3);
+    font-size: 15px;
+  }
+  .tdp-sec .history {
+    padding: 0 16px;
+  }
+  .tdp-all {
     min-height: var(--tap);
+    margin: 0 8px;
+    padding: 0 8px;
+    color: var(--accent);
+    font-size: 15px;
+    font-weight: 500;
+    text-decoration: none;
+  }
+  .tdp > .td-meta,
+  .tdp > .drawer-meta,
+  .tdp > :last-child:not(.tdp-sec) {
+    padding-inline: 16px;
+  }
+
+  /* The comment field, pinned: a 44 px pill with the send arrow inside once there's text. */
+  .tdp-sheet .sheet-foot {
+    padding: 8px 16px;
+  }
+  .tdp-field {
+    display: flex;
+    align-items: flex-end;
+    gap: 4px;
+    min-height: var(--tap);
+    padding: 0 6px 0 16px;
+    border-radius: 22px;
+    background: var(--surface-2);
+    box-shadow: inset 0 0 0 1px var(--border);
+  }
+  .tdp-field textarea {
+    flex: 1;
+    min-width: 0;
+    min-height: var(--tap);
+    max-height: 140px;
+    padding: 11px 0;
+    border: 0;
+    background: none;
+    color: var(--text);
+    font: inherit;
+    font-size: 16px;
+    line-height: 22px;
+    resize: none;
+    outline: 0;
+    field-sizing: content;
+  }
+  .tdp-comment.to-client .tdp-field {
+    box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--warn) 60%, transparent);
+  }
+  .tdp-send {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 32px;
+    height: 32px;
+    margin-bottom: 6px;
+    border: 0;
+    border-radius: 50%;
+    background: var(--accent);
+    color: #fff;
+    opacity: 0;
+    transform: scale(0.6);
+    pointer-events: none;
+    transition: opacity 0.15s ease-in, transform 0.15s ease-in;
+  }
+  .tdp-send.on {
+    opacity: 1;
+    transform: none;
+    pointer-events: auto;
+    transition: opacity 0.2s ease-out, transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  .tdp-send::before {
+    content: '';
+    position: absolute;
+    width: var(--tap);
+    height: var(--tap);
+  }
+  .tdp-comment .td-c-foot {
+    padding: 6px 4px 0;
+  }
+  .tdp-comment .td-c-foot small:empty {
+    display: none;
   }
   /* While selecting, toasts sit above the bar. */
   html:has(.task-bulk:not(.is-leaving)) .toast {
@@ -338,10 +1233,379 @@
 }
 
 @media (max-width: 359px) {
-  .tq-plan svg {
-    display: none;
-  }
   .tb-acts button {
     font-size: 11px;
+  }
+}
+
+/* ---------- Browse: the root of Tasks on a phone (Todoist's Browse; TasksBrowse.tsx) ---------- */
+.tasks-browse {
+  display: none; /* phones only */
+}
+@media (max-width: 767px) {
+  .tasks-browse {
+    display: flex;
+  }
+  .tbr-scroll {
+    padding-inline: 0;
+  }
+  .tbr-group {
+    margin: 0 16px 24px;
+    animation: fadeIn 0.2s ease-out backwards;
+  }
+  .tbr-head {
+    display: flex;
+    align-items: center;
+    min-height: var(--tap);
+    padding: 0 0 4px 4px;
+  }
+  .tbr-head h2 {
+    flex: 1;
+    min-width: 0;
+    margin: 0;
+    overflow: hidden;
+    color: var(--text);
+    font-size: 17px;
+    font-weight: 600;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  .tbr-add {
+    margin-right: -8px;
+    color: var(--text-2);
+  }
+  .tbr-card {
+    overflow: hidden;
+    border-radius: 16px;
+    background: var(--surface);
+  }
+  .tbr-row {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 0;
+    width: 100%;
+    min-height: 52px;
+    padding: 0 12px 0 16px;
+    border: 0;
+    background: none;
+    color: var(--text);
+    font: inherit;
+    text-align: left;
+    transition: background-color 0.15s ease;
+  }
+  .tbr-row + .tbr-row::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 56px;
+    right: 0;
+    height: 1px;
+    background: var(--line);
+  }
+  .tbr-row:active,
+  .tbr-row.lp-lifted {
+    background: var(--hover);
+  }
+  .tbr-icon {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 22px;
+    height: 22px;
+    margin-right: 18px;
+    color: var(--accent);
+  }
+  .tbr-hash {
+    font-size: 22px;
+    font-weight: 500;
+    line-height: 1;
+  }
+  .tbr-label {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    font-size: 17px;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  .tbr-row.muted .tbr-label,
+  .tbr-row.muted .tbr-icon {
+    color: var(--text-3);
+  }
+  .tbr-hint {
+    flex: none;
+    margin-left: 8px;
+    color: var(--text-3);
+    font-size: 15px;
+  }
+  .tbr-hint.danger {
+    color: var(--danger);
+  }
+  .tbr-hint.accent {
+    color: var(--accent);
+  }
+  .tbr-chev {
+    flex: none;
+    margin-left: 6px;
+    color: var(--text-3);
+  }
+}
+@media (max-width: 767px) and (prefers-reduced-motion: reduce) {
+  .tbr-group {
+    animation: none;
+  }
+}
+@media (min-width: 393px) and (max-width: 767px) {
+  .tv-title {
+    font-size: 34px;
+    line-height: 41px;
+  }
+}
+
+/* A project's page is a focused screen (its own Back), but its tasks keep Todoist's add button. */
+@media (max-width: 767px) {
+  :root.bar-away:not(.kb-open):has(.project-pane.tab-tasks) .fab.on {
+    opacity: 1;
+    transform: none;
+    pointer-events: auto;
+  }
+  :root.bar-away.has-fab:not(.kb-open):has(.project-pane.tab-tasks) .toast {
+    bottom: calc(var(--bar-space) + 88px);
+  }
+}
+
+/* ---------- Display on a phone: Todoist's sheet of grouped cards (DisplaySheet) ---------- */
+@media (max-width: 767px) {
+  .ds-sheet {
+    background: var(--bg);
+  }
+  .ds-sheet .sheet-body {
+    padding: 0 16px 24px;
+  }
+  .ds-phead {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 52px;
+    margin: 0 -16px 4px;
+    padding: 0 12px;
+    background: var(--bg);
+  }
+  .ds-phead h2 {
+    flex: 1;
+    min-width: 0;
+    margin: 0;
+    overflow: hidden;
+    color: var(--text);
+    font-size: 17px;
+    font-weight: 600;
+    text-align: center;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  .ds-pcircle,
+  .ds-pback {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: var(--tap);
+    height: var(--tap);
+    border: 0;
+    border-radius: 50%;
+    background: var(--surface);
+    color: var(--text-2);
+    box-shadow: 0 0 0 1px var(--border);
+    transition: background-color 0.15s ease, transform 0.15s ease;
+  }
+  .ds-pback {
+    box-shadow: none;
+    background: none;
+    color: var(--accent);
+  }
+  .ds-pcircle.accent {
+    background: var(--accent);
+    color: #fff;
+    box-shadow: none;
+  }
+  .ds-pcircle:active {
+    transform: scale(0.94);
+  }
+  .ds-plab {
+    margin: 16px 4px 6px;
+    color: var(--text-3);
+    font-size: 15px;
+    font-weight: 600;
+  }
+  .ds-pbody > .ds-plab:first-child {
+    margin-top: 4px;
+  }
+  .ds-card {
+    overflow: hidden;
+    border-radius: 16px;
+    background: var(--surface);
+  }
+  .ds-card .ds-pics {
+    gap: 10px;
+    padding: 12px 12px 8px;
+  }
+  .ds-card .ds-pic {
+    height: 96px;
+    align-content: center;
+    gap: 8px;
+    padding: 8px 4px;
+    border: 2px solid var(--line);
+    border-radius: 14px;
+    color: var(--text-2);
+  }
+  .ds-card .ds-pic span {
+    padding: 2px 10px;
+    border-radius: 999px;
+    font-size: 13px;
+    font-weight: 600;
+    transition: background-color 0.15s ease, color 0.15s ease;
+  }
+  .ds-card .ds-pic.on {
+    border-color: var(--accent);
+    background: none;
+  }
+  .ds-card .ds-pic.on span {
+    background: var(--accent);
+    color: #fff;
+  }
+  .ds-prow {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    min-height: 52px;
+    padding: 0 16px;
+    border: 0;
+    background: none;
+    color: var(--text);
+    font: inherit;
+    font-size: 17px;
+    text-align: left;
+    transition: background-color 0.15s ease;
+  }
+  .ds-prow + .ds-prow::before,
+  .ds-pics + .ds-prow::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 16px;
+    right: 0;
+    height: 1px;
+    background: var(--line);
+  }
+  button.ds-prow:active {
+    background: var(--hover);
+  }
+  .ds-plabel {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  .ds-plabel.accent {
+    color: var(--accent);
+  }
+  .ds-plabel.danger {
+    color: var(--danger);
+  }
+  .ds-pvalue {
+    flex: none;
+    max-width: 50%;
+    overflow: hidden;
+    color: var(--text-3);
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  .ds-pchev {
+    flex: none;
+    margin-right: -4px;
+    color: var(--text-3);
+  }
+  .ds-pcheck {
+    flex: none;
+    color: var(--accent);
+  }
+  .ds-picon {
+    flex: none;
+    color: var(--text-3);
+  }
+  .ds-pview.on .ds-plabel {
+    color: var(--accent);
+  }
+  .ds-pview .icon-btn {
+    margin-right: -10px;
+    color: var(--text-3);
+  }
+  .ds-pname input {
+    flex: 1;
+    min-width: 0;
+    height: var(--tap);
+    border: 0;
+    background: none;
+    color: var(--text);
+    font: inherit;
+    outline: 0;
+  }
+  .ds-pname .link-btn {
+    font-size: 17px;
+    font-weight: 600;
+    text-decoration: none;
+  }
+}
+
+/* A task's long-press menu on a phone: one line per action, its value at the right (Todoist's context menu). */
+@media (max-width: 767px) {
+  .task-menu .as-label {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+  }
+  .task-menu .as-label small {
+    min-width: 0;
+    max-width: 55%;
+    margin-left: auto;
+    overflow: hidden;
+    font-size: 15px;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+}
+
+/* Projects on a phone: the list is Browse's page (ProjectsHome renders TasksBrowse). */
+@media (max-width: 767px) {
+  .tbr-photo {
+    display: grid;
+    place-items: center;
+  }
+  .tbr-photo .client-badge {
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    font-size: 13px;
+  }
+  .tasks-browse .proj-new {
+    margin: 0 16px 16px;
+  }
+  .tasks-browse .empty-state {
+    margin: 0 16px 16px;
+  }
+  /* Selecting: "N selected" centred between Select all and Done (iOS). */
+  .mobile-top .tv-sel-title {
+    position: absolute;
+    left: 50%;
+    bottom: 4px;
+    max-width: 40vw;
+    transform: translateX(-50%);
+    pointer-events: none;
   }
 }

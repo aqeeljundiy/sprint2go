@@ -13,6 +13,7 @@ import { SOURCE, doers, dueLabel, historyText, isBrief, peopleOptions, statusOf,
 import { kindOf, stageBadge, stageIdFor, stageName, stageOf, stagesForTask, toneOf } from '../stages';
 import { PeoplePicker } from './ui/PeoplePicker';
 import { useOnePanel } from '../onePanel';
+import { usePhone } from '../mobile/media';
 import { TaskDetail } from './tasks/TaskDetail';
 import { t, tx } from '../i18n';
 import { tj } from '../i18n/tj';
@@ -62,6 +63,7 @@ export function TaskDrawer(p: Props) {
   const [sendingBack, setSendingBack] = useState(false);
   const [backNote, setBackNote] = useState('');
   const src = SOURCE[task.source];
+  const phone = usePhone(); // a task's guest card is a row and a "…" item in the phone's sheet (TaskDetail)
 
   useEffect(() => {
     const el = titleRef.current;
@@ -251,7 +253,7 @@ export function TaskDrawer(p: Props) {
             </button>
           )}
 
-          {task.clientId && (
+          {task.clientId && !(phone && !brief) && (
             <div className={`client-vis ${task.visibleToClient ? 'on' : ''}`}>
               <button className="cv-toggle" onClick={() => p.onPatch(task.id, { visibleToClient: !task.visibleToClient })}>
                 {task.visibleToClient ? <Eye size={15} /> : <EyeOff size={15} />}
@@ -383,6 +385,7 @@ export function TaskDrawer(p: Props) {
         above={aboveBlock}
         history={historyBlock}
         meta={metaBlock}
+        guest={task.clientId ? { visible: !!task.visibleToClient, toggle: () => p.onPatch(task.id, { visibleToClient: !task.visibleToClient }), approval: task.approval, ask: () => p.onAskApproval(task.id) } : undefined}
       />
     );
 

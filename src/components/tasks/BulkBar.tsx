@@ -5,12 +5,14 @@ import { t, tn } from '../../i18n';
 
 /**
  * Select many: the bar of things to do to all of them (Date, Move, Assign, Priority, Complete, Delete). On a phone it
- * takes the tab bar's place; on a computer it floats at the bottom of the list.
+ * takes the tab bar's place and the count, Select all and Done sit in the top bar (TaskViews); on a computer it floats
+ * at the bottom of the list.
  */
-export function BulkBar({ count, onDate, onMove, onAssign, onPriority, onComplete, onDelete, onCancel, onAll, all }: { count: number; onDate: () => void; onMove: () => void; onAssign: () => void; onPriority: () => void; onComplete: () => void; onDelete: () => void; onCancel: () => void; onAll?: () => void; all?: boolean }) {
+export function BulkBar({ count, onDate, onMove, onAssign, onPriority, onComplete, onDelete, onCancel, onAll, all, phone }: { count: number; onDate: () => void; onMove: () => void; onAssign: () => void; onPriority: () => void; onComplete: () => void; onDelete: () => void; onCancel: () => void; onAll?: () => void; all?: boolean; phone?: boolean /* the count, Select all and Done are in the top bar */ }) {
   useFocusedScreen(true); // the tab bar and the create button step aside
   return createPortal(
     <div className="task-bulk" role="toolbar" aria-label={tn(count, '{n} selected', '{n} selected')}>
+      {!phone && (
       <div className="tb-top">
         <button type="button" className="icon-btn" onClick={onCancel} aria-label={t('Stop selecting')}>
           <X size={18} />
@@ -22,6 +24,7 @@ export function BulkBar({ count, onDate, onMove, onAssign, onPriority, onComplet
           </button>
         )}
       </div>
+      )}
       <div className="tb-acts">
         {(
           [
