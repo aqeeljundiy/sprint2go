@@ -551,3 +551,19 @@
     margin: 16px;
   }
 }
+
+/* The launcher's top row stays pinned (under the safe area) while the page under it scrolls. */
+@media (max-width: 767px) {
+  .ln-top {
+    position: sticky;
+    top: 0;
+    z-index: 2; /* system: over the launcher's own scrolling content */
+    margin-top: calc(-1 * env(safe-area-inset-top));
+    padding-top: env(safe-area-inset-top);
+    background: var(--bg);
+    transition: box-shadow 0.15s;
+  }
+  .launcher .ln-top.scrolled {
+    box-shadow: 0 1px 0 var(--line);
+  }
+}

@@ -112,7 +112,7 @@ export function Launcher(p: {
     : [];
   return (
     <div className={`launcher home-phone${p.open ? ' on' : ''}`} aria-hidden={!p.open} inert={!p.open || undefined}>
-      <div className="ln-scroll">
+      <div className="ln-scroll" onScroll={(e) => { const top = e.currentTarget.firstElementChild; const on = e.currentTarget.scrollTop > 4; if (top && top.classList.contains('scrolled') !== on) top.classList.toggle('scrolled', on); }}>
         <header className="ln-top">
           <button type="button" className="ln-logo" onClick={p.onCompany} aria-haspopup="dialog" aria-label={t('Workspace: {name}', { name: p.ws.name })}>
             <WorkspaceLogo ws={p.ws} size={32} />

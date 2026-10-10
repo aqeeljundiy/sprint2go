@@ -1215,3 +1215,35 @@
     padding: 0 16px;
   }
 }
+
+/* ---------- Pinned chrome (iOS Safari too): the page never scrolls, only the content area under the bar ----------
+   The body can't scroll (a body scroll takes the top bar with it, and Safari's toolbar resize makes 100% jump), the
+   app is fixed to the screen at 100dvh, and whatever a screen puts under the top bar scrolls on its own. Strips that
+   belong to the screen (switches, chips) stick to the top of that scroll area. */
+@media (max-width: 767px) {
+  html,
+  body {
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
+  .app {
+    position: fixed;
+    right: 0;
+    left: 0;
+    height: 100dvh;
+  }
+  .main > :not(.mobile-top) {
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+  }
+  /* In-screen strips stay put under the bar while their list scrolls. */
+  .mh-chips,
+  .act-chips,
+  .meet-pane .client-tabs,
+  .chat-switch-row {
+    position: sticky;
+    top: 0;
+    z-index: 2; /* system: over the rows scrolling under it */
+    background: var(--page, var(--surface));
+  }
+}
