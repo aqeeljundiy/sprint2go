@@ -230,10 +230,13 @@ function TeamsPhone({ teams, users, tasks, me, actions, onOpen }: { teams: Team[
           {tm.name.charAt(0).toUpperCase()}
         </span>
         <span className="tdir-text">
-          <strong>{tm.name}</strong>
-          <small>{[lead ? t('Led by {name}', { name: lead.name.split(' ')[0] }) : t('No lead yet'), tm.members.length ? tn(tm.members.length, '{n} person', '{n} people') : t('Nobody yet')].join(' · ')}</small>
+          <strong className="tdir-name">{tm.name}</strong>
+          {/* What needs attention leads the second line, so the name keeps the row's width (up to two lines) next to Join. */}
+          <small>
+            {s.issues.length > 0 && <span className={`tdir-state ${s.late ? 'bad' : 'warn'}`}>{s.issues[0]} · </span>}
+            {[lead ? t('Led by {name}', { name: lead.name.split(' ')[0] }) : t('No lead yet'), tm.members.length ? tn(tm.members.length, '{n} person', '{n} people') : t('Nobody yet')].join(' · ')}
+          </small>
         </span>
-        {s.issues.length > 0 && <span className={`tdir-state ${s.late ? 'bad' : 'warn'}`}>{s.issues[0]}</span>}
         {other && <JoinButton tm={tm} me={me} actions={actions} small />}
       </div>
     );

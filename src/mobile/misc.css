@@ -809,6 +809,7 @@
     flex-direction: column;
     gap: 0px;
   }
+  /* A long name (and Indonesian's longer second line) wraps to two lines rather than being cut off beside Join. */
   .tdir-text strong {
     display: flex;
     align-items: center;
@@ -819,16 +820,23 @@
     white-space: nowrap;
     text-overflow: ellipsis;
   }
+  .tdir-text strong.tdir-name {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
   .tdir-text small {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
     font: var(--t-secondary);
     color: var(--text-3);
     overflow: hidden;
-    white-space: nowrap;
-    text-overflow: ellipsis;
   }
   .tdir-state {
-    flex: none;
-    font: var(--t-chip);
+    font-weight: 600;
   }
   .tdir-state.bad {
     color: var(--danger);

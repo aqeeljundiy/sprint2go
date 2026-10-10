@@ -6,6 +6,7 @@ const id: Record<string, string> = {
   // The greeting (HomeView). Indonesian says pagi until 11, siang until 15, sore until 18, malam after.
   'Good morning, {name}.': 'Selamat pagi, {name}.',
   'Good afternoon, {name}.': 'Selamat siang, {name}.',
+  '{name}, {date}.': '{name}, {date}.',
   'Good evening, {name}.': 'Selamat sore, {name}.',
   'after 6 pm::Good evening, {name}.': 'Selamat malam, {name}.',
   'Working late, {name}.': 'Selamat malam, {name}.',
