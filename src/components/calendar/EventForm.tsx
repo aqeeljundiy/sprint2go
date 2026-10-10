@@ -6,7 +6,7 @@ import { addDays } from '../../calendarUtils';
 import { clockOf, dateFacts, repeatWords, ruleToSpec, specToRule } from '../../repeat';
 import { zoneOptions } from '../ui/zones';
 import { fromWall, wallIn } from './calTools';
-import { DatePicker, shortDate, TimePicker } from '../ui/DatePicker';
+import { DatePicker, TimePicker } from '../ui/DatePicker';
 import { Select } from '../ui/Select';
 import { SmoothHeight } from '../ui/Smooth';
 import { GuestPicker } from './GuestPicker';
@@ -20,6 +20,7 @@ export interface Draft {
   title: string;
   date: string; // YYYY-MM-DD
   from: string; // HH:MM
+  endDate: string; // YYYY-MM-DD: the last day (all day), or the day it ends; the start's date for most events
   to: string;
   allDay: boolean;
   calendarId: string;
@@ -35,6 +36,20 @@ export interface Draft {
 
 const toMin = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
 const hhmm = (m: number) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+/** A YYYY-MM-DD day as a number of days, and back (for moving dates by whole days). */
+const dayNo = (d: string) => Math.round(Date.UTC(+d.slice(0, 4), +d.slice(5, 7) - 1, +d.slice(8, 10)) / 86_400_000);
+const dayOf = (n: number) => new Date(n * 86_400_000).toISOString().slice(0, 10);
+
+/** A new start date: the end moves with it, so the event keeps its length (a three-day trip stays three days). */
+export function withDate(d: Pick<Draft, 'date' | 'endDate'>, date: string) {
+  return { date, endDate: dayOf(dayNo(date) + Math.max(0, dayNo(d.endDate) - dayNo(d.date))) };
+}
+/** A new start time keeps the length too, carrying the end over midnight when it has to. */
+export function withStart(d: Pick<Draft, 'date' | 'from' | 'endDate' | 'to'>, from: string) {
+  const len = Math.max(15, (dayNo(d.endDate) - dayNo(d.date)) * 1440 + toMin(d.to) - toMin(d.from));
+  const end = dayNo(d.date) * 1440 + toMin(from) + len;
+  return { from, endDate: dayOf(Math.floor(end / 1440)), to: hhmm(end % 1440) };
+}
 
 /** No repeat. */
 export const NO_REPEAT: RepeatDraft = { spec: null, raw: null, touched: false };
@@ -54,12 +69,16 @@ function repeatOf(e?: CalEvent): RepeatDraft {
 export function draftOf(start: Date, end: Date, calendarId: string, e?: CalEvent): Draft {
   const tz = e?.timeZone && isZone(e.timeZone) && e.timeZone !== deviceTz() ? e.timeZone : null;
   const s = wallIn(start, tz);
+  const en = wallIn(end, tz);
+  // An all-day event ends at the next midnight: its last day is the one before.
+  const last = e?.allDay ? wallIn(new Date(Math.max(start.getTime(), end.getTime() - 1)), tz).date : en.date;
   return {
     kind: 'event',
     title: e?.title ?? '',
     date: s.date,
     from: s.time,
-    to: wallIn(end, tz).time,
+    endDate: last < s.date ? s.date : last,
+    to: en.time,
     allDay: !!e?.allDay,
     calendarId: e?.calendarId ?? calendarId,
     guests: e?.guests ?? [],
@@ -74,11 +93,12 @@ export function draftOf(start: Date, end: Date, calendarId: string, e?: CalEvent
   };
 }
 
-/** The draft's start and end (an all-day event ends the next midnight; times in another zone are read in it). */
+/** The draft's start and end (an all-day event ends the next midnight after its last day; times in another zone are read in it). */
 export function draftTimes(d: Draft) {
+  const endDate = d.endDate || d.date;
   const start = d.allDay ? new Date(`${d.date}T00:00`) : fromWall(d.date, d.from, d.tz);
-  const end = d.allDay ? addDays(start, 1) : fromWall(d.date, d.to, d.tz);
-  return { start, end, ok: !isNaN(start.getTime()) && end > start };
+  const end = d.allDay ? addDays(new Date(`${endDate}T00:00`), 1) : fromWall(endDate, d.to, d.tz);
+  return { start, end, ok: !isNaN(start.getTime()) && !isNaN(end.getTime()) && end > start };
 }
 
 /**
@@ -172,13 +192,10 @@ export function EventForm({
     const was = dateFacts(wall).wd;
     const now = dateFacts(draftWall({ ...draft, date })).wd;
     const follow = r.spec?.freq === 'WEEKLY' && r.spec.days?.length === 1 && r.spec.days[0] === was && now !== was;
-    set({ date, ...(follow ? { repeat: { ...r, spec: { ...r.spec!, days: [now] } } } : {}) });
+    set({ ...withDate(draft, date), ...(follow ? { repeat: { ...r, spec: { ...r.spec!, days: [now] } } } : {}) });
   };
   // Moving the start keeps the length (a 1 hour meeting stays 1 hour), the way calendars do.
-  const moveStart = (v: string) => {
-    const len = Math.max(15, toMin(draft.to) - toMin(draft.from));
-    set({ from: v, to: hhmm(Math.min(23 * 60 + 45, toMin(v) + len)) });
-  };
+  const moveStart = (v: string) => set(withStart(draft, v));
   const cal = calendars.find((c) => c.id === draft.calendarId) ?? calendars[0];
   const quiet: { id: Extra | 'allday'; label: string; icon: typeof Sun; on?: boolean }[] = [
     { id: 'allday', label: t('All day'), icon: Sun, on: draft.allDay },
@@ -219,16 +236,16 @@ export function EventForm({
           </button>
         </div>
       )}
+      {/* Starts on one line, ends on the next (Google's editor): a trip or a conference ends on another day. */}
       <div className="field-row ev-when">
-        <DatePicker value={draft.date} onChange={(v) => v && moveDate(v)} clearable={false} label={t('Date')} />
-        {!draft.allDay && (
-          <span className="ev-times">
-            <TimePicker value={draft.from} onChange={moveStart} label={t('Starts')} />
-            <span className="muted">{tx('time', 'to')}</span>
-            <TimePicker value={draft.to} onChange={(v) => set({ to: v })} label={tx('time', 'Ends')} />
-          </span>
-        )}
+        <DatePicker value={draft.date} onChange={(v) => v && moveDate(v)} clearable={false} label={t('Starts')} />
+        {!draft.allDay && <TimePicker value={draft.from} onChange={moveStart} label={t('Starts')} className="ev-time" />}
       </div>
+      <div className="field-row ev-when">
+        <DatePicker value={draft.endDate} onChange={(v) => v && set({ endDate: v })} clearable={false} label={tx('time', 'Ends')} />
+        {!draft.allDay && <TimePicker value={draft.to} onChange={(v) => set({ to: v })} label={tx('time', 'Ends')} className="ev-time" />}
+      </div>
+      {!draftTimes(draft).ok && <small className="er-error ev-when-error">{t('Ends before it starts')}</small>}
       {!task && <GuestPicker value={draft.guests} onChange={(guests) => set({ guests })} team={team} contacts={contacts} me={me} />}
       <SmoothHeight>
         {!task && draft.guests.length > 0 && draft.sendInvites !== null && (
@@ -408,12 +425,9 @@ export function EventRows({
     const was = dateFacts(wall).wd;
     const now = dateFacts(draftWall({ ...draft, date })).wd;
     const follow = r.spec?.freq === 'WEEKLY' && r.spec.days?.length === 1 && r.spec.days[0] === was && now !== was;
-    set({ date, ...(follow ? { repeat: { ...r, spec: { ...r.spec!, days: [now] } } } : {}) });
+    set({ ...withDate(draft, date), ...(follow ? { repeat: { ...r, spec: { ...r.spec!, days: [now] } } } : {}) });
   };
-  const moveStart = (v: string) => {
-    const len = Math.max(15, toMin(draft.to) - toMin(draft.from));
-    set({ from: v, to: hhmm(Math.min(23 * 60 + 45, toMin(v) + len)) });
-  };
+  const moveStart = (v: string) => set(withStart(draft, v));
   const pickKind = (k: Draft['kind']) => {
     if (k === draft.kind) return;
     const was = draft.kind === 'ooo' && draft.title === t('Out of office');
@@ -484,15 +498,14 @@ export function EventRows({
             {!draft.allDay && <TimePicker value={draft.from} onChange={moveStart} label={t('Starts')} className="er-pick er-time" />}
           </div>
         </ERow>
-        {!draft.allDay && (
-          <ERow className={ok ? '' : 'bad'}>
-            <div className="er-when">
-              <span className="er-date-text">{shortDate(draft.date)}</span>
-              <TimePicker value={draft.to} onChange={(v) => set({ to: v })} label={tx('time', 'Ends')} className="er-pick er-time" />
-            </div>
-            {!ok && <small className="er-error">{t('Ends before it starts')}</small>}
-          </ERow>
-        )}
+        {/* Google's second line: the day it ends (a trip, a conference) and, unless all day, its time. */}
+        <ERow className={ok ? '' : 'bad'}>
+          <div className="er-when">
+            <DatePicker value={draft.endDate} onChange={(v) => v && set({ endDate: v })} clearable={false} label={tx('time', 'Ends')} className="er-pick" />
+            {!draft.allDay && <TimePicker value={draft.to} onChange={(v) => set({ to: v })} label={tx('time', 'Ends')} className="er-pick er-time" />}
+          </div>
+          {!ok && <small className="er-error">{t('Ends before it starts')}</small>}
+        </ERow>
         {!draft.allDay && (
           <ERow icon={<Globe size={20} />}>
             <Select<string>
