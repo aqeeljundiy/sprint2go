@@ -28,6 +28,7 @@ import { authorOf, DayLine, fmtSize, MONTHS, Msg, NewLine, preview, type MsgCtx 
 import { ConfirmSheet, EmojiGrid, EmojiSheet, ForwardSheet, ReactionRow, WhenSheet, WhoReactedSheet, chanName } from './Sheets';
 import { ChannelAbout, PinnedPane, SummaryPane, TasksPane } from './Details';
 import { draftKey, dmOther, shortTime, statusText, useChatState, whenText } from './chatPrefs';
+import { followsThread } from '../../chatFollow';
 import { msg, phrase, t, tn, type Msg as Words } from '../../i18n';
 import { tj } from '../../i18n/tj';
 import { fmtList, fmtNumber } from '../../i18n/format';
@@ -79,6 +80,8 @@ export interface ViewProps {
   summaryOff?: { text: string; fix?: { label: string; run: () => void } };
   since: string; // when I last opened this channel, before now
   onReact: (id: string, emoji: string) => void;
+  /** Follow or unfollow a thread (by its root message): followers hear about new replies (src/chatFollow.ts). */
+  onFollow?: (rootId: string, on: boolean) => void;
   onVote: (id: string, option: number) => void;
   onMakeTask: (m: ChatMessage) => void;
   onCreateTask: (t: { title: string; userId: string; due?: string }) => void;
@@ -412,6 +415,16 @@ export function ChatView(p: ViewProps) {
     setThreadId(rootId);
     chat.markThreadRead(rootId);
   };
+  const myFirst = person(me)?.name.split(' ')[0] ?? '';
+  /** Whether I follow the thread of this root message (it may have no replies yet). */
+  const following = (rootId: string) => {
+    const root = p.messages.find((m) => m.id === rootId);
+    return !!root && followsThread(root, replies(rootId), me, myFirst);
+  };
+  const setFollow = (rootId: string, on: boolean) => {
+    p.onFollow?.(rootId, on);
+    toast({ text: on ? t('You’ll be notified about new replies') : t('You won’t be notified about new replies'), action: { label: t('Undo'), run: () => p.onFollow?.(rootId, !on) } });
+  };
 
   const actionsFor = (m: ChatMessage): SheetAction[] => {
     const mine = m.userId === me && !m.guestEmail;
@@ -420,6 +433,10 @@ export function ChatView(p: ViewProps) {
     const list: SheetAction[] = [];
     // Slack's order: reply, mark unread, remind, save, copy, forward; then ours (make a task); then pin, edit, delete.
     if (threadId !== root) list.push({ label: m.parentId ? t('Open thread') : t('Reply in thread'), icon: MessageSquareReply, run: () => openThread(root) });
+    if (!guest && p.onFollow && m.kind !== 'summary' && m.kind !== 'system') {
+      const on = following(root);
+      list.push({ label: on ? t('Unfollow thread') : t('Follow thread'), hint: on ? undefined : t('Get notified about new replies'), icon: on ? BellOff : Bell, run: () => setFollow(root, !on) });
+    }
     if (!mine) list.push({ label: t('Mark unread'), icon: MailOpen, run: () => markUnread(m) });
     if (!guest) {
       list.push({ label: t('Remind me'), icon: Clock, hint: saved?.remindAt && !saved.reminded ? t('Set for {when}', { when: whenText(saved.remindAt) }) : undefined, run: () => setSub({ kind: 'remind', m }) });
@@ -607,6 +624,7 @@ export function ChatView(p: ViewProps) {
           library={guest ? undefined : p.library}
           onClose={() => setThreadId(null)}
           onSend={(o, also) => p.onSend({ ...o, parentId: thread.id, alsoInChannel: also })}
+          follow={!guest && p.onFollow ? { on: following(thread.id), set: (on) => setFollow(thread.id, on) } : undefined}
           editing={editing && editing.parentId === thread.id ? editing : null}
           onEdit={(id, t) => (p.onEdit?.(id, t), setEditing(null))}
           onCancelEdit={() => setEditing(null)}
@@ -1026,6 +1044,7 @@ function ThreadView(p: {
   library?: Library;
   onClose: () => void;
   onSend: (o: Outgoing, also: boolean) => void;
+  follow?: { on: boolean; set: (on: boolean) => void };
   editing: ChatMessage | null;
   onEdit: (id: string, text: string) => void;
   onCancelEdit: () => void;
@@ -1039,6 +1058,12 @@ function ThreadView(p: {
     chat.markThreadRead(root.id);
   }, [p.replies.length, root.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const ctx = { ...p.ctx };
+  // Slack's bell in the thread's header: get notified about new replies, or stop.
+  const bell = p.follow ? (
+    <button type="button" className={`icon-btn${p.phone ? '' : ' sm'} thread-bell${p.follow.on ? ' on' : ''}`} onClick={() => p.follow!.set(!p.follow!.on)} aria-pressed={p.follow.on} aria-label={p.follow.on ? t('Unfollow thread: stop notifications about new replies') : t('Follow thread: get notified about new replies')} title={p.follow.on ? t('Unfollow thread') : t('Follow thread')}>
+      {p.follow.on ? <Bell size={p.phone ? 22 : 16} /> : <BellOff size={p.phone ? 22 : 16} />}
+    </button>
+  ) : null;
   const body = (
     <div className="cs-body">
       <Msg m={root} grouped={false} inThread ctx={ctx} />
@@ -1083,6 +1108,7 @@ function ThreadView(p: {
         backLabel={t('Back')}
         onBack={p.onClose}
         className="thread-push"
+        actions={bell}
         footer={composer}
       >
         {body}
@@ -1094,6 +1120,7 @@ function ThreadView(p: {
         <strong>{t('Thread')}</strong>
         <span className="muted small">{p.title}</span>
         <span className="spacer" />
+        {bell}
         <button className="icon-btn sm" onClick={p.onClose} aria-label={t('Close thread')}>
           <X size={16} />
         </button>

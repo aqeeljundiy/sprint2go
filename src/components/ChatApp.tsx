@@ -122,6 +122,8 @@ interface SidebarProps {
   onHuddle?: (id: string) => void;
   /** The direct message with someone (made when there's none yet): its id. */
   dmIdFor?: (userId: string) => string;
+  /** Follow or unfollow a thread (Activity). */
+  onFollow?: (rootId: string, on: boolean) => void;
 }
 
 export function ChatSidebar(p: SidebarProps) {
@@ -509,7 +511,7 @@ export function ChatSidebar(p: SidebarProps) {
           ) : part === 'dms' ? (
             <DmList dms={dmsShown} filter={dmFilter} row={(c) => <ConvoRow key={c.id} c={c} p={p} info={info[c.id]} phone two starred={star.has(c.id)} draggable={false} onDragState={setDropOn} onMenu={(where) => setRowMenu({ id: c.id, ...where })} />} onNew={() => setNewMsg(true)} />
           ) : (
-            <ChatActivity notices={p.notices ?? []} messages={p.messages} channels={p.channels} users={p.users} me={p.me} myFirst={p.myFirst} chat={chat} onOpen={(n) => p.onOpenNotice?.(n)} onRead={(ids, read) => p.onReadNotices?.(ids, read)} />
+            <ChatActivity notices={p.notices ?? []} messages={p.messages} channels={p.channels} users={p.users} me={p.me} myFirst={p.myFirst} chat={chat} onOpen={(n) => p.onOpenNotice?.(n)} onRead={(ids, read) => p.onReadNotices?.(ids, read)} onFollow={p.onFollow} />
           )}
         </TabPane>
       ) : (

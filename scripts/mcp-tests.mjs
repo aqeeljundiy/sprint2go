@@ -135,6 +135,11 @@ try {
   put('channels', { id: 'ch-secret', workspaceId: 'w-acme', kind: 'channel', name: 'secret-plans', clientId: 'c-secret', private: true, members: ['u-alice'] });
   put('channels', { id: 'ch-shared', workspaceId: 'w-acme', kind: 'channel', name: 'open-with-client', clientId: 'c-open', category: 'shared', members: ['u-alice', 'u-bob'], guests: [{ email: 'gina@client.test', name: 'Gina Guest', status: 'joined', invitedBy: 'u-alice', at: now() }] });
   put('channels', { id: 'ch-dm', workspaceId: 'w-acme', kind: 'dm', name: '', members: ['u-alice', 'u-bob'] });
+  // Group messages: one with Bob in it, one without him (with a guest of a project he's on).
+  put('channels', { id: 'ch-group', workspaceId: 'w-acme', kind: 'dm', name: '', members: ['u-alice', 'u-bob', 'u-carol'] });
+  put('channels', { id: 'ch-group-guest', workspaceId: 'w-acme', kind: 'dm', name: '', members: ['u-alice', 'u-carol'], clientId: 'c-open', guests: [{ email: 'gina@client.test', name: 'Gina Guest', status: 'joined', invitedBy: 'u-alice', at: now() }] });
+  put('messages', { id: 'm-g1', channelId: 'ch-group', userId: 'u-carol', text: 'Group durian plan for Friday', at: now() });
+  put('messages', { id: 'm-g2', channelId: 'ch-group-guest', userId: 'u-alice', text: 'Rambutan pricing with Gina', at: now() });
   put('channels', { id: 'ch-partner', workspaceId: 'w-other', kind: 'channel', name: 'partner-shared', clientId: 'c-other', category: 'shared', members: ['u-dan'], guests: [{ email: 'alice@acme.test', name: 'Alice Martin', status: 'joined', invitedBy: 'u-dan', at: now() }] });
   put('messages', { id: 'm-1', channelId: 'ch-general', userId: 'u-bob', text: 'Morning all, the banana launch deck is ready', at: new Date(Date.now() - 3600_000).toISOString() });
   put('messages', { id: 'm-2', channelId: 'ch-secret', userId: 'u-alice', text: 'The pineapple acquisition stays between us', at: now() });
@@ -309,10 +314,12 @@ try {
   const rt = await A('read_task', { task_id: 't-review' });
   check(rt.data?.stage === 'Review' && rt.data.supervisor === 'Alice Martin', 'read_task: stage and people');
   const chans = await A('list_channels');
-  check(chans.data?.channels?.length === 4 && chans.data.channels.find((c) => c.id === 'ch-shared')?.guests === true && !chans.data.channels.some((c) => c.id === 'ch-partner'), 'list_channels: her channels with guests marked, nothing from the other company');
+  check(chans.data?.channels?.length === 6 && chans.data.channels.find((c) => c.id === 'ch-group')?.name === 'Group message with Bob Stone, Carol Reed' && chans.data.channels.find((c) => c.id === 'ch-group-guest')?.guests === true && chans.data.channels.find((c) => c.id === 'ch-shared')?.guests === true && !chans.data.channels.some((c) => c.id === 'ch-partner'), 'list_channels: her channels with guests marked, nothing from the other company');
   const rc = await A('read_channel', { channel: '#open-with-client' });
   check(rc.data?.messages?.[0]?.who === 'Gina Guest (guest)' && rc.data.note?.includes('draft'), 'read_channel: by name, guests labelled, and it says posting there makes a draft');
   check((await A('read_channel', { channel: 'Bob' })).data?.id === 'ch-dm', 'read_channel: a teammate’s name opens your direct messages');
+  check((await A('read_channel', { channel: 'Bob and Carol' })).data?.messages?.[0]?.text?.includes('durian'), 'read_channel: several names open your group message with exactly them');
+  check((await A('read_channel', { channel: 'Bob, Carol, Alice' })).data?.id === 'ch-group' && (await A('read_channel', { channel: 'Carol, Bob' })).data?.id === 'ch-group', 'read_channel: in any order, with or without yourself');
   const cal = await A('calendar_agenda');
   check(cal.data?.events?.some((e) => e.id === 'e-standup' && e.video) && !cal.data.events.some((e) => e.id === 'e-bob'), 'calendar_agenda: her week, not Bob’s');
   const daily = (cal.data?.events ?? []).filter((e) => e.id.startsWith('e-daily~'));
@@ -415,6 +422,13 @@ try {
   check((await BC('read_channel', { channel: 'ch-secret' })).error, 'Bob can’t read its channel');
   check((await BC('query_rows', { table: 'tb-secret' })).error, 'Bob can’t read its table');
   check((await BC('search', { query: 'pineapple' })).data?.results?.length === 0, 'Bob’s search finds nothing of it');
+  const bobChans = (await BC('list_channels')).data?.channels ?? [];
+  check(bobChans.some((c) => c.id === 'ch-group') && !bobChans.some((c) => c.id === 'ch-group-guest'), 'Bob lists the group message he’s in, not the one he isn’t (even with a guest of his project)');
+  check((await BC('read_channel', { channel: 'ch-group-guest' })).error && (await BC('read_channel', { channel: 'Alice, Carol' })).data?.id === 'ch-group', 'Bob can’t read that one by its id; Alice and Carol to him is his own group with them');
+  check((await BC('search', { query: 'rambutan' })).data?.results?.length === 0 && (await BC('search', { query: 'durian' })).data?.results?.some((r) => r.kind === 'message' && /Group message/.test(r.channel)), 'Bob’s search finds his group message, not the other');
+  const gp = await BC('post_message', { channel: 'Alice, Carol', text: 'Durian is in' });
+  check(!!doc('messages', gp.data?.posted?.id) && !!db.prepare("SELECT 1 FROM docs WHERE coll = 'notices' AND data LIKE '%Bob in a group message%' AND data LIKE '%u-carol%'").get(), 'post_message to a group message: posted, and its people hear it as a group message');
+  check((await BC('post_message', { channel: 'ch-group-guest', text: 'sneak' })).error, 'Bob can’t post in the group message he isn’t in');
   check((await BC('read_mail', { thread_id: 'th-client' })).error && !(await BC('list_mail', { folder: 'all' })).data.conversations.some((t) => t.id === 'th-client'), 'Bob can’t read Alice’s mail');
   check(!(await BC('list_notes')).data.notes.some((n) => n.id === 'n-alice'), 'Bob doesn’t see Alice’s private notes');
   check((await BC('write_note', { note_id: 'n-alice', text: 'mine now' })).error && doc('notes', 'n-alice').html.includes('plum'), 'Bob can’t change Alice’s private note');

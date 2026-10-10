@@ -77,6 +77,7 @@ import { ChatSidebar, ChatView, NewMessageSheet, StatusPicker, statusText, fullL
 import { ChatPages } from './components/chat/Pages';
 import { useDockRef } from './components/chat/huddleDock';
 import { ChatPrefsHost, isMutedValue } from './components/chat/chatPrefs';
+import { chatRecipients, isGroupDm } from './chatFollow';
 import { chanName } from './components/chat/Sheets';
 import { preview as msgPreview } from './components/chat/Message';
 import { ChannelDialog, CATEGORY_ONE, categoryText } from './components/ChannelDialog';
@@ -2396,17 +2397,25 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   /** Who hears about a message as it goes out: the other side of a DM, people it mentions, whoever wrote what it answers. */
   const chatNotices = (m: ChatMessage, ch: Channel) => {
     const text = m.text;
-    const where = ch.kind === 'dm' ? phrase('a message') : `#${ch.name}`;
+    const where = ch.kind === 'dm' ? (isGroupDm(ch) ? phrase('a group message') : phrase('a message')) : `#${ch.name}`;
     if (m.kind === 'kudos' && m.kudosFor) notify(m.kudosFor, 'mention', text ? msg('🙌 {name} gave you kudos in {where}: “{text}”', { name: myFirst, where, text: text.slice(0, 80) }) : msg('🙌 {name} gave you kudos in {where}', { name: myFirst, where }), { app: 'chat', id: ch.id, msg: m.id });
-    if (m.parentId) {
-      const root = messages.find((x) => x.id === m.parentId);
-      if (root && root.userId !== user.id && root.userId !== 'guest') notify(root.userId, 'mention', msg('{name} replied to your message in {where}: “{text}”', { name: myFirst, where, text: text.slice(0, 80) }), { app: 'chat', id: ch.id, msg: m.id });
-    }
-    for (const id of ch.members) {
-      if (id === user.id) continue;
-      const fn = firstOf(id);
-      if (ch.kind === 'dm') notify(id, 'mention', msg('{name} messaged you: “{text}”', { name: myFirst, text: (text || msgPreview(m)).slice(0, 80) }), { app: 'chat', id: ch.id, msg: m.id });
-      else if (text && new RegExp(`@${fn}\\b`, 'i').test(text)) notify(id, 'mention', msg('{name} mentioned you in #{channel}: “{text}”', { name: myFirst, channel: ch.name, text: text.slice(0, 80) }), { app: 'chat', id: ch.id, msg: m.id });
+    // Once each: the others in a DM or group message, people mentioned, a thread's followers (src/chatFollow.ts).
+    const root = m.parentId ? messages.find((x) => x.id === m.parentId) : undefined;
+    const thread = root ? { root, replies: messages.filter((x) => x.parentId === root.id && x.id !== m.id && !x.sendAt) } : null;
+    const said = (text || msgPreview(m)).slice(0, 80);
+    for (const { id, why } of chatRecipients(m, ch, thread, firstOf)) {
+      if (id === m.kudosFor && m.kind === 'kudos') continue;
+      const words =
+        why === 'dm'
+          ? msg('{name} messaged you: “{text}”', { name: myFirst, text: said })
+          : why === 'group'
+            ? msg('{name} in a group message: “{text}”', { name: myFirst, text: said })
+            : why === 'reply'
+              ? msg('{name} replied to your message in {where}: “{text}”', { name: myFirst, where, text: said })
+              : why === 'thread'
+                ? msg('{name} replied in a thread you follow in {where}: “{text}”', { name: myFirst, where, text: said })
+                : msg('{name} mentioned you in {where}: “{text}”', { name: myFirst, where, text: said });
+      notify(id, 'mention', words, { app: 'chat', id: ch.id, msg: m.id });
     }
   };
   const sendChat = (pl: SendPayload) => chatId && sendChatTo(chatId, pl);
@@ -2491,6 +2500,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         return { ...m, reactions: r };
       }),
     );
+  /** Follow or unfollow a thread: my own choice on its root message (the server keeps everyone else's as it was). */
+  const followThread = (rootId: string, on: boolean) => setMessages((ms) => ms.map((m) => (m.id === rootId ? { ...m, follow: { ...(m.follow ?? {}), [user.id]: on } } : m)));
   const votePoll = (id: string, option: number) =>
     setMessages((ms) =>
       ms.map((m) =>
@@ -4163,6 +4174,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
               onNewChannel={canStartChannels ? () => setChanDialog({}) : undefined}
               onNewDm={(uidOther) => setChatId(dmWith(uidOther))}
               dmIdFor={dmWith}
+              onFollow={followThread}
               notices={myNotices.filter((n) => n.link?.app === 'chat')}
               onOpenNotice={openNotice}
               onReadNotices={(ids, read) => setNotices((ns) => ns.map((n) => (ids.includes(n.id) ? { ...n, read } : n)))}
@@ -4471,6 +4483,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             onOpen={(id, msg) => (setChatId(id), setChatPage(null), msg && setFocusMsg(msg))}
             onSendTo={(id, text) => sendChatTo(id, { text })}
             onSendNow={sendChatNow}
+            onFollow={followThread}
             onReschedule={(id, at) => setMessages((ms) => ms.map((m) => (m.id === id && m.sendAt ? { ...m, sendAt: at } : m)))}
             onDelete={(id) => setMessages((ms) => ms.filter((m) => m.id !== id))}
           />
@@ -4489,6 +4502,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             onSendTo={(id, text) => sendChatTo(id, { text })}
             onReplyTo={(id, rootId, text) => sendChatTo(id, { text, parentId: rootId })}
             onSendNow={sendChatNow}
+            onFollow={followThread}
             onReschedule={(id, at) => setMessages((ms) => ms.map((m) => (m.id === id && m.sendAt ? { ...m, sendAt: at } : m)))}
             onDelete={(id) => setMessages((ms) => ms.filter((m) => m.id !== id))}
           />
@@ -4558,6 +4572,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             }
             since={sinceRead}
             onReact={reactTo}
+            onFollow={followThread}
             onVote={votePoll}
             onMakeTask={makeTaskFromMessage}
             onCreateTask={(t) => {

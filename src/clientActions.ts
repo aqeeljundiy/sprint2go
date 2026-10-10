@@ -47,7 +47,7 @@ export function clientActions(c: ClientCtx) {
     if (ids.length) c.setNotices((ns) => [...ids.map((id) => notice(id, words, link)), ...ns]);
   };
   const doers = (task: Todo) => (task.assignees?.length ? task.assignees : task.userId ? [task.userId] : []);
-  const sharedChannel = () => channelsFor(c.person.email, c.client.id, c.channels)[0];
+  const sharedChannel = () => channelsFor(c.person.email, c.client.id, c.channels).find((ch) => ch.kind === 'channel');
 
   /** The folder in the project's Drive where a guest's uploads go ("From KopiKita", "From Pixel & Profits"). */
   const uploadFolder = (): { id: string; create?: DriveItem } => {
@@ -69,8 +69,10 @@ export function clientActions(c: ClientCtx) {
       if (!ch || (!text.trim() && !pl.files?.length)) return;
       const mid = uid();
       c.setMessages((ms) => [...ms, { id: mid, channelId, userId: 'guest', guestEmail: c.person.email, text: text.trim(), at: now(), files: pl.files, parentId: pl.parentId, alsoInChannel: pl.alsoInChannel }]);
+      // A group message the team started with them: everyone in it hears, as in any direct message.
+      if (ch.kind === 'dm') return tell(ch.members, msg('{name} ({company}) in a group message: “{text}”', { name: c.person.name, company: who, text: text.trim().slice(0, 80) }), { app: 'chat', id: channelId, msg: mid });
       const mentioned = c.team.filter((u) => new RegExp(`@${u.name.split(' ')[0]}\\b`, 'i').test(text)).map((u) => u.id);
-      tell(mentioned, msg('{name} ({company}) mentioned you in #{channel}', { name: c.person.name, company: who, channel: ch.name }), { app: 'chat', id: channelId, msg: mid });
+      tell(mentioned,msg('{name} ({company}) mentioned you in #{channel}', { name: c.person.name, company: who, channel: ch.name }), { app: 'chat', id: channelId, msg: mid });
     },
 
     /** Approve work, or ask for changes. */

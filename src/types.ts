@@ -705,6 +705,8 @@ export interface ChatMessage {
   via?: 'whatsapp'; // came in from, or went out on, WhatsApp
   edited?: boolean;
   pinned?: boolean;
+  /** A thread's root: who chose to follow (true) or unfollow (false) it; everyone else follows by taking part (src/chatFollow.ts). */
+  follow?: Record<string, boolean>;
   /** Send later: it waits, seen only by its author, until this time; the server then sends it (server/chatLater.ts). */
   sendAt?: string;
   /** Forwarded from another conversation: what it said there, and who said it. */

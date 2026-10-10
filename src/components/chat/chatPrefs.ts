@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { usePersisted } from '../../settings';
 import type { Channel, ChatMessage, Status } from '../../types';
+import { followsThread } from '../../chatFollow';
 import { mark, t } from '../../i18n';
 import { fmtDate, fmtDay, fmtTime, fmtWeekday } from '../../i18n/format';
 
@@ -233,19 +234,17 @@ export function useDraft(chat: ChatState, key: string | null, text: string, setT
 /** The other person in a direct message. */
 export const dmOther = (c: Channel, me: string) => c.members.find((m) => m !== me) ?? me;
 
-/** Threads someone follows: ones they started, replied in, or were mentioned in. With the replies they haven't read. */
+/** Threads someone follows (src/chatFollow.ts): they chose to, or started, replied in or were mentioned in them. With the replies they haven't read. */
 export function followedThreads(messages: ChatMessage[], me: string, myFirst: string, chat: ChatState) {
   const byRoot = new Map<string, ChatMessage[]>();
   for (const m of messages) if (m.parentId && !m.sendAt) (byRoot.get(m.parentId) ?? byRoot.set(m.parentId, []).get(m.parentId)!).push(m);
-  const at = new RegExp(`@${myFirst.replace(/[.*+?^$()|[\]\\{}]/g, '\\$&')}\\b`, 'i');
   const roots = new Map(messages.filter((m) => byRoot.has(m.id)).map((m) => [m.id, m]));
   const out: { root: ChatMessage; replies: ChatMessage[]; unread: number; last: string }[] = [];
   for (const [id, replies] of byRoot) {
     const root = roots.get(id);
     if (!root) continue;
     const mine = replies.filter((r) => r.userId === me);
-    const follows = root.userId === me || mine.length > 0 || at.test(root.text) || replies.some((r) => at.test(r.text));
-    if (!follows) continue;
+    if (!followsThread(root, replies, me, myFirst)) continue;
     replies.sort((a, b) => a.at.localeCompare(b.at));
     // Read up to their own last reply, or the last time they opened the thread.
     const seen = [chat.threadReadAt(id), mine[mine.length - 1]?.at, root.userId === me ? root.at : undefined].filter(Boolean).sort().pop() ?? root.at;
