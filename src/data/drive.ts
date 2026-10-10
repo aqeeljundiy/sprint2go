@@ -51,16 +51,16 @@ const clients = item('Clients', 'folder', null, 0, ago(1));
 const brand = item('Brand assets', 'folder', null, 0, ago(3));
 const finance = item('Finance', 'folder', null, 0, ago(6));
 const shoot = item('Office launch shoot', 'folder', null, 0, ago(2));
-const kopikita = item('KopiKita', 'folder', clients.id, 0, ago(1), { clientId: 'c-kopikita', workspaceId: 'pnp' });
-const lumina = item('Lumina Skin', 'folder', clients.id, 0, ago(4), { clientId: 'c-lumina', workspaceId: 'pnp' });
+const kopinara = item('Kopinara', 'folder', clients.id, 0, ago(1), { clientId: 'c-kopinara', workspaceId: 'pnp' });
+const selara = item('Selara Skin', 'folder', clients.id, 0, ago(4), { clientId: 'c-selara', workspaceId: 'pnp' });
 
 export const DRIVE: DriveItem[] = [
   clients,
   brand,
   finance,
   shoot,
-  kopikita,
-  lumina,
+  kopinara,
+  selara,
   item('Q4 proposal.pdf', 'pdf', null, 2.4 * MB, ago(0, 5), { starred: true }),
   item('Content calendar October.xlsx', 'sheet', null, 0.3 * MB, ago(0, 9)),
   item('Pitch deck v3.pptx', 'slides', null, 18.2 * MB, ago(2)),
@@ -77,11 +77,11 @@ export const DRIVE: DriveItem[] = [
   ),
   item('Behind the scenes.mov', 'video', shoot.id, 312 * MB, ago(2), { thumb: artThumb(21), duration: '2:14' }),
   item('Office tour.mp4', 'video', shoot.id, 148 * MB, ago(2, 3), { thumb: artThumb(22), duration: '1:05' }),
-  item('Morning ritual moodboard.png', 'image', kopikita.id, 7.4 * MB, ago(1), { thumb: artThumb(4), clientId: 'c-kopikita', workspaceId: 'pnp', sharedWithClient: true }),
-  item('KopiKita brief.docx', 'doc', kopikita.id, 0.2 * MB, ago(1, 4), { clientId: 'c-kopikita', workspaceId: 'pnp' }),
-  item('KopiKita Q4 concepts v2.pdf', 'pdf', kopikita.id, 12.6 * MB, ago(0, 6), { clientId: 'c-kopikita', workspaceId: 'pnp', sharedWithClient: true }),
-  item('Lumina Sep report.pdf', 'pdf', lumina.id, 1.1 * MB, ago(1), { threadId: 't5', clientId: 'c-lumina', workspaceId: 'pnp', sharedWithClient: true }),
-  item('Voice note Sarah.m4a', 'audio', lumina.id, 2.2 * MB, ago(4), { clientId: 'c-lumina', workspaceId: 'pnp' }),
+  item('Morning ritual moodboard.png', 'image', kopinara.example, 7.4 * MB, ago(1), { thumb: artThumb(4), clientId: 'c-kopinara', workspaceId: 'pnp', sharedWithClient: true }),
+  item('Kopinara brief.docx', 'doc', kopinara.example, 0.2 * MB, ago(1, 4), { clientId: 'c-kopinara', workspaceId: 'pnp' }),
+  item('Kopinara Q4 concepts v2.pdf', 'pdf', kopinara.example, 12.6 * MB, ago(0, 6), { clientId: 'c-kopinara', workspaceId: 'pnp', sharedWithClient: true }),
+  item('Selara Sep report.pdf', 'pdf', selara.id, 1.1 * MB, ago(1), { threadId: 't5', clientId: 'c-selara', workspaceId: 'pnp', sharedWithClient: true }),
+  item('Voice note Hannah.m4a', 'audio', selara.id, 2.2 * MB, ago(4), { clientId: 'c-selara', workspaceId: 'pnp' }),
   item('Old logo.png', 'image', null, 0.8 * MB, ago(20), { trashed: true, thumb: artThumb(30) }),
 ];
 

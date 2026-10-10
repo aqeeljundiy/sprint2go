@@ -116,8 +116,8 @@ export interface ViewProps {
 }
 
 const commands = () => [
-  { cmd: '/task', hint: t('Make a task: /task Send the deck @Rizky friday') },
-  { cmd: '/remind', hint: t('Remind yourself: /remind call Nadia tomorrow') },
+  { cmd: '/task', hint: t('Make a task: /task Send the deck @Bima friday') },
+  { cmd: '/remind', hint: t('Remind yourself: /remind call Laras tomorrow') },
 ];
 
 // The day words /task and /remind understand, in English and Indonesian ("minggu depan" before "minggu", Sunday).
@@ -716,7 +716,7 @@ export function ChatView(p: ViewProps) {
         >
           <div className="kudos-form">
             <Select value={kudos.who || null} onChange={(v) => setKudos({ ...kudos, who: v })} placeholder={t('Who?')} label={t('Who gets kudos')} options={users.filter((u) => u.id !== me).map((u) => ({ ...personOption(u), label: u.name, icon: <Avatar person={u} size={22} /> }))} />
-            <input className="is-input" value={kudos.text} onChange={(e) => setKudos({ ...kudos, text: e.target.value })} placeholder={t('For what? e.g. saving the KopiKita invoice')} aria-label={t('For what')} />
+            <input className="is-input" value={kudos.text} onChange={(e) => setKudos({ ...kudos, text: e.target.value })} placeholder={t('For what? e.g. saving the Kopinara invoice')} aria-label={t('For what')} />
           </div>
         </Sheet>
       )}

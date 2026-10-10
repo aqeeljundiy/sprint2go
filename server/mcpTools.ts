@@ -241,7 +241,7 @@ class View {
   /** Whose calendar an event is on: its person, or the owner of the outside calendar it came from. */
   ownerOf(e: Doc): string {
     // Events from before events had a person belong to the first demo seat, as in the app (App.tsx visibleEvents).
-    return e.userId ?? this.docs('calendars').find((c) => c.id === e.calendarId)?.ownerId ?? 'u-aqeel';
+    return e.userId ?? this.docs('calendars').find((c) => c.id === e.calendarId)?.ownerId ?? 'u-raka';
   }
   /** My events in this company as the calendar shows them, and the company's holidays. */
   myEvents(): Doc[] {
@@ -279,7 +279,7 @@ class View {
     const s = lower(q).trim().replace(/^#/, '');
     const hit = list.find((c) => c.id === q) ?? list.find((c) => c.kind === 'channel' && lower(c.name) === s);
     if (hit) return hit;
-    // Several names ("Rizky, Faisal and Nanda"): your group message with exactly those people.
+    // Several names ("Bima, Hendra and Joko"): your group message with exactly those people.
     const names = s.split(/\s*(?:,|&|\band\b|\bdan\b)\s*/).map((x) => x.trim()).filter(Boolean);
     if (names.length > 1) {
       const ids = names.map((n) => this.person(n).id).filter((id) => id !== this.me);
@@ -391,7 +391,7 @@ function threadLine(v: View, t: Doc) {
     ...(t.location !== 'inbox' ? { folder: t.location } : {}),
     messages: (t.messages ?? []).length,
     ...(t.assignee ? { assignee: v.nameOf(t.assignee) } : {}),
-    // Labels by their whole name ("Clients/KopiKita"), and the filter that filed it (server/mailFilters.ts).
+    // Labels by their whole name ("Clients/Kopinara"), and the filter that filed it (server/mailFilters.ts).
     ...(labelsOfThread(v, t).length ? { labels: labelsOfThread(v, t) } : {}),
     ...(t.filed?.length ? { filed_by: t.filed[t.filed.length - 1].scope === 'block' ? 'a blocked sender' : t.filed[t.filed.length - 1].name } : {}),
     snippet: clip(last.body, 140),
@@ -881,7 +881,7 @@ export function registerTools(server: McpServer, deps: ToolDeps, ctx: ToolCtx) {
       title: 'Read a channel',
       description: 'Recent messages in a channel, direct message or group message, oldest first (each with its id and how many replies its thread has), or one thread in full.',
       inputSchema: {
-        channel: z.string().describe('The channel’s id or name (#design), a teammate’s name for your direct messages, or several names ("Rizky, Faisal") for your group message with them'),
+        channel: z.string().describe('The channel’s id or name (#design), a teammate’s name for your direct messages, or several names ("Bima, Hendra") for your group message with them'),
         thread: z.string().optional().describe('A message id: read that message and its thread'),
         before: z.string().optional().describe('Only messages before this time (ISO), to read further back'),
         limit: limit(100, 30),
@@ -1329,7 +1329,7 @@ export function registerTools(server: McpServer, deps: ToolDeps, ctx: ToolCtx) {
       description:
         'Posts a message in a team channel, a direct message with a teammate or a group message you are in, or replies in a thread. Channels with guests (people outside the company) only get a draft: it waits in the channel’s message box in sprint2go for you to check and send.',
       inputSchema: {
-        channel: z.string().describe('The channel’s id or name (#design), a teammate’s name for your direct messages, or several names ("Rizky, Faisal") for your group message with them'),
+        channel: z.string().describe('The channel’s id or name (#design), a teammate’s name for your direct messages, or several names ("Bima, Hendra") for your group message with them'),
         text: z.string().min(1).max(10_000),
         thread: z.string().optional().describe('Reply in the thread of this message id'),
       },

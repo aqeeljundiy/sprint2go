@@ -473,7 +473,7 @@ export function InboxSettings() {
       </div>
 
       <h3>{t('Multiple inboxes')}</h3>
-      <small className="set-hint">{t('Sections above your inbox, each one a search: is:starred, label:finance, from:nadia.')}</small>
+      <small className="set-hint">{t('Sections above your inbox, each one a search: is:starred, label:finance, from:laras.')}</small>
       {prefs.sections.length > 0 && (
         <div className="acct-list">
           {prefs.sections.map((s) => (

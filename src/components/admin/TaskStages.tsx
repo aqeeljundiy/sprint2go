@@ -572,7 +572,7 @@ export function OwnStages({ what, name, own, inherited, inheritedFrom, canManage
   name: string;
   own: TaskStage[] | undefined; // its own list, when it has one
   inherited: TaskStage[]; // what it follows otherwise
-  inheritedFrom: string; // "Pixel & Profits" (or the team's name)
+  inheritedFrom: string; // "sprint2go Studio" (or the team's name)
   canManage: boolean;
   tasks: Todo[]; // its tasks
   teams: Team[];
@@ -583,7 +583,7 @@ export function OwnStages({ what, name, own, inherited, inheritedFrom, canManage
 }) {
   const on = !!own?.length;
   const list = on ? cleanStages(own) : inherited;
-  const whose = phrase(inheritedFrom.endsWith('s') ? '{from}’ stages' : '{from}’s stages', { from: inheritedFrom }); // "Pixel & Profits’ stages" (the history line)
+  const whose = phrase(inheritedFrom.endsWith('s') ? '{from}’ stages' : '{from}’s stages', { from: inheritedFrom }); // "sprint2go Studio’ stages" (the history line)
   const theirs = inheritedFrom.endsWith('s') ? t('{from}’ stages', { from: inheritedFrom }) : t('{from}’s stages', { from: inheritedFrom });
   const followed = fmtList(inherited.map((s) => stageName(s)));
   return (

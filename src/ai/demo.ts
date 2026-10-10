@@ -214,7 +214,7 @@ export interface DumpTask {
   due: string | null; // YYYY-MM-DD
   priority: 'high' | 'normal';
   unknownName?: string | null; // a name in the "who" position that matches nobody: the UI asks "Who is Andi?"
-  contact?: string | null; // a client-side person mentioned ("Dimas at Arunika"), not the assignee
+  contact?: string | null; // a client-side person mentioned ("Yusuf at Teduh"), not the assignee
 }
 export interface DumpBrief {
   title: string;
@@ -241,7 +241,7 @@ const NOT_NAMES = new Set(
 );
 
 /**
- * "KopiKita wants the concepts by Thursday. Rizky, do the ad structure. Andi send the moodboard."
+ * "Kopinara wants the concepts by Thursday. Bima, do the ad structure. Andi send the moodboard."
  * One task per instruction; the client is carried forward; names go through nicknames and learned aliases;
  * an unknown name where a person is expected is flagged (never guessed); teams come from keywords or the person.
  */
@@ -275,7 +275,7 @@ export async function braindump(input: DumpInput): Promise<DumpPlan> {
     const hit = clients.find((cl) => c.includes(lower(cl.name)) || c.includes(lower(cl.name.split(' ')[0])));
     if (hit) client = hit.id;
 
-    // Client contacts: "Dimas at Arunika", "Nadia from KopiKita".
+    // Client contacts: "Yusuf at Teduh", "Laras from Kopinara".
     let contact: string | null = null;
     const atClient = raw.match(/\b([A-Z][a-z]+)\s+(?:at|from)\s+([A-Z][\w]+)/);
     if (atClient && clientWords.has(lower(atClient[2]))) contact = atClient[1];
@@ -425,7 +425,7 @@ export async function meetingNotes(title: string, transcript: { speaker: string;
         .replace(/\s+(by|on|before)\s+(next\s+)?(mon|tues|wednes|thurs|fri|satur|sun)day\b/i, '')
         .replace(/\s+(by\s+)?next week\b/i, '')
         .replace(/[.!]+$/, '');
-      // "Nanda can edit them": borrow what "them" is from the sentence before ("plan three short videos").
+      // "Joko can edit them": borrow what "them" is from the sentence before ("plan three short videos").
       const parts = said.split(/(?<=[.!?])\s+/);
       const prev = parts[parts.indexOf(sentence) - 1];
       if (prev && /\s(them|it|those)$/i.test(t)) t = t.replace(/\s(them|it|those)$/i, ' ' + prev.replace(/[.!?]+$/, '').replace(/^(then\s+)?(let's|let us|we should|we'll)\s+\w+\s+/i, 'the '));

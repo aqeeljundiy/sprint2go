@@ -941,7 +941,7 @@ function VaultEditor({
           <div className="vault-grid">
             <label className="field">
               <span>{t('Name')}</span>
-              <input autoFocus value={title} onChange={(e) => setTitle(e.target.value)} placeholder={t('e.g. {example}', { example: 'KopiKita Meta Business' })} />
+              <input autoFocus value={title} onChange={(e) => setTitle(e.target.value)} placeholder={t('e.g. {example}', { example: 'Kopinara Meta Business' })} />
             </label>
             <label className="field">
               <span>{t('Website')}</span>

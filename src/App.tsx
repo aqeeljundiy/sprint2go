@@ -811,15 +811,15 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       case 'stage':
         return openTasks({ kind: 'mine' });
       case 'ask':
-        return openAsk(has(clients, id('c-kopikita')) ? { kind: 'client', id: id('c-kopikita') } : { kind: 'all' });
+        return openAsk(has(clients, id('c-kopinara')) ? { kind: 'client', id: id('c-kopinara') } : { kind: 'all' });
       case 'guest':
-        return has(clients, id('c-kopikita')) ? openClient(id('c-kopikita'), 'portal') : go(enabled.has('projects') ? 'projects' : 'tasks');
+        return has(clients, id('c-kopinara')) ? openClient(id('c-kopinara'), 'portal') : go(enabled.has('projects') ? 'projects' : 'tasks');
       case 'voice':
-        return openChannel(has(channels, id('dm-aqeel-rizky')) ? id('dm-aqeel-rizky') : (wsChannels[0]?.id ?? ''));
+        return openChannel(has(channels, id('dm-raka-bima')) ? id('dm-raka-bima') : (wsChannels[0]?.id ?? ''));
       case 'event':
         return (go('calendar'), openNewEvent());
       case 'meeting':
-        return has(meetings, id('mt-kopikita')) ? openMeeting(id('mt-kopikita')) : go('meet');
+        return has(meetings, id('mt-kopinara')) ? openMeeting(id('mt-kopinara')) : go('meet');
     }
   };
 
@@ -1865,7 +1865,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     return phrase('“{title}”', { title });
   };
 
-  /** A task's first history line: "created this from an email for Dewi", in each reader's language. */
+  /** A task's first history line: "created this from an email for Intan", in each reader's language. */
   const createdLine = (from: Todo['source'] | 'note', forName: string) => {
     const src = { note: 'a note', ai: 'an email', manual: '', braindump: 'a brain dump', chat: 'chat', meeting: 'a meeting', request: 'a request', import: 'an import' }[from];
     if (src && forName) return msg('created this from {source} for {name}', { source: phrase(src), name: forName });
@@ -1893,7 +1893,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       checklist?: Todo['checklist'];
       repeat?: Todo['repeat'];
       noteId?: string;
-      assignees?: string[]; // everyone doing it (Quick Add's "+dewi +rizky"); userId is the first
+      assignees?: string[]; // everyone doing it (Quick Add's "+intan +bima"); userId is the first
       remindAt?: string;
       status?: TaskStatus;
       notes?: string;
@@ -2566,7 +2566,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       return myNear.some((e) => !e.allDay && new Date(e.start).toISOString() <= now && new Date(e.end).toISOString() > now) ? 'meeting' : 'active';
     }
     if (statuses[id]?.emoji === '🗓️') return 'meeting';
-    return id === 'u-dewi' || id === 'u-bayu' ? 'away' : 'active';
+    return id === 'u-intan' || id === 'u-tomas' ? 'away' : 'active';
   };
 
   /** Files shared in chat are saved to Drive, filed under the channel's client. */
@@ -2968,11 +2968,11 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     const mine = events.filter((e) => {
       if (hiddenCals.has(e.calendarId)) return false;
       if (e.feed === 'holidays') return e.workspaceId === ws.id && holidays.showCompany; // the company's, unless they chose other countries
-      return (e.userId ?? 'u-aqeel') === user.id && (extIds.has(e.calendarId) ? myExtCals.some((c) => c.id === e.calendarId) : (e.workspaceId ?? 'pnp') === ws.id);
+      return (e.userId ?? 'u-raka') === user.id && (extIds.has(e.calendarId) ? myExtCals.some((c) => c.id === e.calendarId) : (e.workspaceId ?? 'pnp') === ws.id);
     });
     const mates = events.flatMap((e) => {
       if (e.feed === 'holidays') return [];
-      const owner = e.userId ?? 'u-aqeel';
+      const owner = e.userId ?? 'u-raka';
       if (owner === user.id || !shownMates.has(owner)) return [];
       const ext = extCals.find((c) => c.id === e.calendarId);
       if (!ext && (e.workspaceId ?? 'pnp') !== ws.id) return [];
@@ -3239,13 +3239,13 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     const last = related.map((r) => r.inv.answer).filter((a) => !!a).sort((a, b) => b!.at.localeCompare(a!.at))[0];
     // A shared inbox answers as the mailbox: say who did.
     const answer = last && { status: last.status, sent: last.sent, who: last.by === user.id ? undefined : firstOf(last.by) };
-    const mine = events.some((e) => e.inviteUid === inv.uid && (e.userId ?? 'u-aqeel') === user.id);
+    const mine = events.some((e) => e.inviteUid === inv.uid && (e.userId ?? 'u-raka') === user.id);
     return { answer, onCalendar: mine, cancelled, newer: newer && newer.t.id !== t.id ? () => openThread(newer.t.id) : undefined };
   };
   /** Opens the calendar on this invite's next date. */
   const showInvite = (uid: string, start: string) => {
     const now = Date.now();
-    const mine = events.filter((e) => e.inviteUid === uid && (e.userId ?? 'u-aqeel') === user.id);
+    const mine = events.filter((e) => e.inviteUid === uid && (e.userId ?? 'u-raka') === user.id);
     // A repeating one: its next date.
     const dates = expandEvents(mine, now - 86_400_000, now + 400 * 86_400_000).sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime());
     const ev = dates.find((e) => new Date(e.end).getTime() >= now) ?? findEvent(mine, mine[0]?.id);
@@ -3284,7 +3284,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     }
     // The demo (no server, or the demo company): answered here, and nothing is sent.
     const at = nowIso();
-    const mineNow = (e: CalEvent) => e.inviteUid === inv.uid && (e.userId ?? 'u-aqeel') === user.id;
+    const mineNow = (e: CalEvent) => e.inviteUid === inv.uid && (e.userId ?? 'u-raka') === user.id;
     const made = (rsvp?: RsvpStatus): CalEvent => ({ id: uid(), title: inv.title, calendarId: 'work', ...inviteCalendarTimes(inv, inv.allDay), allDay: inv.allDay, location: inv.location, meetUrl: inv.url, guests: [...(inv.organizer ? [inv.organizer] : []), ...inv.attendees].filter((g, i, all) => !isMine(g.email) && all.findIndex((x) => x.email === g.email) === i).map((g) => ({ name: g.name, email: g.email })), threadId: th.id, workspaceId: ws.id, userId: user.id, inviteUid: inv.uid, sequence: inv.sequence, ...(rsvp ? { rsvp } : {}), organizer: inv.organizer, ...inviteSeries(inv) });
     if (only && only.scope !== 'all' && inv.rrule) {
       // Some dates of a repeating invite: the series is on the calendar, with this answer for those dates.

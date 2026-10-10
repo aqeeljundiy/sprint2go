@@ -23,7 +23,7 @@ export const seed = () => ({
   channels: CHANNELS,
   messages: MESSAGES,
   notices: NOTICES,
-  statuses: { 'u-nanda': { emoji: '🎬', text: 'Editing, slow to reply' }, 'u-faisal': { emoji: '🗓️', text: 'In client meetings till 3pm' } } as Record<string, Status>,
+  statuses: { 'u-joko': { emoji: '🎬', text: 'Editing, slow to reply' }, 'u-hendra': { emoji: '🗓️', text: 'In client meetings till 3pm' } } as Record<string, Status>,
   meetings: MEETINGS,
   templates: [] as TaskTemplate[], // templates a company saved for itself
   notes: NOTES,

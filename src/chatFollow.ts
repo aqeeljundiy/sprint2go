@@ -7,7 +7,7 @@ type Root = Pick<ChatMessage, 'userId' | 'text'> & { follow?: Record<string, boo
 type Reply = Pick<ChatMessage, 'userId' | 'text'>;
 
 const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-/** "@Rizky" in a message, by first name (how the composer writes a mention). */
+/** "@Bima" in a message, by first name (how the composer writes a mention). */
 export const mentions = (text: string | undefined, first: string) => !!first && !!text && new RegExp(`@${esc(first)}\\b`, 'i').test(text);
 
 /**

@@ -148,13 +148,13 @@ try {
   // The company's labels (server/mailFilters.ts): every mailbox in it has them, so they're folders in every mail app.
   ['Clients', 'Team', 'Infra', 'Finance'].forEach((name, i) => put('mailLabels', { id: name.toLowerCase(), workspaceId: 'w-acme', accountId: null, name, parentId: null, color: '#10b981', show: 'show', order: i }));
   const m = (id, from, to, body, at, mid, extra = {}) => ({ id, from, to, date: at, body, mid, ...extra });
-  const nadia = { name: 'Nadia Client', email: 'nadia@client.test' };
+  const laras = { name: 'Laras Client', email: 'laras@client.test' };
   const aliceP = { name: 'Alice Martin', email: 'alice@acme.test' };
-  put('threads', { id: 'th-launch', accountId: 'a-alice', workspaceId: 'w-acme', subject: 'Banana launch dates', location: 'inbox', starred: false, unread: true, labels: [], messages: [m('tm-1', nadia, [aliceP], 'Can we move the banana launch to Friday?', ago(120), '<launch1@client.test>'), m('tm-2', aliceP, [nadia], 'Friday works for us.', ago(90), '<launch2@acme.test>'), m('tm-3', nadia, [aliceP], 'Great, Friday it is. Mango posters too?', ago(60), '<launch3@client.test>')] });
+  put('threads', { id: 'th-launch', accountId: 'a-alice', workspaceId: 'w-acme', subject: 'Banana launch dates', location: 'inbox', starred: false, unread: true, labels: [], messages: [m('tm-1', laras, [aliceP], 'Can we move the banana launch to Friday?', ago(120), '<launch1@client.test>'), m('tm-2', aliceP, [laras], 'Friday works for us.', ago(90), '<launch2@acme.test>'), m('tm-3', laras, [aliceP], 'Great, Friday it is. Mango posters too?', ago(60), '<launch3@client.test>')] });
   put('threads', { id: 'th-invoice', accountId: 'a-alice', workspaceId: 'w-acme', subject: 'Invoice 42', location: 'inbox', starred: false, unread: false, labels: ['finance'], messages: [m('tm-4', { name: 'Billing', email: 'billing@vendor.test' }, [aliceP], 'Your invoice 42 is attached.', ago(300), '<inv42@vendor.test>', { html: '<p>Your <b>invoice 42</b> is attached.</p>' })] });
-  put('threads', { id: 'th-done', accountId: 'a-alice', workspaceId: 'w-acme', subject: 'Old kiwi thread', location: 'archive', starred: false, unread: false, labels: [], messages: [m('tm-5', nadia, [aliceP], 'Kiwi notes from last month', ago(5000), '<kiwi@client.test>')] });
+  put('threads', { id: 'th-done', accountId: 'a-alice', workspaceId: 'w-acme', subject: 'Old kiwi thread', location: 'archive', starred: false, unread: false, labels: [], messages: [m('tm-5', laras, [aliceP], 'Kiwi notes from last month', ago(5000), '<kiwi@client.test>')] });
   put('threads', { id: 'th-hello', accountId: 'a-hello', workspaceId: 'w-acme', subject: 'Do you ship to Bali?', location: 'inbox', starred: false, unread: true, labels: [], messages: [m('tm-6', { name: 'Visitor', email: 'visitor@else.test' }, [{ name: 'Acme', email: 'hello@acme.test' }], 'Do you ship papaya to Bali?', ago(30), '<bali@else.test>')] });
-  put('threads', { id: 'th-carol', accountId: 'a-carol', workspaceId: 'w-acme', subject: 'Carol only', location: 'inbox', starred: false, unread: true, labels: [], messages: [m('tm-7', nadia, [{ name: 'Carol', email: 'carol@acme.test' }], 'Just for Carol', ago(20), '<carol@client.test>')] });
+  put('threads', { id: 'th-carol', accountId: 'a-carol', workspaceId: 'w-acme', subject: 'Carol only', location: 'inbox', starred: false, unread: true, labels: [], messages: [m('tm-7', laras, [{ name: 'Carol', email: 'carol@acme.test' }], 'Just for Carol', ago(20), '<carol@client.test>')] });
 
   /* ---------- the app: signing in, and Settings, Phone mail apps ---------- */
   const signIn = async (email) => {
@@ -284,7 +284,7 @@ try {
   const older = launch.find((x) => x.envelope.messageId === '<launch1@client.test>');
   check(launch.length === 2 && !lead.flags.has('\\Seen') && older.flags.has('\\Seen'), 'an unread conversation: its newest incoming message is unseen, the older ones are read');
   check(older.flags.has('\\Answered') && !lead.flags.has('\\Answered'), 'a message she answered is \\Answered');
-  check(lead.envelope.from?.[0]?.address === 'nadia@client.test' && lead.envelope.inReplyTo === '<launch2@acme.test>', 'ENVELOPE: sender, subject, Message-ID and In-Reply-To');
+  check(lead.envelope.from?.[0]?.address === 'laras@client.test' && lead.envelope.inReplyTo === '<launch2@acme.test>', 'ENVELOPE: sender, subject, Message-ID and In-Reply-To');
   const invoice = msgs.find((x) => x.envelope.subject === 'Invoice 42');
   check(invoice.bodyStructure?.type === 'multipart/alternative' && invoice.bodyStructure.childNodes?.length === 2, 'BODYSTRUCTURE of a rebuilt HTML message (text and HTML alternatives)');
   const full = await a1.fetchOne(String(invoice.uid), { source: true, size: true }, { uid: true });
@@ -300,8 +300,8 @@ try {
   check(/^Subject: Invoice 42/im.test(head.headers.toString()) && !/^Date:/im.test(head.headers.toString()), 'BODY.PEEK[HEADER.FIELDS (SUBJECT FROM)] gives just those');
   const peeked = doc('threads', 'th-launch');
   check(peeked.unread === true, 'fetching with PEEK leaves it unread');
-  const hits = await a1.search({ from: 'nadia', seen: false }, { uid: true });
-  check(hits.length === 1 && hits[0] === lead.uid, 'SEARCH FROM nadia UNSEEN finds the unread one');
+  const hits = await a1.search({ from: 'laras', seen: false }, { uid: true });
+  check(hits.length === 1 && hits[0] === lead.uid, 'SEARCH FROM laras UNSEEN finds the unread one');
   const textHits = await a1.search({ body: 'mango posters' }, { uid: true });
   check(textHits.length === 1 && textHits[0] === lead.uid, 'SEARCH BODY finds words in the message');
 
@@ -351,7 +351,7 @@ try {
   check(!!snoozedThread && snoozedThread.snoozedUntil > now(), 'MOVE to Snoozed snoozes it until tomorrow morning');
 
   /* ---------- 4. drafts and APPEND ---------- */
-  const draftRaw = Buffer.from(['From: Alice Martin <alice@acme.test>', 'To: Nadia Client <nadia@client.test>', 'Subject: Draft about guava', 'Message-ID: <draft1@acme.test>', 'Date: ' + new Date().toUTCString(), 'MIME-Version: 1.0', 'Content-Type: text/plain; charset=utf-8', '', 'Thinking about guava.', ''].join('\r\n'));
+  const draftRaw = Buffer.from(['From: Alice Martin <alice@acme.test>', 'To: Laras Client <laras@client.test>', 'Subject: Draft about guava', 'Message-ID: <draft1@acme.test>', 'Date: ' + new Date().toUTCString(), 'MIME-Version: 1.0', 'Content-Type: text/plain; charset=utf-8', '', 'Thinking about guava.', ''].join('\r\n'));
   const appended = await a1.append('Drafts', draftRaw, ['\\Draft', '\\Seen']);
   const draftThread = await waitFor(() => db.prepare("SELECT data FROM docs WHERE coll = 'threads' AND data LIKE '%Draft about guava%'").all().map((r) => JSON.parse(r.data))[0]);
   check(!!appended?.uid && !!draftThread && draftThread.location === 'drafts' && draftThread.accountId === 'a-alice' && draftThread.messages[0].body === 'Thinking about guava.', 'APPEND to Drafts makes a draft in sprint2go (with APPENDUID)');
@@ -373,7 +373,7 @@ try {
   await sleep(300);
   const smtpIn = nodemailer.createTransport({ host: '127.0.0.1', port: smtpPort, secure: false, tls: { rejectUnauthorized: false } });
   const sentAt = Date.now();
-  await smtpIn.sendMail({ from: 'Rizky <rizky@outside.test>', to: 'alice@acme.test', subject: 'Fresh papaya news', text: 'Papaya arrives tomorrow.', messageId: '<papaya@outside.test>' });
+  await smtpIn.sendMail({ from: 'Bima <bima@outside.test>', to: 'alice@acme.test', subject: 'Fresh papaya news', text: 'Papaya arrives tomorrow.', messageId: '<papaya@outside.test>' });
   const exists = await waitFor(() => woke, 8000);
   check(!!exists && exists.count >= 1, `IDLE: the mail app hears about new mail within moments (${exists ? Date.now() - sentAt : '-'} ms)`);
   const fresh = await a2.fetchOne('*', { source: true, envelope: true });
@@ -407,7 +407,7 @@ try {
   for await (const x of a1.fetch('1:*', { envelope: true, uid: true })) sentAgain.push(x);
   check(sentAgain.filter((x) => x.envelope.messageId === '<guava-1@acme.test>').length === 1 && dupe?.uid === guava[0].uid, 'appending the same sent mail to Sent doesn’t make a second copy');
   // A reply sent from the mail app lands in its conversation.
-  const reply = await submit('alice@acme.test', made.password).sendMail({ from: 'alice@acme.test', to: 'rizky@outside.test', subject: 'Re: Fresh papaya news', text: 'Thanks!', inReplyTo: '<papaya@outside.test>', references: ['<papaya@outside.test>'] }).then((r) => r, (e) => e);
+  const reply = await submit('alice@acme.test', made.password).sendMail({ from: 'alice@acme.test', to: 'bima@outside.test', subject: 'Re: Fresh papaya news', text: 'Thanks!', inReplyTo: '<papaya@outside.test>', references: ['<papaya@outside.test>'] }).then((r) => r, (e) => e);
   const papaya = await waitFor(() => db.prepare("SELECT data FROM docs WHERE coll = 'threads' AND data LIKE '%Fresh papaya news%'").all().map((r) => JSON.parse(r.data)).find((x) => x.accountId === 'a-alice' && x.messages.length === 2));
   check(!!reply.accepted?.length && !!papaya, 'a reply from the mail app joins its conversation in sprint2go');
   // Only her own addresses.

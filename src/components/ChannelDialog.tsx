@@ -158,7 +158,7 @@ export function ChannelDialog({ channel, users, clients, teams, me, canManage, g
                 <span>{t('Name')}</span>
                 <div className="chan-name">
                   <Hash size={15} />
-                  <input autoFocus={!editing} value={name} onChange={(e) => setName(slug(e.target.value))} placeholder={t('e.g. glowkind-launch')} maxLength={60} />
+                  <input autoFocus={!editing} value={name} onChange={(e) => setName(slug(e.target.value))} placeholder={t('e.g. brightleaf-launch')} maxLength={60} />
                 </div>
               </label>
               <label className="field">

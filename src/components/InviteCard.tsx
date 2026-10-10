@@ -51,7 +51,7 @@ export function describeRepeat(rrule: string, start: string, tz?: string): strin
 /** A guest's answer, on the guest list. */
 const statusWord = (s: InviteGuest['status']) =>
   s === 'accepted' ? t('Going') : s === 'tentative' ? t('Maybe') : s === 'declined' ? t('Not going') : s === 'delegated' ? t('Sent someone else') : t('No answer yet');
-/** "You said yes", "Dewi said maybe" (a teammate answered on a shared inbox). */
+/** "You said yes", "Intan said maybe" (a teammate answered on a shared inbox). */
 const saidWords = (s: RsvpStatus, who?: string) =>
   who
     ? s === 'accepted'

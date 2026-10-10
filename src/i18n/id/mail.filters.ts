@@ -70,7 +70,7 @@ const id: Record<string, string> = {
   'Every mailbox in the company': 'Semua kotak surat di perusahaan',
   'To or Cc': 'Kepada atau Cc',
   'An address, a domain or a name': 'Alamat, domain, atau nama',
-  'nadia@kopikita.id, @dokploy.com, *@bank.co.id': 'nadia@kopikita.id, @dokploy.com, *@bank.co.id',
+  'laras@kopinara.example, @dokploy.com, *@bank.co.id': 'laras@kopinara.example, @dokploy.com, *@bank.co.id',
   'Has the words': 'Berisi kata',
   'invoice OR receipt, “purchase order”': 'tagihan OR kuitansi, “purchase order”',
   'Larger than': 'Lebih besar dari',

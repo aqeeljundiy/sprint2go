@@ -70,7 +70,7 @@ export function Notifications({ notices, onOpen, onReadAll, onClose }: Props) {
   );
 }
 
-/** Who a notification is from: the person it names first ("Faisal assigned you…"), when that's someone here. */
+/** Who a notification is from: the person it names first ("Hendra assigned you…"), when that's someone here. */
 function actorOf(n: Notice, users: User[]): User | undefined {
   const v = n.tr?.vars ?? {};
   const named = [v.name, v.who, v.by].find((x): x is string => typeof x === 'string');

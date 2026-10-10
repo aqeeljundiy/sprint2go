@@ -68,14 +68,14 @@ const RESERVED = new Set(LOCATION_FOLDERS.flatMap((f) => [f.top.toLowerCase(), f
 
 /** The labels a mailbox has (its own and the company's: server/mailFilters.ts), read once per call. */
 export const labelsOf = (mb: Pick<Mailbox, 'id' | 'wsId'>, all = db.allDocs('mailLabels') as unknown as MailLabel[]) => labelsFor(all, mb.wsId, mb.id);
-/** A label's folder name: its path ("Clients/KopiKita"), with a top level that would clash with a place renamed. */
+/** A label's folder name: its path ("Clients/Kopinara"), with a top level that would clash with a place renamed. */
 export function labelFolderName(l: MailLabel, all: MailLabel[]) {
   const path = labelPath(l, all);
   const [top, ...rest] = path.split('/');
   return [RESERVED.has(top.toLowerCase()) ? `Label ${top}` : top, ...rest].join('/');
 }
 
-/** Every folder of these mailboxes, in the order mail apps list them. Labels nest with "/" (Clients/KopiKita). */
+/** Every folder of these mailboxes, in the order mail apps list them. Labels nest with "/" (Clients/Kopinara). */
 export function foldersOf(mailboxes: Mailbox[]): Folder[] {
   const out: Folder[] = [];
   const all = db.allDocs('mailLabels') as unknown as MailLabel[];
@@ -306,7 +306,7 @@ export interface Writer {
 
 /* ---------- label folders made, renamed and deleted from a mail app ---------- */
 
-/** Which mailbox a new folder name belongs to, and its path inside it ("Clients/KopiKita"). */
+/** Which mailbox a new folder name belongs to, and its path inside it ("Clients/Kopinara"). */
 function placeOf(name: string, mailboxes: Mailbox[]): { mb: Mailbox; parts: string[] } | null {
   const other = mailboxes.find((m) => !m.primary && name.toLowerCase().startsWith(`${m.email.toLowerCase()}/`));
   const mb = other ?? mailboxes.find((m) => m.primary);

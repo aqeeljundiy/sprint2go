@@ -88,7 +88,7 @@ export function useMailOrganize(o: OrganizeOpts) {
   const quickLabel = (name: string, accountId: string | null): MailLabel | null => {
     const clean = name.trim().replace(/\s*\/\s*/g, '/');
     if (!clean) return null;
-    // "Clients/KopiKita" nests under Clients (made too when it isn't there).
+    // "Clients/Kopinara" nests under Clients (made too when it isn't there).
     let parent: MailLabel | null = null;
     const made: MailLabel[] = [];
     for (const part of clean.split('/').filter(Boolean)) {

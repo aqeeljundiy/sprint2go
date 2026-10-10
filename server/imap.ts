@@ -753,7 +753,7 @@ class Session {
     const folders = this.folders();
     const parents = [...new Set(folders.filter((f) => !f.mailbox.primary).map((f) => f.mailbox.email))];
     const rows: { name: string; attrs: string[] }[] = [
-      // Nested labels (Clients/KopiKita): a folder with folders under it says so.
+      // Nested labels (Clients/Kopinara): a folder with folders under it says so.
       ...folders.map((f) => ({ name: f.name, attrs: [folders.some((x) => x.name.startsWith(`${f.name}/`)) ? '\\HasChildren' : '\\HasNoChildren', ...(f.special ? [f.special] : []), ...(cmd.name === 'XLIST' && f.name === 'INBOX' ? ['\\Inbox'] : [])] })),
       ...parents.map((p) => ({ name: p, attrs: ['\\Noselect', '\\HasChildren'] })),
     ];
@@ -1171,7 +1171,7 @@ class Session {
           return (c) => day(hitOf(c)?.m.date ?? '') >= d;
         }
         case 'X-GM-RAW': {
-          // Gmail's search operators, as in the app (src/mailQuery.ts): X-GM-RAW "from:nadia has:attachment".
+          // Gmail's search operators, as in the app (src/mailQuery.ts): X-GM-RAW "from:laras has:attachment".
           // The folder is already chosen, so Spam and Trash aren't left out here.
           const qn = parseQuery(utf8Of(arg()) ?? '');
           return (c) => {

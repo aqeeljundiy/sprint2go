@@ -38,7 +38,7 @@ const repeats = (): [Repeat | '', string][] => [
 ];
 
 /**
- * Quick Add: one field that reads the task as it's typed ("Send invoice tomorrow 3pm #kopi +dewi p1") and shows what it
+ * Quick Add: one field that reads the task as it's typed ("Send invoice tomorrow 3pm #kopi +intan p1") and shows what it
  * understood twice, highlighted in the text and as chips. Tap a highlight to keep those words as words; tap a chip to
  * change it. After adding it stays open in the same project and stage for the next one. On phones it's a sheet on top
  * of the keyboard that opens with just the field; on desktop it opens in place above the list.
@@ -142,7 +142,7 @@ export function QuickAdd({ ops, defaults, mode, onClose, where, inputRef }: { op
     const id = ops.add(input);
     const who = assignees.filter((x) => x !== ops.me).map((x) => ops.users.find((u) => u.id === x)?.name.split(' ')[0]).filter(Boolean);
     const c = ops.clients.find((x) => x.id === clientId);
-    // "Added “Send invoice” to Kopi Harian, due tomorrow, for Dewi": the sentence, then each detail on its own.
+    // "Added “Send invoice” to Lereng Coffee, due tomorrow, for Intan": the sentence, then each detail on its own.
     const where = c && c.id !== defaults.clientId ? t('to {name}', { name: c.name }) : !assignees.length && defaults.teamId ? t('to the team’s queue') : '';
     const bits = [due && due !== defaults.due ? t('due {day}', { day: dayWords(due, ops.today) }) : '', who.length ? t('for {names}', { names: fmtList(who as string[]) }) : ''].filter(Boolean);
     toastAdded([[t('Added {title}', { title: quoted(title) }), where].filter(Boolean).join(' '), ...bits].join(', '), () => ops.remove([id], true), () => ops.open(id));

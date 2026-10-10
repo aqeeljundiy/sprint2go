@@ -29,72 +29,72 @@ export const trialPlan = (company: string, email: string): Plan => ({
 
 export const defaultAI = (own: boolean): AISettings => ({ payer: own ? 'own' : 'sprint2go', providers: [], preset: 'balanced', jobs: {}, auto: { meetingNotes: true, emailTodos: true, digests: false }, blocked: [], alerts: true });
 
-/** P&P's four-square pixel mark. */
+/** The demo studio's made-up mark: two sprint bars on ink. */
 const PNP_LOGO = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(
-  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="#111111"/><rect x="16" y="16" width="14" height="14" rx="2" fill="#83B271"/><rect x="34" y="16" width="14" height="14" rx="2" fill="#EE6351"/><rect x="16" y="34" width="14" height="14" rx="2" fill="#EE6351"/><rect x="34" y="34" width="14" height="14" rx="2" fill="#83B271"/></svg>`,
+  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="#1f2937"/><rect x="14" y="20" width="36" height="9" rx="4.5" fill="#f97316"/><rect x="14" y="35" width="24" height="9" rx="4.5" fill="#fdba74"/></svg>`,
 )}`;
 
 export const USERS: User[] = [
-  { id: 'u-aqeel', name: 'Aqeel', email: 'aqeel@pixelandprofits.com', title: 'COO · Pixel & Profits', color: '#5b5bf6' },
-  { id: 'u-rizky', name: 'Rizky Pratama', email: 'rizky@pixelandprofits.com', title: 'Performance Marketer', color: '#10b981', nicknames: ['Kiki'] },
-  { id: 'u-faisal', name: 'Faisal Tirtonady', email: 'faisal@pixelandprofits.com', title: 'CEO · Pixel & Profits', color: '#f59e0b', nicknames: ['Ical'] },
-  { id: 'u-aditya', name: 'Aditya Aisar', email: 'aditya@pixelandprofits.com', title: 'Co-Founder · Pixel & Profits', color: '#0ea5e9', nicknames: ['Adit'] },
-  { id: 'u-nanda', name: 'Nanda Putra', email: 'nanda@pixelandprofits.com', title: 'Video Editor', color: '#f97316' },
-  { id: 'u-sekar', name: 'Sekar Ayu', email: 'sekar@pixelandprofits.com', title: 'Graphic Designer', color: '#8b5cf6' },
-  { id: 'u-dewi', name: 'Dewi Lestari', email: 'dewi@pixelandprofits.com', title: 'Finance & Ops', color: '#d946ef' },
-  { id: 'u-dimas', name: 'Dimas Prakoso', email: 'dimas@elkiyagroup.com', title: 'Brand Manager', color: '#14b8a6' },
-  { id: 'u-bayu', name: 'Bayu Saputra', email: 'bayu@elkiyagroup.com', title: 'Web & Systems', color: '#ef4444' },
+  { id: 'u-raka', name: 'Raka Hartono', email: 'raka@demo.sprint2go.com', title: 'COO · sprint2go Studio', color: '#6366f1' },
+  { id: 'u-bima', name: 'Bima Anggara', email: 'bima@demo.sprint2go.com', title: 'Performance Marketer', color: '#059669', nicknames: ['Bim'] },
+  { id: 'u-hendra', name: 'Hendra Wijaya', email: 'hendra@demo.sprint2go.com', title: 'CEO · sprint2go Studio', color: '#d97706', nicknames: ['Hen'] },
+  { id: 'u-sofia', name: 'Sofia Ramadhani', email: 'sofia@demo.sprint2go.com', title: 'Head of Accounts', color: '#0284c7', nicknames: ['Sofi'] },
+  { id: 'u-joko', name: 'Joko Prasetyo', email: 'joko@demo.sprint2go.com', title: 'Video Editor', color: '#ea580c' },
+  { id: 'u-emma', name: 'Emma Larsen', email: 'emma@demo.sprint2go.com', title: 'Graphic Designer', color: '#7c3aed' },
+  { id: 'u-intan', name: 'Intan Kusnadi', email: 'intan@demo.sprint2go.com', title: 'Finance & Ops', color: '#c026d3' },
+  { id: 'u-yusuf', name: 'Yusuf Halim', email: 'yusuf@rimbagroup.example', title: 'Brand Manager', color: '#0d9488' },
+  { id: 'u-tomas', name: 'Tomas Reyes', email: 'tomas@rimbagroup.example', title: 'Web & Systems', color: '#dc2626' },
 ];
 
 /** People signed in on this device when the demo first opens. */
-export const SIGNED_IN_DEFAULT = ['u-aqeel', 'u-rizky'];
+export const SIGNED_IN_DEFAULT = ['u-raka', 'u-bima'];
 
-/** Elkiya's diamond on Elkiya blue. */
-const ELKIYA_LOGO = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(
-  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2f7bff"/><stop offset="1" stop-color="#0158cb"/></linearGradient></defs><rect width="64" height="64" rx="16" fill="url(#g)"/><path d="M32 12 52 32 32 52 12 32Z" fill="none" stroke="#fff" stroke-width="4.2" stroke-linejoin="round"/><path d="M32 25 39 32 32 39 25 32Z" fill="#fff"/></svg>`,
+/** Rimba Group's made-up mark: a leaf on forest green. */
+const RIMBA_LOGO = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(
+  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="16" fill="#166534"/><path d="M18 46C18 28 30 17 47 17C47 35 36 46 18 46Z" fill="#bbf7d0"/><path d="M21 43 38 26" stroke="#166534" stroke-width="3" stroke-linecap="round"/></svg>`,
 )}`;
 
 export const WORKSPACES: Workspace[] = [
   {
     id: 'elk',
-    name: 'Elkiya Group',
-    color: '#0158cb',
-    logo: ELKIYA_LOGO,
-    domains: ['elkiyagroup.com'],
+    name: 'Rimba Group',
+    color: '#166534',
+    logo: RIMBA_LOGO,
+    domains: ['rimbagroup.example'],
     members: [
-      { userId: 'u-aqeel', role: 'owner' },
-      { userId: 'u-dimas', role: 'member' },
-      { userId: 'u-bayu', role: 'admin' },
+      { userId: 'u-raka', role: 'owner' },
+      { userId: 'u-yusuf', role: 'member' },
+      { userId: 'u-tomas', role: 'admin' },
     ],
     emailSetup: 'hosted',
     holidays: { country: 'ID' },
-    plan: { ...trialPlan('Elkiya Group', 'aqeel@elkiyagroup.com'), trialEnds: days(9), since: days(-5) },
+    plan: { ...trialPlan('Rimba Group', 'raka@rimbagroup.example'), trialEnds: days(9), since: days(-5) },
     ai: defaultAI(false),
     meetings: DEFAULT_MEETINGS,
     storage: { askOver: 500 },
     accounts: [
-      { id: 'elk-dimas', email: 'dimas@elkiyagroup.com', name: 'Dimas Prakoso', kind: 'personal', connected: true, users: ['u-dimas'] },
-      { id: 'elk-bayu', email: 'bayu@elkiyagroup.com', name: 'Bayu Saputra', kind: 'personal', connected: true, users: ['u-bayu'] },
-      { id: 'elk-aqeel', email: 'aqeel@elkiyagroup.com', name: 'Aqeel', kind: 'personal', connected: true, users: ['u-aqeel'] },
-      { id: 'elk-connect', email: 'connect@elkiyagroup.com', name: 'Elkiya Group', kind: 'shared', connected: true, users: ['u-aqeel'] },
+      { id: 'elk-yusuf', email: 'yusuf@rimbagroup.example', name: 'Yusuf Halim', kind: 'personal', connected: true, users: ['u-yusuf'] },
+      { id: 'elk-tomas', email: 'tomas@rimbagroup.example', name: 'Tomas Reyes', kind: 'personal', connected: true, users: ['u-tomas'] },
+      { id: 'elk-raka', email: 'raka@rimbagroup.example', name: 'Raka', kind: 'personal', connected: true, users: ['u-raka'] },
+      { id: 'elk-connect', email: 'connect@rimbagroup.example', name: 'Rimba Group', kind: 'shared', connected: true, users: ['u-raka'] },
     ],
   },
   {
     id: 'pnp',
-    name: 'Pixel & Profits',
-    color: '#EE6351',
+    name: 'sprint2go Studio',
+    color: '#f97316',
     logo: PNP_LOGO,
-    domains: ['pixelandprofits.com'],
+    domains: ['demo.sprint2go.com'],
     members: [
-      { userId: 'u-aqeel', role: 'owner' },
-      { userId: 'u-faisal', role: 'owner' },
-      { userId: 'u-aditya', role: 'admin' },
-      { userId: 'u-rizky', role: 'member' },
-      { userId: 'u-dewi', role: 'member' },
-      { userId: 'u-nanda', role: 'member' },
-      { userId: 'u-sekar', role: 'member' },
+      { userId: 'u-raka', role: 'owner' },
+      { userId: 'u-hendra', role: 'owner' },
+      { userId: 'u-sofia', role: 'admin' },
+      { userId: 'u-bima', role: 'member' },
+      { userId: 'u-intan', role: 'member' },
+      { userId: 'u-joko', role: 'member' },
+      { userId: 'u-emma', role: 'member' },
     ],
-    // Pixel & Profits keeps its domain on Google Workspace and moves some people to Sprint2go.
+    // sprint2go Studio keeps its domain on Google Workspace and moves some people to Sprint2go.
     emailSetup: 'mix',
     holidays: { country: 'ID' },
     plan: {
@@ -103,14 +103,14 @@ export const WORKSPACES: Workspace[] = [
       cycle: 'monthly',
       addons: { mailboxes: 2, storage50: 0, meetHours10: 1, branding: false },
       payment: { method: 'va', label: 'BCA virtual account' },
-      billing: { company: 'Pixel & Profits', npwp: '', address: 'Jakarta Selatan', emails: ['dewi@pixelandprofits.com', 'aqeel@pixelandprofits.com'] },
+      billing: { company: 'sprint2go Studio', npwp: '', address: 'Jakarta Selatan', emails: ['intan@demo.sprint2go.com', 'raka@demo.sprint2go.com'] },
       since: '2026-07-01T00:00:00.000Z',
     },
     ai: {
       payer: 'own',
       providers: [
-        { id: 'sumopod', keyLast4: '9F2a', addedAt: '2026-10-01T03:00:00.000Z', addedBy: 'u-aqeel', status: 'ok', capUsd: 25, spentUsd: 4.1 },
-        { id: 'anthropic', keyLast4: 'x7Qe', addedAt: '2026-10-02T03:00:00.000Z', addedBy: 'u-faisal', status: 'ok', capUsd: 40, spentUsd: 6.8 },
+        { id: 'sumopod', keyLast4: '9F2a', addedAt: '2026-10-01T03:00:00.000Z', addedBy: 'u-raka', status: 'ok', capUsd: 25, spentUsd: 4.1 },
+        { id: 'anthropic', keyLast4: 'x7Qe', addedAt: '2026-10-02T03:00:00.000Z', addedBy: 'u-hendra', status: 'ok', capUsd: 40, spentUsd: 6.8 },
       ],
       preset: 'custom',
       jobs: {
@@ -130,22 +130,22 @@ export const WORKSPACES: Workspace[] = [
       blocked: [],
       alerts: true,
     },
-    meetings: { ...DEFAULT_MEETINGS, shareNotesWithClient: true, botName: 'P&P Notetaker' },
+    meetings: { ...DEFAULT_MEETINGS, shareNotesWithClient: true, botName: 'Studio Notetaker' },
     meetingRules: [
-      { id: 'r1', kind: 'domain', value: 'kopikita.co.id', clientId: 'c-kopikita' },
-      { id: 'r2', kind: 'keyword', value: 'Lumina', clientId: 'c-lumina' },
-      { id: 'r3', kind: 'participant', value: 'Rina', clientId: 'c-glowkind' },
+      { id: 'r1', kind: 'domain', value: 'kopinara.example', clientId: 'c-kopinara' },
+      { id: 'r2', kind: 'keyword', value: 'Selara', clientId: 'c-selara' },
+      { id: 'r3', kind: 'participant', value: 'Nina', clientId: 'c-brightleaf' },
     ],
-    storage: { askOver: 500, own: { provider: 'gdrive', account: 'footage@pixelandprofits.com', forFilesOver: 1000 } },
+    storage: { askOver: 500, own: { provider: 'gdrive', account: 'footage@demo.sprint2go.com', forFilesOver: 1000 } },
     emailProvider: 'google',
-    meetUrl: 'https://meet.pixelandprofits.com',
+    meetUrl: 'https://meet.demo.sprint2go.com',
     accounts: [
-      { id: 'pnp-aqeel', email: 'aqeel@pixelandprofits.com', name: 'Aqeel', kind: 'personal', connected: true, users: ['u-aqeel'] },
-      { id: 'pnp-hello', email: 'hello@pixelandprofits.com', name: 'Pixel & Profits', kind: 'shared', connected: true, users: ['u-aqeel', 'u-rizky', 'u-aditya', 'u-faisal'] },
-      { id: 'pnp-rizky', email: 'rizky@pixelandprofits.com', name: 'Rizky Pratama', kind: 'personal', connected: true, users: ['u-rizky'] },
-      { id: 'pnp-faisal', email: 'faisal@pixelandprofits.com', name: 'Faisal Tirtonady', kind: 'personal', connected: true, users: ['u-faisal'], provider: 'google' },
-      { id: 'pnp-aditya', email: 'aditya@pixelandprofits.com', name: 'Aditya Aisar', kind: 'personal', connected: true, users: ['u-aditya'], provider: 'google' },
-      { id: 'pnp-dewi', email: 'dewi@pixelandprofits.com', name: 'Dewi Lestari', kind: 'personal', connected: true, users: ['u-dewi'] },
+      { id: 'pnp-raka', email: 'raka@demo.sprint2go.com', name: 'Raka', kind: 'personal', connected: true, users: ['u-raka'] },
+      { id: 'pnp-hello', email: 'hello@demo.sprint2go.com', name: 'sprint2go Studio', kind: 'shared', connected: true, users: ['u-raka', 'u-bima', 'u-sofia', 'u-hendra'] },
+      { id: 'pnp-bima', email: 'bima@demo.sprint2go.com', name: 'Bima Anggara', kind: 'personal', connected: true, users: ['u-bima'] },
+      { id: 'pnp-hendra', email: 'hendra@demo.sprint2go.com', name: 'Hendra Wijaya', kind: 'personal', connected: true, users: ['u-hendra'], provider: 'google' },
+      { id: 'pnp-sofia', email: 'sofia@demo.sprint2go.com', name: 'Sofia Ramadhani', kind: 'personal', connected: true, users: ['u-sofia'], provider: 'google' },
+      { id: 'pnp-intan', email: 'intan@demo.sprint2go.com', name: 'Intan Kusnadi', kind: 'personal', connected: true, users: ['u-intan'] },
     ],
   },
 ];

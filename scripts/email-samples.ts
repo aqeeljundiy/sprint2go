@@ -41,23 +41,23 @@ export async function allEmails(l: lang.Lang): Promise<Sample[]> {
   const credits = { ...inv, number: 'S2G-2026-0143', lines: [{ text: 'Boosted sending: 5,000 emails', amount: 150000 }], subtotal: 150000, tax: 16500, total: 166500 };
   const item = (k: string, group: string, words: any, path: string) => ({ key: k, group, ...words, url: `${url}${path}`, at: new Date().toISOString(), workspaceId: ws.id });
   const items = [
-    item('a', 'messages', msg('{name} messaged you: {quote}', { name: 'Nadia', quote: '“Can you check the brief before 3?”' }), '/chat'),
+    item('a', 'messages', msg('{name} messaged you: {quote}', { name: 'Laras', quote: '“Can you check the brief before 3?”' }), '/chat'),
     item('b', 'messages', msg('{name} messaged you: {quote}', { name: 'Raka', quote: '“Lunch at the usual place?”' }), '/chat'),
-    item('c', 'tasks', msg('{name} assigned you {task}', { name: 'Nadia', task: '“Send the October invoices”' }), '/tasks'),
+    item('c', 'tasks', msg('{name} assigned you {task}', { name: 'Laras', task: '“Send the October invoices”' }), '/tasks'),
     item('d', 'replies', msg('{name} replied: {subject}', { name: 'Maya at Acme', subject: 'Re: Quote for the new site' }), '/mail'),
   ];
-  const said = msg('{name} shared {file} with you', { name: 'Nadia', file: '“Brand guidelines v3.pdf”' });
+  const said = msg('{name} shared {file} with you', { name: 'Laras', file: '“Brand guidelines v3.pdf”' });
   const out: Sample[] = [];
   const add = (sid: string, name: string, m: { subject: string; html: string; text: string }) => out.push({ id: sid, name, subject: m.subject, html: m.html, text: m.text });
 
   add('signup-code', 'Sign-up code', codeMail('signup', '482913', l));
   add('reset-code', 'Password reset code', codeMail('reset', '071356', l));
-  const tw = twostep.resetMail(user, ws, 'Nadia Putri');
+  const tw = twostep.resetMail(user, ws, 'Laras Anindita');
   add('two-step-reset', 'Two-step reset (by an admin)', tw);
   add('two-step-reset-support', 'Two-step reset (by support)', lang.inLang(l, () => admin.supportResetMail(id ? 'Budi Santoso' : 'Ann Lee')));
-  add('confidential-code', 'Confidential email code', confidentialCodeMail('Nadia Putri', '915204', ws.id));
+  add('confidential-code', 'Confidential email code', confidentialCodeMail('Laras Anindita', '915204', ws.id));
   add('file-code', 'Shared file code', fileCodeMail('Brand guidelines v3.pdf', '330187', ws));
-  add('forwarding-confirm', 'Forwarding confirmation', forwardingConfirmMail(`nadia@${ws.domains?.[0] ?? 'northwind.example'}`, ws, 'nadia.personal@gmail.example', `${url}/api/mail/forwarding/confirm?token=abc123`));
+  add('forwarding-confirm', 'Forwarding confirmation', forwardingConfirmMail(`laras@${ws.domains?.[0] ?? 'northwind.example'}`, ws, 'laras.personal@gmail.example', `${url}/api/mail/forwarding/confirm?token=abc123`));
   add('guest-notice', 'Guest notice', guestNoticeMail({ ...said, workspaceId: ws.id }, id ? 'tamu@client.example' : 'guest@client.example', ws.name, url));
   add('digest', 'Away digest', digest.compose(id ? 'Budi Santoso' : 'Ann Lee', ws.name, items as any, url, l, ws));
   add('routing-alert', 'Routing alert', lang.inLang(l, () => routing.routingAlertMail(ws, ws.name, 'northwind.example', lang.inLang(l, () => (id ? 'Perutean email untuk northwind.example gagal di dua pemeriksaan terakhir.' : 'Mail routing for northwind.example failed its last two checks, so mail to Northwind Studio mailboxes at northwind.example may not be arriving. Check the routing at Google Workspace in Settings, Email delivery.')), id ? 'Jawaban terakhir: 550 5.1.1 alamat tidak dikenal' : 'Last answer: 550 5.1.1 address not found')));
@@ -66,7 +66,7 @@ export async function allEmails(l: lang.Lang): Promise<Sample[]> {
   add('credits-invoice', 'Credits invoice', admin.invoiceMail(credits as any, 'sprint2go', l, 5000));
   const rec = ticketReceipt(email, 1042, 'Hi, our shared inbox stopped receiving mail this morning.\nCould you take a look?');
   add('ticket-receipt', 'Ticket receipt', { subject: 'Re: Shared inbox stopped receiving mail [#1042]', ...rec });
-  const reply = admin.supportReplyText(id ? 'Halo Budi,\n\nKami sudah memperbaiki perutean untuk kotak masuk bersama Anda. Email baru seharusnya masuk lagi sekarang.' : 'Hi Ann,\n\nWe fixed the routing for your shared inbox. New mail should arrive again now.', 'Rina from sprint2go Support', [{ at: '2026-10-09T08:12:00Z', authorName: id ? 'Budi Santoso' : 'Ann Lee', author: email, body: 'Hi, our shared inbox stopped receiving mail this morning.\nCould you take a look?' }], l);
+  const reply = admin.supportReplyText(id ? 'Halo Budi,\n\nKami sudah memperbaiki perutean untuk kotak masuk bersama Anda. Email baru seharusnya masuk lagi sekarang.' : 'Hi Ann,\n\nWe fixed the routing for your shared inbox. New mail should arrive again now.', 'Nina from sprint2go Support', [{ at: '2026-10-09T08:12:00Z', authorName: id ? 'Budi Santoso' : 'Ann Lee', author: email, body: 'Hi, our shared inbox stopped receiving mail this morning.\nCould you take a look?' }], l);
   add('ticket-reply', 'Ticket reply', { subject: 'Re: Shared inbox stopped receiving mail [#1042]', ...reply });
   add('broadcast', 'Owner broadcast', admin.broadcastMail('New in sprint2go: shared inbox rules', 'Shared inboxes can now assign mail by rule, so the right person picks it up straight away.\n\nOpen Settings, Mail, Filters to try it. Reply to this email if you have questions.', l));
   add('operator-alert', 'Operator alert', lang.inLang(l, () => admin.alertMail(id ? 'Disk hampir penuh: 4,2 GB tersisa.' : 'Disk nearly full: 4.2 GB free.', `${url}/admin/platform`, 'high')));

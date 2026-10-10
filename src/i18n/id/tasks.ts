@@ -77,7 +77,7 @@ const id: Record<string, string> = {
   'due {day}': 'jatuh tempo {day}',
   'for {names}': 'untuk {names}',
 
-  // A task's history (App.tsx logTask, TaskStages): "Nadia menandainya selesai". Saved with msg(): each reader sees
+  // A task's history (App.tsx logTask, TaskStages): "Laras menandainya selesai". Saved with msg(): each reader sees
   // their own language; older lines with these exact words are translated too.
   'created this': 'membuat tugas ini',
   'created this for {name}': 'membuat tugas ini untuk {name}',
@@ -543,7 +543,7 @@ const id: Record<string, string> = {
   'Someone else': 'Orang lain',
   'Demo AI': 'AI demo',
   'Say or type everything on your mind: {projects}, who should do what, by when. You’ll check the plan before anything is sent.': 'Ucapkan atau ketik semua yang ada di kepala: {projects}, siapa mengerjakan apa, kapan. Anda memeriksa rencananya sebelum ada yang dikirim.',
-  'KopiKita wants the Q4 concepts by Thursday. Rizky, do the ad structure…': 'KopiKita minta konsep Q4 sebelum Kamis. Rizky, kerjakan struktur iklannya…',
+  'Kopinara wants the Q4 concepts by Thursday. Bima, do the ad structure…': 'Kopinara minta konsep Q4 sebelum Kamis. Bima, kerjakan struktur iklannya…',
   'Stop dictation': 'Hentikan dikte',
   Dictate: 'Dikte',
   'Try: quick tasks': 'Coba: tugas cepat',
@@ -553,7 +553,7 @@ const id: Record<string, string> = {
   'Brief with tasks': 'Brief dengan tugas',
   'One person in charge, the context in one place, tasks for each person.': 'Satu penanggung jawab, konteks di satu tempat, tugas untuk tiap orang.',
   '{n} tasks found. Check names, teams and dates.': '{n} tugas ditemukan. Periksa nama, tim, dan tanggalnya.',
-  'Brief title, e.g. Glowkind launch campaign': 'Judul brief, mis. Kampanye peluncuran Glowkind',
+  'Brief title, e.g. Brightleaf launch campaign': 'Judul brief, mis. Kampanye peluncuran Brightleaf',
   'Brief title': 'Judul brief',
   'Who is in charge?': 'Siapa penanggung jawabnya?',
   'Brief due': 'Tenggat brief',

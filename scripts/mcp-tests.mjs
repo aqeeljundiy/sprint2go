@@ -151,7 +151,7 @@ try {
   put('todos', { id: 't-team', workspaceId: 'w-acme', title: 'Banana storyboard', userId: 'u-bob', assignees: ['u-bob'], done: false, status: 'doing', priority: 'normal', source: 'manual', createdBy: 'u-bob', supervisorId: 'u-alice', teamId: 't-design', createdAt: now(), history: [] });
   put('todos', { id: 't-other', workspaceId: 'w-other', title: 'Kiwi partner checklist', userId: 'u-dan', assignees: ['u-dan'], done: false, status: 'todo', priority: 'normal', source: 'manual', createdBy: 'u-dan', clientId: 'c-other', visibleToClient: true, createdAt: now(), history: [] });
   const msg = (id, from, to, body, at, mid) => ({ id, from, to, date: at, body, mid });
-  put('threads', { id: 'th-client', accountId: 'a-alice', subject: 'Banana launch dates', location: 'inbox', starred: false, unread: true, labels: [], messages: [msg('tm-1', { name: 'Nadia Client', email: 'nadia@client.test' }, [{ name: 'Alice Martin', email: 'alice@acme.test' }], 'Can we move the banana launch to Friday?', new Date(Date.now() - 7200_000).toISOString(), '<abc@client.test>')] });
+  put('threads', { id: 'th-client', accountId: 'a-alice', subject: 'Banana launch dates', location: 'inbox', starred: false, unread: true, labels: [], messages: [msg('tm-1', { name: 'Laras Client', email: 'laras@client.test' }, [{ name: 'Alice Martin', email: 'alice@acme.test' }], 'Can we move the banana launch to Friday?', new Date(Date.now() - 7200_000).toISOString(), '<abc@client.test>')] });
   put('threads', { id: 'th-bob', accountId: 'a-bob', subject: 'Bob private papaya', location: 'inbox', starred: false, unread: true, labels: [], messages: [msg('tm-2', { name: 'Bank', email: 'bank@bank.test' }, [{ name: 'Bob Stone', email: 'bob@acme.test' }], 'Your papaya statement', now(), '<p@bank.test>')] });
   put('threads', { id: 'th-hello', accountId: 'a-hello', subject: 'Hello inbox question', location: 'inbox', starred: false, unread: false, labels: [], messages: [msg('tm-3', { name: 'Visitor', email: 'visitor@else.test' }, [{ name: 'Acme', email: 'hello@acme.test' }], 'Do you ship to Bali?', now(), '<v@else.test>')] });
   put('notes', { id: 'n-alice', workspaceId: 'w-acme', title: 'Alice private plum', html: '<p>My <b>plum</b> ideas</p><ul><li>one</li><li>two</li></ul>', ownerId: 'u-alice', visibility: 'private', createdAt: now(), updatedAt: now(), updatedBy: 'u-alice' });
@@ -372,9 +372,9 @@ try {
   const pd = await A('post_message', { channel: 'open-with-client', text: 'Mango drafts coming Friday' });
   check(pd.data?.draft === true && /Not sent/.test(pd.data.message) && db.prepare("SELECT COUNT(*) AS n FROM docs WHERE coll = 'messages'").get().n === before, 'post_message to a channel with guests: only a draft, nothing posted');
   check(doc('prefs', 'u-alice')?.value?.['s2g-chat-drafts:u-alice']?.['ch-shared']?.text === 'Mango drafts coming Friday', 'the draft waits in her own settings for the channel’s message box');
-  const ev = await A('add_event', { title: 'Banana review', start: `${day(1)}T10:00`, guests: ['Bob', 'nadia@client.test'] });
+  const ev = await A('add_event', { title: 'Banana review', start: `${day(1)}T10:00`, guests: ['Bob', 'laras@client.test'] });
   const evd = doc('events', ev.data?.created?.id);
-  check(evd?.userId === 'u-alice' && evd.guests?.length === 1 && evd.guests[0].email === 'bob@acme.test' && ev.data.not_added?.[0] === 'nadia@client.test', 'add_event: on her calendar, teammates as guests, outside people left out with a note');
+  check(evd?.userId === 'u-alice' && evd.guests?.length === 1 && evd.guests[0].email === 'bob@acme.test' && ev.data.not_added?.[0] === 'laras@client.test', 'add_event: on her calendar, teammates as guests, outside people left out with a note');
   check(new Date(evd.start).toISOString().slice(11, 16) === '03:00', 'add_event: 10:00 is the company’s time (Jakarta)');
   const rep = await A('add_event', { title: 'Banana weekly', start: `${day(1)}T10:00`, repeat: { every: 'week', times: 4 } });
   const repd = doc('events', rep.data?.created?.id);
@@ -385,12 +385,12 @@ try {
   check(hourly.error && /FREQ/.test(hourly.text), 'add_event: a rule calendars don’t use is refused');
   const outbox = () => db.prepare("SELECT COUNT(*) AS n FROM sqlite_master WHERE name = 'outbox'").get().n ? db.prepare('SELECT COUNT(*) AS n FROM outbox').get().n : 0;
   const ob = outbox();
-  const dm = await A('draft_mail', { to: ['nadia@client.test', 'Bob'], subject: 'Banana timing', text: 'Hi Nadia,\n\nFriday works.' });
+  const dm = await A('draft_mail', { to: ['laras@client.test', 'Bob'], subject: 'Banana timing', text: 'Hi Laras,\n\nFriday works.' });
   const dt = doc('threads', dm.data?.id);
   check(dm.data?.draft === true && dt?.location === 'drafts' && dt.accountId === 'a-alice' && dt.messages[0].to.length === 2 && /Not sent/.test(dm.data.message), 'draft_mail: a draft in her Drafts, never sent');
   const dr = await A('draft_reply', { thread_id: 'th-client', text: 'Friday is fine.' });
   const drt = doc('threads', dr.data?.id);
-  check(drt?.location === 'drafts' && drt.subject === 'Re: Banana launch dates' && drt.messages[0].to[0].email === 'nadia@client.test' && drt.replyTo?.mid === '<abc@client.test>', 'draft_reply: a reply draft to the sender, keeping the conversation’s thread');
+  check(drt?.location === 'drafts' && drt.subject === 'Re: Banana launch dates' && drt.messages[0].to[0].email === 'laras@client.test' && drt.replyTo?.mid === '<abc@client.test>', 'draft_reply: a reply draft to the sender, keeping the conversation’s thread');
   check(outbox() === ob, 'nothing went out: the mail engine’s outbox is untouched');
   const audit = db.prepare("SELECT operator, action, target, detail FROM audit WHERE action LIKE 'ai-app.%' ORDER BY id").all();
   check(audit.length >= 8 && audit.every((x) => x.detail.startsWith('via Claude test:') && x.target === 'w-acme' && x.operator === 'alice@acme.test'), `the audit log has each change “via Claude test” (${audit.length} entries)`);

@@ -81,7 +81,7 @@ export function TaskViews({
   kind: string; // the scope's kind: mine, today, upcoming, team, project, client…
   scopeId?: string;
   tasks: Todo[]; // every task in the scope (open and done, no briefs)
-  label: string; // "My tasks", "Design", "Kopi Harian"
+  label: string; // "My tasks", "Design", "Lereng Coffee"
   canAdd: boolean;
   addDefaults: QuickDefaults;
   addKey?: number;

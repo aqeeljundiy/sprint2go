@@ -51,7 +51,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const mine = replyPeople({ ...m, from: P('me@us.example'), to: [P('ana@them.example')], cc: [] }, false, me);
   unit(mine.to[0].email === 'ana@them.example', 'replying to my own message goes to the people I wrote to');
   unit(canReplyAll(m, me) && !canReplyAll({ ...m, to: [P('me@us.example')], cc: [] }, me), 'Reply all is offered only when it reaches more people');
-  unit(localSuggestion('Hi Dewi,\n\nThank you for your e') === 'mail.' && localSuggestion('Looking forw') === 'ard to hearing from you.', 'everyday phrases finish what was started');
+  unit(localSuggestion('Hi Intan,\n\nThank you for your e') === 'mail.' && localSuggestion('Looking forw') === 'ard to hearing from you.', 'everyday phrases finish what was started');
   unit(localSuggestion('Terima kasih atas') === ' emailnya.' && localSuggestion('Salam') === ' hangat,', 'in Indonesian too');
   unit(localSuggestion('The') === null && localSuggestion('Kind regards,') === null && localSuggestion('xyz qwerty') === null, 'nothing when nothing obvious comes next');
   if (bad) (console.log(`\n${bad} failed`), process.exit(1));
@@ -149,17 +149,17 @@ try {
     const r = await fetch(`${base}/api/login`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email, password: env.SEED_PASSWORD }) });
     return (r.headers.get('set-cookie') ?? '').split(';')[0];
   };
-  const aqeel = await signIn('aqeel@pixelandprofits.com');
-  const rizky = await signIn('rizky@pixelandprofits.com');
-  const dewi = await signIn('dewi@pixelandprofits.com');
-  check(aqeel.startsWith('s2g=') && rizky.startsWith('s2g=') && dewi.startsWith('s2g='), 'three teammates sign in');
+  const raka = await signIn('raka@demo.sprint2go.com');
+  const bima = await signIn('bima@demo.sprint2go.com');
+  const intan = await signIn('intan@demo.sprint2go.com');
+  check(raka.startsWith('s2g=') && bima.startsWith('s2g=') && intan.startsWith('s2g='), 'three teammates sign in');
   const as = (cookie) => ({
     get: (path, extra = {}) => fetch(`${base}${path}`, { headers: { cookie }, redirect: 'manual', ...extra }),
     post: (path, body) => fetch(`${base}${path}`, { method: 'POST', headers: { 'content-type': 'application/json', cookie }, body: JSON.stringify(body) }),
   });
-  const A = as(aqeel);
-  const R = as(rizky);
-  const D = as(dewi);
+  const A = as(raka);
+  const R = as(bima);
+  const D = as(intan);
   // This laptop can't prove DNS for the demo domain: say every mailbox can send (the server checks that itself).
   const canSend = () => {
     const w = doc('workspaces', 'pnp');
@@ -182,35 +182,35 @@ try {
 
   /* ---------- 1. Cc stays Cc ---------- */
   const s1 = `cc in ${id()}`;
-  await smtp.sendMail({ from: 'Client <client@outside-extras.example>', to: 'Aqeel <aqeel@pixelandprofits.com>', cc: 'Other <other@outside-extras.example>', replyTo: 'Desk <desk@outside-extras.example>', subject: s1, text: 'Hello with a Cc.', html: '<p>Hello with a Cc.</p><script>alert(1)</script><img src="https://pics.example/logo.png"><img src="https://pixel.example/p.gif" width="1" height="1"><table><tr><td>cell</td></tr></table>', headers: { Importance: 'high' } });
-  const t1 = await waitFor(() => threadsWith(s1).find((t) => t.accountId === 'pnp-aqeel'));
+  await smtp.sendMail({ from: 'Client <client@outside-extras.example>', to: 'Raka <raka@demo.sprint2go.com>', cc: 'Other <other@outside-extras.example>', replyTo: 'Desk <desk@outside-extras.example>', subject: s1, text: 'Hello with a Cc.', html: '<p>Hello with a Cc.</p><script>alert(1)</script><img src="https://pics.example/logo.png"><img src="https://pixel.example/p.gif" width="1" height="1"><table><tr><td>cell</td></tr></table>', headers: { Importance: 'high' } });
+  const t1 = await waitFor(() => threadsWith(s1).find((t) => t.accountId === 'pnp-raka'));
   const m1 = t1?.messages?.[0];
-  check(m1?.to?.length === 1 && m1.to[0].email === 'aqeel@pixelandprofits.com' && m1.cc?.[0]?.email === 'other@outside-extras.example', 'received mail keeps To and Cc apart');
+  check(m1?.to?.length === 1 && m1.to[0].email === 'raka@demo.sprint2go.com' && m1.cc?.[0]?.email === 'other@outside-extras.example', 'received mail keeps To and Cc apart');
   check(m1?.replyTo?.[0]?.email === 'desk@outside-extras.example' && m1.priority === 'high', 'received mail keeps Reply-To and its priority');
   const s1b = `cc out ${id()}`;
   const tid1 = `t-x-${id()}`;
-  const r1 = await send(A, { workspaceId: 'pnp', accountId: 'pnp-aqeel', threadId: tid1, messageId: `m-x-${id()}`, to: [{ name: 'Client', email: 'client@outside-extras.example' }], cc: [{ name: 'Rizky', email: 'rizky@pixelandprofits.com' }], subject: s1b, text: 'Cc out', files: [] });
+  const r1 = await send(A, { workspaceId: 'pnp', accountId: 'pnp-raka', threadId: tid1, messageId: `m-x-${id()}`, to: [{ name: 'Client', email: 'client@outside-extras.example' }], cc: [{ name: 'Bima', email: 'bima@demo.sprint2go.com' }], subject: s1b, text: 'Cc out', files: [] });
   check(r1.ok, `the mail engine takes an email with Cc (${r1.status})`);
   const got1 = await sinkFor(s1b);
-  check(!!got1 && /^Cc: .*rizky@pixelandprofits\.com/im.test(headOf(got1[0].raw)) && /^To: .*client@outside-extras\.example/im.test(headOf(got1[0].raw)), 'what leaves names Rizky in Cc, the client in To');
-  const in1 = await waitFor(() => threadsWith(s1b).find((t) => t.accountId === 'pnp-rizky'));
-  check(in1?.messages?.[0]?.cc?.[0]?.email === 'rizky@pixelandprofits.com' && in1.messages[0].to.every((p) => p.email !== 'rizky@pixelandprofits.com'), 'the teammate’s copy keeps them in Cc, not To');
+  check(!!got1 && /^Cc: .*bima@demo\.sprint2go\.com/im.test(headOf(got1[0].raw)) && /^To: .*client@outside-extras\.example/im.test(headOf(got1[0].raw)), 'what leaves names Bima in Cc, the client in To');
+  const in1 = await waitFor(() => threadsWith(s1b).find((t) => t.accountId === 'pnp-bima'));
+  check(in1?.messages?.[0]?.cc?.[0]?.email === 'bima@demo.sprint2go.com' && in1.messages[0].to.every((p) => p.email !== 'bima@demo.sprint2go.com'), 'the teammate’s copy keeps them in Cc, not To');
 
   /* ---------- 2. Alias as From, Reply-To, priority ---------- */
   const w = doc('workspaces', 'pnp');
-  w.mailAliases = [{ id: 'al-sales', address: 'sales@pixelandprofits.com', to: ['pnp-aqeel'] }, { id: 'al-ops', address: 'ops@pixelandprofits.com', to: ['pnp-rizky'] }];
+  w.mailAliases = [{ id: 'al-sales', address: 'sales@demo.sprint2go.com', to: ['pnp-raka'] }, { id: 'al-ops', address: 'ops@demo.sprint2go.com', to: ['pnp-bima'] }];
   db.prepare("UPDATE docs SET data = ? WHERE coll = 'workspaces' AND id = 'pnp'").run(JSON.stringify(w));
   const s2 = `alias ${id()}`;
-  const r2 = await send(A, { workspaceId: 'pnp', accountId: 'pnp-aqeel', threadId: `t-x-${id()}`, messageId: `m-x-${id()}`, fromAddress: 'sales@pixelandprofits.com', replyTo: [{ name: 'Desk', email: 'desk@pixelandprofits.com' }], priority: 'high', to: [{ name: 'Client', email: 'client@outside-extras.example' }], cc: [], subject: s2, text: 'From the alias', files: [] });
+  const r2 = await send(A, { workspaceId: 'pnp', accountId: 'pnp-raka', threadId: `t-x-${id()}`, messageId: `m-x-${id()}`, fromAddress: 'sales@demo.sprint2go.com', replyTo: [{ name: 'Desk', email: 'desk@demo.sprint2go.com' }], priority: 'high', to: [{ name: 'Client', email: 'client@outside-extras.example' }], cc: [], subject: s2, text: 'From the alias', files: [] });
   check(r2.ok, `an alias of the mailbox can be the From (${r2.status})`);
   const got2 = await sinkFor(s2);
   const h2 = got2 ? headOf(got2[0].raw) : '';
-  check(/^From: .*sales@pixelandprofits\.com/im.test(h2), 'what leaves is from the alias');
-  check(/^Reply-To: .*desk@pixelandprofits\.com/im.test(h2) && /^Importance: high/im.test(h2) && /^X-Priority: 1/im.test(h2), 'with Reply-To, Importance and X-Priority');
-  check(/^DKIM-Signature:[^]*?d=pixelandprofits\.com/im.test(h2), 'and signed for the domain');
-  const r2b = await send(A, { workspaceId: 'pnp', accountId: 'pnp-aqeel', threadId: `t-x-${id()}`, messageId: `m-x-${id()}`, fromAddress: 'ops@pixelandprofits.com', to: [{ name: 'Client', email: 'client@outside-extras.example' }], cc: [], subject: `alias no ${id()}`, text: 'x', files: [] });
+  check(/^From: .*sales@demo\.sprint2go\.com/im.test(h2), 'what leaves is from the alias');
+  check(/^Reply-To: .*desk@demo\.sprint2go\.com/im.test(h2) && /^Importance: high/im.test(h2) && /^X-Priority: 1/im.test(h2), 'with Reply-To, Importance and X-Priority');
+  check(/^DKIM-Signature:[^]*?d=demo\.sprint2go\.com/im.test(h2), 'and signed for the domain');
+  const r2b = await send(A, { workspaceId: 'pnp', accountId: 'pnp-raka', threadId: `t-x-${id()}`, messageId: `m-x-${id()}`, fromAddress: 'ops@demo.sprint2go.com', to: [{ name: 'Client', email: 'client@outside-extras.example' }], cc: [], subject: `alias no ${id()}`, text: 'x', files: [] });
   check(r2b.status === 403, 'an alias of someone else’s mailbox can’t be the From');
-  const r2c = await send(A, { workspaceId: 'pnp', accountId: 'pnp-aqeel', threadId: `t-x-${id()}`, messageId: `m-x-${id()}`, fromAddress: 'boss@bank.example', to: [{ name: 'Client', email: 'client@outside-extras.example' }], cc: [], subject: `spoof ${id()}`, text: 'x', files: [] });
+  const r2c = await send(A, { workspaceId: 'pnp', accountId: 'pnp-raka', threadId: `t-x-${id()}`, messageId: `m-x-${id()}`, fromAddress: 'boss@bank.example', to: [{ name: 'Client', email: 'client@outside-extras.example' }], cc: [], subject: `spoof ${id()}`, text: 'x', files: [] });
   check(r2c.status === 403, 'nor any other address');
 
   /* ---------- 3. Confidential mode ---------- */
@@ -220,8 +220,8 @@ try {
   const mid3 = `m-x-${id()}`;
   const until = new Date(Date.now() + 86_400_000).toISOString();
   // The app saves the sender's copy (with its words), then asks to send it.
-  await A.post('/api/sync', { coll: 'threads', upserts: [{ id: tid3, accountId: 'pnp-aqeel', workspaceId: 'pnp', subject: s3, location: 'archive', starred: false, unread: false, labels: [], messages: [{ id: mid3, from: { name: 'Aqeel', email: 'aqeel@pixelandprofits.com' }, to: [{ name: 'Client', email: 'client@outside-extras.example' }, { name: 'Rizky', email: 'rizky@pixelandprofits.com' }], date: new Date().toISOString(), body: SECRET, html: `<p>${SECRET}</p>`, confidential: { id: 'c-000000000000000000', expiresAt: '2099-01-01T00:00:00.000Z', passcode: false, sender: true } }] }], deletes: [] });
-  const r3 = await send(A, { workspaceId: 'pnp', accountId: 'pnp-aqeel', threadId: tid3, messageId: mid3, to: [{ name: 'Client', email: 'client@outside-extras.example' }, { name: 'Rizky', email: 'rizky@pixelandprofits.com' }], cc: [], subject: s3, text: SECRET, html: `<p>${SECRET}</p>`, files: [], confidential: { expiresAt: until, passcode: true }, track: true });
+  await A.post('/api/sync', { coll: 'threads', upserts: [{ id: tid3, accountId: 'pnp-raka', workspaceId: 'pnp', subject: s3, location: 'archive', starred: false, unread: false, labels: [], messages: [{ id: mid3, from: { name: 'Raka', email: 'raka@demo.sprint2go.com' }, to: [{ name: 'Client', email: 'client@outside-extras.example' }, { name: 'Bima', email: 'bima@demo.sprint2go.com' }], date: new Date().toISOString(), body: SECRET, html: `<p>${SECRET}</p>`, confidential: { id: 'c-000000000000000000', expiresAt: '2099-01-01T00:00:00.000Z', passcode: false, sender: true } }] }], deletes: [] });
+  const r3 = await send(A, { workspaceId: 'pnp', accountId: 'pnp-raka', threadId: tid3, messageId: mid3, to: [{ name: 'Client', email: 'client@outside-extras.example' }, { name: 'Bima', email: 'bima@demo.sprint2go.com' }], cc: [], subject: s3, text: SECRET, html: `<p>${SECRET}</p>`, files: [], confidential: { expiresAt: until, passcode: true }, track: true });
   check(r3.ok, `the mail engine takes a confidential email (${r3.status})`);
   const got3 = await sinkFor(s3);
   const raw3 = got3?.[0]?.raw.toString('utf8') ?? '';
@@ -230,7 +230,7 @@ try {
   const link = (parsed3?.text ?? '').match(/https?:\/\/[^\s]+\/c\/([A-Za-z0-9_-]{32})/);
   check(!!link && !/\/t\/o\//.test(raw3), 'it carries a link of its own (and no tracking picture)');
   const token = link?.[1] ?? '';
-  const in3 = await waitFor(() => threadsWith(s3).find((t) => t.accountId === 'pnp-rizky'));
+  const in3 = await waitFor(() => threadsWith(s3).find((t) => t.accountId === 'pnp-bima'));
   const cm = in3?.messages?.[0];
   check(!!cm && !JSON.stringify(cm).includes(SECRET) && cm.confidential?.id?.startsWith('c-') && !cm.confidential.sender, 'the teammate’s copy holds a notice and the confidential mark, not the words');
   const own3 = await waitFor(() => doc('threads', tid3)?.messages?.[0]?.confidential?.id?.startsWith('c-0') === false && doc('threads', tid3));
@@ -268,7 +268,7 @@ try {
   const after = await fetch(`${base}/c/${token}`, { headers: { cookie: pass } });
   check(after.status === 410 && /Access removed/.test(await after.text()), 'the link now says access was removed');
   check((await R.get(`/api/mail/confidential/${cid}`)).status === 410, 'the teammate can’t open it any more');
-  const marked = await waitFor(() => threadsWith(s3).find((t) => t.accountId === 'pnp-rizky' && t.messages[0].confidential?.revokedAt));
+  const marked = await waitFor(() => threadsWith(s3).find((t) => t.accountId === 'pnp-bima' && t.messages[0].confidential?.revokedAt));
   check(!!marked && !!doc('threads', tid3)?.messages?.[0]?.confidential?.revokedAt, 'both copies show access was removed');
   // An app can't change the server's mark (to open it again).
   const forged = { ...marked, messages: marked.messages.map((m) => ({ ...m, confidential: { ...m.confidential, revokedAt: undefined, expiresAt: '2099-01-01T00:00:00.000Z' } })) };
@@ -276,7 +276,7 @@ try {
   check(!!doc('threads', marked.id)?.messages?.[0]?.confidential?.revokedAt, 'the app’s own write keeps the server’s mark');
   // Expiry, without a code: the link opens straight away, then not after its time.
   const s3b = `confidential open ${id()}`;
-  const r3b = await send(A, { workspaceId: 'pnp', accountId: 'pnp-aqeel', threadId: `t-x-${id()}`, messageId: `m-x-${id()}`, to: [{ name: 'Client', email: 'client@outside-extras.example' }], cc: [], subject: s3b, text: SECRET, files: [], confidential: { expiresAt: until, passcode: false } });
+  const r3b = await send(A, { workspaceId: 'pnp', accountId: 'pnp-raka', threadId: `t-x-${id()}`, messageId: `m-x-${id()}`, to: [{ name: 'Client', email: 'client@outside-extras.example' }], cc: [], subject: s3b, text: SECRET, files: [], confidential: { expiresAt: until, passcode: false } });
   const got3b = r3b.ok ? await sinkFor(s3b) : null;
   const token2 = got3b ? ((await simpleParser(got3b[0].raw)).text ?? '').match(/\/c\/([A-Za-z0-9_-]{32})/)?.[1] : '';
   const open2 = await fetch(`${base}/c/${token2}`);
@@ -296,7 +296,7 @@ try {
   check((await D.get(`/api/mail/original?thread=${t1?.id}&message=${m1?.id}`)).status === 404, 'someone without the mailbox gets nothing');
   const sentOg = await A.get(`/api/mail/original?thread=${tid3}`);
   const sentBody = await sentOg.json().catch(() => ({}));
-  check(sentOg.ok && sentBody.signedBy === 'pixelandprofits.com', 'a sent message shows who signed it (DKIM)');
+  check(sentOg.ok && sentBody.signedBy === 'demo.sprint2go.com', 'a sent message shows who signed it (DKIM)');
 
   /* ---------- 5. Print ---------- */
   const pr = await A.get(`/api/mail/print?thread=${t1?.id}&auto=1`);

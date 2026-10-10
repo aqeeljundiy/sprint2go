@@ -10,7 +10,7 @@ export interface MailLabel {
   id: string;
   workspaceId: string;
   accountId: string | null;
-  name: string; // its own name, without the parents ("KopiKita" under "Clients")
+  name: string; // its own name, without the parents ("Kopinara" under "Clients")
   parentId: string | null;
   color: string;
   show: 'show' | 'unread' | 'hide'; // in the sidebar and drawer: always, only with unread mail, never
@@ -94,7 +94,7 @@ export const MAX_FILTERS = 500;
 
 /* ---------- labels ---------- */
 
-/** "Clients/KopiKita": the label's whole path (its parents' names first). */
+/** "Clients/Kopinara": the label's whole path (its parents' names first). */
 export function labelPath(l: MailLabel, all: MailLabel[]): string {
   const byId = new Map(all.map((x) => [x.id, x]));
   const parts = [l.name];

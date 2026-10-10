@@ -172,79 +172,79 @@ try {
       sync: (coll, upserts, deletes = []) => call('POST', '/api/sync', { coll, upserts, deletes }).then(async (x) => ({ status: x.status, ...(await x.json().catch(() => ({}))) })),
     };
   };
-  const aqeel = await signIn('aqeel@pixelandprofits.com'); // owner
-  const rizky = await signIn('rizky@pixelandprofits.com');
-  const dewi = await signIn('dewi@pixelandprofits.com');
-  const nadia = await signIn('nadia@kopikita.co.id'); // a guest at KopiKita (joined)
-  check(aqeel.ok && rizky.ok && dewi.ok && nadia.ok, 'the owner, two members and a guest sign in');
+  const raka = await signIn('raka@demo.sprint2go.com'); // owner
+  const bima = await signIn('bima@demo.sprint2go.com');
+  const intan = await signIn('intan@demo.sprint2go.com');
+  const laras = await signIn('laras@kopinara.example'); // a guest at Kopinara (joined)
+  check(raka.ok && bima.ok && intan.ok && laras.ok, 'the owner, two members and a guest sign in');
   const sees = async (who, id) => (await who.state()).channels.some((c) => c.id === id);
 
   /* who's in it */
-  const g = { id: 'gdm-1', workspaceId: 'pnp', kind: 'dm', name: '', members: ['u-rizky', 'u-faisal', 'u-nanda'] };
-  await rizky.sync('channels', [g]);
+  const g = { id: 'gdm-1', workspaceId: 'pnp', kind: 'dm', name: '', members: ['u-bima', 'u-hendra', 'u-joko'] };
+  await bima.sync('channels', [g]);
   const saved = doc('channels', 'gdm-1');
   check(saved?.kind === 'dm' && saved.members.length === 3, 'a member starts a group message with two others');
-  check((await sees(rizky, 'gdm-1')) && !(await sees(dewi, 'gdm-1')) && !(await sees(aqeel, 'gdm-1')), 'only its people see it, not even the owner');
-  put('messages', { id: 'gm-1', channelId: 'gdm-1', userId: 'u-faisal', text: 'secret mango plan', at: now() });
-  check(!(await dewi.state()).messages.some((m) => m.id === 'gm-1') && (await rizky.state()).messages.some((m) => m.id === 'gm-1'), 'and only they read its messages');
-  const ten = await rizky.sync('channels', [{ ...g, id: 'gdm-big', members: ['u-rizky', 'u-aqeel', 'u-faisal', 'u-aditya', 'u-nanda', 'u-sekar', 'u-dewi', 'u-dimas', 'u-bayu', 'u-x'] }]);
+  check((await sees(bima, 'gdm-1')) && !(await sees(intan, 'gdm-1')) && !(await sees(raka, 'gdm-1')), 'only its people see it, not even the owner');
+  put('messages', { id: 'gm-1', channelId: 'gdm-1', userId: 'u-hendra', text: 'secret mango plan', at: now() });
+  check(!(await intan.state()).messages.some((m) => m.id === 'gm-1') && (await bima.state()).messages.some((m) => m.id === 'gm-1'), 'and only they read its messages');
+  const ten = await bima.sync('channels', [{ ...g, id: 'gdm-big', members: ['u-bima', 'u-raka', 'u-hendra', 'u-sofia', 'u-joko', 'u-emma', 'u-intan', 'u-yusuf', 'u-tomas', 'u-x'] }]);
   check(!doc('channels', 'gdm-big') && /up to 9/.test(ten.why ?? ''), 'more than 8 others is refused, with why');
-  const outside = await rizky.sync('channels', [{ ...g, id: 'gdm-out', members: ['u-rizky', 'u-faisal', 'u-dimas'] }]);
+  const outside = await bima.sync('channels', [{ ...g, id: 'gdm-out', members: ['u-bima', 'u-hendra', 'u-yusuf'] }]);
   check(!doc('channels', 'gdm-out') && /team/.test(outside.why ?? ''), 'someone who isn’t on the team is refused');
-  await rizky.sync('channels', [{ ...g, id: 'gdm-not-me', members: ['u-faisal', 'u-nanda', 'u-sekar'] }]);
+  await bima.sync('channels', [{ ...g, id: 'gdm-not-me', members: ['u-hendra', 'u-joko', 'u-emma'] }]);
   check(!doc('channels', 'gdm-not-me'), 'nobody starts a group message they aren’t in');
-  await rizky.sync('channels', [{ ...doc('channels', 'gdm-1'), members: ['u-rizky', 'u-faisal', 'u-nanda', 'u-dewi'] }]);
-  check(doc('channels', 'gdm-1').members.length === 3 && !(await sees(dewi, 'gdm-1')), 'nobody is added to it later (that’s a new group)');
-  const huddle = { by: 'u-rizky', at: now(), members: ['u-rizky'] };
-  await rizky.sync('channels', [{ ...doc('channels', 'gdm-1'), huddle }]);
-  check(doc('channels', 'gdm-1').huddle?.members?.[0] === 'u-rizky', 'its people still start a huddle in it');
-  const faisal = await signIn('faisal@pixelandprofits.com');
-  await faisal.sync('channels', [{ ...doc('channels', 'gdm-1'), members: ['u-rizky', 'u-nanda'] }]);
-  check(JSON.stringify(doc('channels', 'gdm-1').members) === JSON.stringify(['u-rizky', 'u-nanda']) && !(await sees(faisal, 'gdm-1')), 'someone leaves it, and stops seeing it');
-  await rizky.sync('channels', [{ ...doc('channels', 'gdm-1'), members: ['u-rizky'] }]);
+  await bima.sync('channels', [{ ...doc('channels', 'gdm-1'), members: ['u-bima', 'u-hendra', 'u-joko', 'u-intan'] }]);
+  check(doc('channels', 'gdm-1').members.length === 3 && !(await sees(intan, 'gdm-1')), 'nobody is added to it later (that’s a new group)');
+  const huddle = { by: 'u-bima', at: now(), members: ['u-bima'] };
+  await bima.sync('channels', [{ ...doc('channels', 'gdm-1'), huddle }]);
+  check(doc('channels', 'gdm-1').huddle?.members?.[0] === 'u-bima', 'its people still start a huddle in it');
+  const hendra = await signIn('hendra@demo.sprint2go.com');
+  await hendra.sync('channels', [{ ...doc('channels', 'gdm-1'), members: ['u-bima', 'u-joko'] }]);
+  check(JSON.stringify(doc('channels', 'gdm-1').members) === JSON.stringify(['u-bima', 'u-joko']) && !(await sees(hendra, 'gdm-1')), 'someone leaves it, and stops seeing it');
+  await bima.sync('channels', [{ ...doc('channels', 'gdm-1'), members: ['u-bima'] }]);
   check(doc('channels', 'gdm-1').members.length === 2, 'but can’t take others out');
 
   /* convert to a private channel */
-  put('channels', { id: 'gdm-2', workspaceId: 'pnp', kind: 'dm', name: '', members: ['u-rizky', 'u-nanda', 'u-sekar'] });
-  await dewi.sync('channels', [{ ...doc('channels', 'gdm-2'), kind: 'channel', name: 'hijack', members: ['u-dewi'] }]);
+  put('channels', { id: 'gdm-2', workspaceId: 'pnp', kind: 'dm', name: '', members: ['u-bima', 'u-joko', 'u-emma'] });
+  await intan.sync('channels', [{ ...doc('channels', 'gdm-2'), kind: 'channel', name: 'hijack', members: ['u-intan'] }]);
   check(doc('channels', 'gdm-2').kind === 'dm', 'someone outside it can’t convert it');
-  await rizky.sync('channels', [{ ...doc('channels', 'gdm-2'), kind: 'channel', name: 'launch-crew', members: ['u-rizky', 'u-dewi'], private: false }]);
+  await bima.sync('channels', [{ ...doc('channels', 'gdm-2'), kind: 'channel', name: 'launch-crew', members: ['u-bima', 'u-intan'], private: false }]);
   const conv = doc('channels', 'gdm-2');
-  check(conv.kind === 'channel' && conv.private === true && conv.name === 'launch-crew' && ['u-rizky', 'u-nanda', 'u-sekar', 'u-dewi'].every((x) => conv.members.includes(x)) && conv.ownerId === 'u-rizky', 'one of its people converts it to a private channel: everyone stays, more may come in');
-  check(await sees(dewi, 'gdm-2'), 'and the person added sees it now');
+  check(conv.kind === 'channel' && conv.private === true && conv.name === 'launch-crew' && ['u-bima', 'u-joko', 'u-emma', 'u-intan'].every((x) => conv.members.includes(x)) && conv.ownerId === 'u-bima', 'one of its people converts it to a private channel: everyone stays, more may come in');
+  check(await sees(intan, 'gdm-2'), 'and the person added sees it now');
 
   /* guests */
   const pnp = doc('workspaces', 'pnp');
   put('workspaces', { ...pnp, permissions: { ...(pnp.permissions ?? {}), inviteGuests: false } });
-  const gg = { id: 'gdm-guest', workspaceId: 'pnp', kind: 'dm', name: '', members: ['u-dewi', 'u-rizky'], clientId: 'c-kopikita', guests: [{ email: 'nadia@kopikita.co.id', name: 'Nadia Putri', status: 'joined', invitedBy: 'u-dewi', at: now() }] };
-  const notAllowed = await dewi.sync('channels', [gg]);
+  const gg = { id: 'gdm-guest', workspaceId: 'pnp', kind: 'dm', name: '', members: ['u-intan', 'u-bima'], clientId: 'c-kopinara', guests: [{ email: 'laras@kopinara.example', name: 'Laras Anindita', status: 'joined', invitedBy: 'u-intan', at: now() }] };
+  const notAllowed = await intan.sync('channels', [gg]);
   check(!doc('channels', 'gdm-guest') && /Lead/.test(notAllowed.why ?? ''), 'a member who may not invite guests can’t message one (and is told why)');
   put('workspaces', { ...doc('workspaces', 'pnp'), permissions: { ...(pnp.permissions ?? {}), inviteGuests: true } });
-  const pending = await dewi.sync('channels', [{ ...gg, guests: [{ email: 'bagus@kopikita.co.id', name: 'Bagus', status: 'joined', invitedBy: 'u-dewi', at: now() }] }]);
+  const pending = await intan.sync('channels', [{ ...gg, guests: [{ email: 'gilang@kopinara.example', name: 'Gilang', status: 'joined', invitedBy: 'u-intan', at: now() }] }]);
   check(!doc('channels', 'gdm-guest') && /joined/.test(pending.why ?? ''), 'a guest who hasn’t joined the project yet is refused');
-  await dewi.sync('channels', [{ ...gg, clientId: 'c-lumina' }]);
+  await intan.sync('channels', [{ ...gg, clientId: 'c-selara' }]);
   check(!doc('channels', 'gdm-guest'), 'a guest from another project is refused');
-  await dewi.sync('channels', [gg]);
-  check(doc('channels', 'gdm-guest')?.guests?.[0]?.email === 'nadia@kopikita.co.id' && doc('channels', 'gdm-guest').clientId === 'c-kopikita', 'allowed to invite guests: a group message with a guest who joined the project');
-  const ns = await nadia.state();
+  await intan.sync('channels', [gg]);
+  check(doc('channels', 'gdm-guest')?.guests?.[0]?.email === 'laras@kopinara.example' && doc('channels', 'gdm-guest').clientId === 'c-kopinara', 'allowed to invite guests: a group message with a guest who joined the project');
+  const ns = await laras.state();
   const named = ns.channels.find((c) => c.id === 'gdm-guest');
-  check(!!named && named.kind === 'dm' && /Dewi/.test(named.name) && /Rizky/.test(named.name), `the guest sees it, named after its people (${named?.name})`);
+  check(!!named && named.kind === 'dm' && /Intan/.test(named.name) && /Bima/.test(named.name), `the guest sees it, named after its people (${named?.name})`);
   check(!ns.channels.some((c) => c.id === 'gdm-1' || c.id === 'gdm-2'), 'and none of the team’s other group messages');
-  const gw = await nadia.sync('messages', [{ id: 'gm-guest', channelId: 'gdm-guest', userId: 'guest', guestEmail: 'nadia@kopikita.co.id', text: 'Hi both', at: now() }]);
+  const gw = await laras.sync('messages', [{ id: 'gm-guest', channelId: 'gdm-guest', userId: 'guest', guestEmail: 'laras@kopinara.example', text: 'Hi both', at: now() }]);
   check(gw.saved === 1 && !!doc('messages', 'gm-guest'), 'the guest writes in it');
-  await nadia.sync('messages', [{ id: 'gm-guest-2', channelId: 'gdm-1', userId: 'guest', guestEmail: 'nadia@kopikita.co.id', text: 'sneak', at: now() }]);
+  await laras.sync('messages', [{ id: 'gm-guest-2', channelId: 'gdm-1', userId: 'guest', guestEmail: 'laras@kopinara.example', text: 'sneak', at: now() }]);
   check(!doc('messages', 'gm-guest-2'), 'but not in a group message she isn’t in');
 
   /* follow choices */
-  put('channels', { id: 'ch-follow', workspaceId: 'pnp', kind: 'channel', name: 'follow', members: ['u-aqeel', 'u-dewi', 'u-rizky'] });
-  put('messages', { id: 'fm-root', channelId: 'ch-follow', userId: 'u-aqeel', text: 'Root', at: now(), follow: { 'u-aqeel': false } });
-  await dewi.sync('messages', [{ ...doc('messages', 'fm-root'), text: 'changed', follow: { 'u-aqeel': true, 'u-dewi': true, 'u-rizky': false } }]);
+  put('channels', { id: 'ch-follow', workspaceId: 'pnp', kind: 'channel', name: 'follow', members: ['u-raka', 'u-intan', 'u-bima'] });
+  put('messages', { id: 'fm-root', channelId: 'ch-follow', userId: 'u-raka', text: 'Root', at: now(), follow: { 'u-raka': false } });
+  await intan.sync('messages', [{ ...doc('messages', 'fm-root'), text: 'changed', follow: { 'u-raka': true, 'u-intan': true, 'u-bima': false } }]);
   const fm = doc('messages', 'fm-root');
-  check(fm.text === 'Root' && JSON.stringify(fm.follow) === JSON.stringify({ 'u-aqeel': false, 'u-dewi': true }), 'someone follows another person’s thread: only their own choice changes');
-  await aqeel.sync('messages', [{ ...doc('messages', 'fm-root'), follow: { 'u-dewi': false } }]);
-  check(JSON.stringify(doc('messages', 'fm-root').follow) === JSON.stringify({ 'u-dewi': true }), 'even its author changes only their own (clearing it)');
-  await rizky.sync('messages', [{ id: 'fm-new', channelId: 'ch-follow', userId: 'u-rizky', text: 'new', at: now(), follow: { 'u-aqeel': true, 'u-rizky': true } }]);
-  check(JSON.stringify(doc('messages', 'fm-new')?.follow) === JSON.stringify({ 'u-rizky': true }), 'a new message carries only its author’s choice');
+  check(fm.text === 'Root' && JSON.stringify(fm.follow) === JSON.stringify({ 'u-raka': false, 'u-intan': true }), 'someone follows another person’s thread: only their own choice changes');
+  await raka.sync('messages', [{ ...doc('messages', 'fm-root'), follow: { 'u-intan': false } }]);
+  check(JSON.stringify(doc('messages', 'fm-root').follow) === JSON.stringify({ 'u-intan': true }), 'even its author changes only their own (clearing it)');
+  await bima.sync('messages', [{ id: 'fm-new', channelId: 'ch-follow', userId: 'u-bima', text: 'new', at: now(), follow: { 'u-raka': true, 'u-bima': true } }]);
+  check(JSON.stringify(doc('messages', 'fm-new')?.follow) === JSON.stringify({ 'u-bima': true }), 'a new message carries only its author’s choice');
 } catch (e) {
   failed++;
   console.log(`FAIL ${e instanceof Error ? e.stack : e}`);

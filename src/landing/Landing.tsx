@@ -241,10 +241,10 @@ function AppMock() {
                 <TriangleAlert size={13} /> {m.risk}
               </h4>
               <p>
-                <span className="dot" style={{ background: '#b45309' }}>K</span> KopiKita <b>{m.late}</b>
+                <span className="dot" style={{ background: '#b45309' }}>K</span> Kopinara <b>{m.late}</b>
               </p>
               <p>
-                <span className="dot" style={{ background: '#ec4899' }}>L</span> Lumina Skin <b>{m.notPicked}</b>
+                <span className="dot" style={{ background: '#ec4899' }}>L</span> Selara Skin <b>{m.notPicked}</b>
               </p>
             </div>
             <div className="mock-card sm">
@@ -286,18 +286,18 @@ function GuestMock() {
         </div>
         <div className="gm-people">
           <span className="av" style={{ background: '#e11d48' }}>
-            FT
+            HW
           </span>
           <span>
-            <strong>Faisal Tirtonady</strong>
+            <strong>Hendra Wijaya</strong>
             <small>{g.guest}</small>
           </span>
           <span className="av" style={{ background: '#0f766e' }}>
-            DP
+            YH
           </span>
           <span>
-            <strong>Dimas Prakoso</strong>
-            <small>Elkiya Group</small>
+            <strong>Yusuf Halim</strong>
+            <small>Rimba Group</small>
           </span>
         </div>
       </div>

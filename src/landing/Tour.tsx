@@ -7,7 +7,7 @@ import { useT, type Dict } from './i18n';
 const Chip = ({ children, tone }: { children: ReactNode; tone?: 'blue' | 'amber' | 'green' | 'pink' }) => <span className={`tc ${tone ?? ''}`}>{children}</span>;
 
 function MailMock({ m }: { m: Dict['tm'] }) {
-  const chips = [<Chip tone="amber">KopiKita</Chip>, <Chip tone="pink">Lumina Skin</Chip>, <Chip>{m.newLead}</Chip>];
+  const chips = [<Chip tone="amber">Kopinara</Chip>, <Chip tone="pink">Selara Skin</Chip>, <Chip>{m.newLead}</Chip>];
   return (
     <div className="tm">
       <div className="tm-head">
@@ -41,22 +41,22 @@ function ChatMock({ m }: { m: Dict['tm'] }) {
   return (
     <div className="tm">
       <div className="tm-head">
-        <strong># kopikita-x-pnp</strong>
+        <strong># kopinara-x-studio</strong>
         <Chip tone="green">{m.guestsSee}</Chip>
       </div>
       <div className="tm-msg">
-        <span className="tm-av" style={{ background: '#b45309' }}>N</span>
+        <span className="tm-av" style={{ background: '#b45309' }}>L</span>
         <span>
           <b>
-            Nadia Putri <em className="tm-guest">{m.guestTag}</em>
+            Laras Anindita <em className="tm-guest">{m.guestTag}</em>
           </b>
           <p>{m.msg1}</p>
         </span>
       </div>
       <div className="tm-msg">
-        <span className="tm-av" style={{ background: '#5b5bf6' }}>A</span>
+        <span className="tm-av" style={{ background: '#5b5bf6' }}>R</span>
         <span>
-          <b>Aqeel</b>
+          <b>Raka</b>
           <span className="tm-voice">
             <Mic size={12} />
             {[6, 11, 8, 14, 9, 12, 5, 10].map((h, i) => (
@@ -67,11 +67,11 @@ function ChatMock({ m }: { m: Dict['tm'] }) {
         </span>
       </div>
       <div className="tm-msg">
-        <span className="tm-av" style={{ background: '#f97316' }}>N</span>
+        <span className="tm-av" style={{ background: '#f97316' }}>J</span>
         <span>
-          <b>Nanda</b>
+          <b>Joko</b>
           <p>
-            {m.msg3} <Paperclip size={11} /> <u>KopiKita_ritual_15s.mp4</u>
+            {m.msg3} <Paperclip size={11} /> <u>Kopinara_ritual_15s.mp4</u>
           </p>
         </span>
       </div>
@@ -81,8 +81,8 @@ function ChatMock({ m }: { m: Dict['tm'] }) {
 
 function TasksMock({ m }: { m: Dict['tm'] }) {
   const cols: [string, [string, ReactNode?][]][] = [
-    [m.cols[0], [[m.cards[0]], [m.cards[1], <Chip tone="pink">Lumina</Chip>]]],
-    [m.cols[1], [[m.cards[2], <Chip tone="amber">KopiKita</Chip>]]],
+    [m.cols[0], [[m.cards[0]], [m.cards[1], <Chip tone="pink">Selara</Chip>]]],
+    [m.cols[1], [[m.cards[2], <Chip tone="amber">Kopinara</Chip>]]],
     [m.cols[2], [[m.cards[3], <Chip tone="blue">{m.approve}</Chip>]]],
   ];
   return (
@@ -161,7 +161,7 @@ function MeetMock({ m }: { m: Dict['tm'] }) {
 
 function DriveMock({ m }: { m: Dict['tm'] }) {
   const files: [string, string, boolean][] = [
-    ['KopiKita_ritual_15s.mp4', '48 MB', true],
+    ['Kopinara_ritual_15s.mp4', '48 MB', true],
     ['Q4 concepts.pdf', '6.4 MB', true],
     ['Retainer contract 2026.pdf', '220 KB', false],
   ];
@@ -169,7 +169,7 @@ function DriveMock({ m }: { m: Dict['tm'] }) {
     <div className="tm">
       <div className="tm-head">
         <strong>
-          <FolderOpen size={14} /> KopiKita
+          <FolderOpen size={14} /> Kopinara
         </strong>
         <small>{m.driveHint}</small>
       </div>
@@ -211,13 +211,13 @@ function VaultMock({ m }: { m: Dict['tm'] }) {
     <div className="tm">
       <div className="tm-head">
         <strong>
-          <KeyRound size={14} /> KopiKita Meta Business
+          <KeyRound size={14} /> Kopinara Meta Business
         </strong>
         <Chip>{m.designTeam}</Chip>
       </div>
       <div className="tm-field">
         <small>{m.email}</small>
-        <span>ads@kopikita.co.id</span>
+        <span>ads@kopinara.example</span>
       </div>
       <div className="tm-field">
         <small>{m.password}</small>

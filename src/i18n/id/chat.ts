@@ -221,8 +221,8 @@ const id: Record<string, string> = {
   See: 'Lihat',
 
   // A conversation (chat/Conversation.tsx)
-  'Make a task: /task Send the deck @Rizky friday': 'Buat tugas: /task Kirim deck @Rizky jumat',
-  'Remind yourself: /remind call Nadia tomorrow': 'Ingatkan diri sendiri: /remind telepon Nadia besok',
+  'Make a task: /task Send the deck @Bima friday': 'Buat tugas: /task Kirim deck @Bima jumat',
+  'Remind yourself: /remind call Laras tomorrow': 'Ingatkan diri sendiri: /remind telepon Laras besok',
   'Offline. What you write is sent when you’re back.': 'Offline. Yang Anda tulis terkirim saat koneksi kembali.',
   'Connecting…': 'Menghubungkan…',
   'Pick a channel or person': 'Pilih channel atau orang',
@@ -261,7 +261,7 @@ const id: Record<string, string> = {
   'Send kudos': 'Kirim apresiasi',
   'Who?': 'Siapa?',
   'Who gets kudos': 'Siapa yang mendapat apresiasi',
-  'For what? e.g. saving the KopiKita invoice': 'Untuk apa? mis. menyelamatkan invoice KopiKita',
+  'For what? e.g. saving the Kopinara invoice': 'Untuk apa? mis. menyelamatkan invoice Kopinara',
   'For what': 'Untuk apa',
   '{n} members': '{n} anggota',
   '{team} on the team, {guests}': '{team} di tim, {guests}',
@@ -636,7 +636,7 @@ const id: Record<string, string> = {
   'New channel': 'Channel baru',
   About: 'Tentang',
   'Only the channel owner and admins can change these settings.': 'Hanya pemilik channel dan admin yang bisa mengubah pengaturan ini.',
-  'e.g. glowkind-launch': 'mis. peluncuran-glowkind',
+  'e.g. brightleaf-launch': 'mis. peluncuran-brightleaf',
   'What’s it for?': 'Untuk apa?',
   'One line people see under the name': 'Satu baris yang terlihat di bawah nama',
   'Pick a team (optional)': 'Pilih tim (opsional)',

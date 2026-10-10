@@ -10,7 +10,7 @@ npm run build
 npm run server
 ```
 
-Open http://localhost:8787 and sign in with any demo person's email (for example aqeel@pixelandprofits.com). The first-run password is `SEED_PASSWORD` in `.env.example`; copy it to `.env` to change it before the first run, and change your own password in Settings, Account.
+Open http://localhost:8787 and sign in with any demo person's email (for example raka@demo.sprint2go.com). The first-run password is `SEED_PASSWORD` in `.env.example`; copy it to `.env` to change it before the first run, and change your own password in Settings, Account.
 
 - Everything is saved in `data/sprint2go.db` (SQLite). Delete the `data` folder to start again from the demo company.
 - Open the app in two windows (or two browsers as two people) and changes show up live in both.
@@ -20,7 +20,7 @@ While changing the code, run `npm run server` and `npm run dev` together: the de
 
 ## Clients
 
-Clients sign in to their own portal at the same address. In the demo, Nadia Putri (KopiKita, approver) and Sarah Lim (Lumina Skin) can sign in with their emails and the same demo password.
+Clients sign in to their own portal at the same address. In the demo, Laras Anindita (Kopinara, approver) and Hannah Koh (Selara Skin) can sign in with their emails and the same demo password.
 
 - They only see what you share: their "With client" channels, briefs and tasks marked visible, files you share, notes of meetings they were in, and their own requests.
 - What they can do is set in Settings, Client access (and per client on the client's Portal tab).

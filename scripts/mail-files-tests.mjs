@@ -100,7 +100,7 @@ check(MAIL_SIZE_LIMIT === 25 * MB, 'the limit is 25 MB, as in Gmail');
 check(filenameMatches('Q4 Budget.xlsx', 'budget') && filenameMatches('Q4 Budget.xlsx', 'spreadsheet') && filenameMatches('a.pdf', 'pdf') && !filenameMatches('a.pdf', 'image'), 'filename: matches part of a name or a kind of file');
 check(previewWay('a.docx') === 'converted' && previewWay('a.pdf') === 'pdf' && previewWay('a.png') === 'image' && previewWay('a.doc') === 'none' && previewWay('a.mp4') === 'media', 'what previews how');
 const sample = [
-  { id: 't1', location: 'inbox', subject: 'Plans', messages: [{ id: 'm1', date: '2026-10-01T00:00:00Z', from: { name: 'Nadia', email: 'nadia@x.test' }, attachments: [{ name: 'plan.pdf', size: '1 MB', url: '/api/files/' + 'a'.repeat(32) }, { name: 'logo.png', size: '1 KB', inline: true }] }] },
+  { id: 't1', location: 'inbox', subject: 'Plans', messages: [{ id: 'm1', date: '2026-10-01T00:00:00Z', from: { name: 'Laras', email: 'laras@x.test' }, attachments: [{ name: 'plan.pdf', size: '1 MB', url: '/api/files/' + 'a'.repeat(32) }, { name: 'logo.png', size: '1 KB', inline: true }] }] },
   { id: 't2', location: 'trash', subject: 'Old', messages: [{ id: 'm2', date: '2026-10-02T00:00:00Z', from: { name: 'Bo', email: 'bo@x.test' }, attachments: [{ name: 'old.pdf', size: '1 KB' }] }] },
   { id: 't3', location: 'inbox', subject: 'Words', messages: [{ id: 'm3', date: '2026-10-03T00:00:00Z', from: { name: 'Bo', email: 'bo@x.test' }, attachments: [{ name: 'logo.png', size: '1 KB', inline: true }] }] },
 ];
@@ -239,9 +239,9 @@ try {
     const upload = async (name, data, type = 'application/octet-stream') => (await j('POST', '/api/upload', data, { 'content-type': type, 'x-file-name': encodeURIComponent(name), 'x-workspace': 'pnp' })).body;
     return { ok: r.ok, call, j, upload, cookie };
   };
-  const aqeel = await signIn('aqeel@pixelandprofits.com');
-  const rizky = await signIn('rizky@pixelandprofits.com');
-  check(aqeel.ok && rizky.ok, 'two teammates sign in');
+  const raka = await signIn('raka@demo.sprint2go.com');
+  const bima = await signIn('bima@demo.sprint2go.com');
+  check(raka.ok && bima.ok, 'two teammates sign in');
   const canSend = () => {
     const w = doc('workspaces', 'pnp');
     w.mailReady = { at: new Date().toISOString(), receive: true, send: true, why: {}, mailboxes: Object.fromEntries((w.accounts ?? []).map((a) => [a.id, { receive: true, send: true }])) };
@@ -251,21 +251,21 @@ try {
   const sendMail = async (subject, files, extra = {}) => {
     const tid = `t-files-${randomBytes(4).toString('hex')}`;
     const mid = `m-files-${randomBytes(4).toString('hex')}`;
-    const body = { workspaceId: 'pnp', accountId: 'pnp-aqeel', threadId: tid, messageId: mid, to: [{ name: 'Client', email: 'client@outside-files.example' }, { name: 'Rizky', email: 'rizky@pixelandprofits.com' }], cc: [], subject, text: 'Files attached.', html: '<p>Files attached.</p>', files, ...extra };
-    let r = await aqeel.j('POST', '/api/mail/send', body);
-    if (r.status === 409) (canSend(), (r = await aqeel.j('POST', '/api/mail/send', body)));
+    const body = { workspaceId: 'pnp', accountId: 'pnp-raka', threadId: tid, messageId: mid, to: [{ name: 'Client', email: 'client@outside-files.example' }, { name: 'Bima', email: 'bima@demo.sprint2go.com' }], cc: [], subject, text: 'Files attached.', html: '<p>Files attached.</p>', files, ...extra };
+    let r = await raka.j('POST', '/api/mail/send', body);
+    if (r.status === 409) (canSend(), (r = await raka.j('POST', '/api/mail/send', body)));
     return { ...r, tid, mid };
   };
   const outsideCopy = (subject) => waitFor(() => sunk.find((m) => m.raw.includes(subject) && m.to.includes('client@outside-files.example')));
-  const rizkyCopy = (subject) => waitFor(() => threadWith(subject).find((t) => t.accountId === 'pnp-rizky'));
+  const bimaCopy = (subject) => waitFor(() => threadWith(subject).find((t) => t.accountId === 'pnp-bima'));
 
   /* ---------- 3. sending ---------- */
   const blob = await sendMail('blob link', [{ name: 'a.pdf', url: 'blob:http://localhost/123' }]);
   check(blob.status === 403, 'a browser-only blob: link is refused (why Compose now uploads files when they’re added)');
   const pdfBytes = Buffer.concat([Buffer.from('%PDF-1.4\n'), randomBytes(3000)]);
-  const pdf = await aqeel.upload('brief.pdf', pdfBytes, 'application/pdf');
-  const word = await aqeel.upload('plan.docx', docx, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
-  const pic = await aqeel.upload('chart.png', PNG, 'image/png');
+  const pdf = await raka.upload('brief.pdf', pdfBytes, 'application/pdf');
+  const word = await raka.upload('plan.docx', docx, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+  const pic = await raka.upload('chart.png', PNG, 'image/png');
   check(!!pdf.url && !!word.url && !!pic.url, 'files upload to the server');
   const s1 = `with files ${randomBytes(3).toString('hex')}`;
   const r1 = await sendMail(s1, [{ name: 'brief.pdf', url: pdf.url }, { name: 'plan.docx', url: word.url }], { html: `<p>See the chart:</p><p><img src="${pic.url}" alt="chart"></p>` });
@@ -275,34 +275,34 @@ try {
   check(!!parsed1 && parsed1.attachments.some((a) => a.filename === 'brief.pdf' && a.content.equals(pdfBytes)) && parsed1.attachments.some((a) => a.filename === 'plan.docx'), 'the outside copy carries both files, byte for byte');
   const cidPart = parsed1?.attachments.find((a) => a.contentId && a.contentType === 'image/png');
   check(!!cidPart && parsed1.html.includes(`cid:${String(cidPart.contentId).replace(/[<>]/g, '')}`) && !parsed1.html.includes('/api/files/'), 'the pasted picture goes out inside the email as a cid image');
-  const rz1 = await rizkyCopy(s1);
+  const rz1 = await bimaCopy(s1);
   const rzAtts = rz1?.messages[0].attachments ?? [];
   check(rzAtts.filter((a) => !a.inline).length === 2 && rzAtts.every((a) => a.url && a.url !== pdf.url && a.scan === 'clean'), 'the teammate gets their own copies of the files, scanned clean');
   const inl = rzAtts.find((a) => a.inline);
   check(!!inl && !!inl.cid && rz1.messages[0].html.includes(`cid:${inl.cid}`), 'and sees the picture in place (its cid kept for the reader’s frame), not as an attachment');
 
-  const exe = await aqeel.upload('tool.exe', program());
+  const exe = await raka.upload('tool.exe', program());
   const rExe = await sendMail('exe out', [{ name: 'tool.exe', url: exe.url }]);
   check(rExe.status === 400 && /can’t be sent/.test(rExe.body.error ?? ''), 'an .exe can’t be sent');
-  const renamed = await aqeel.upload('invoice.pdf', program(), 'application/pdf');
+  const renamed = await raka.upload('invoice.pdf', program(), 'application/pdf');
   const rRen = await sendMail('renamed out', [{ name: 'invoice.pdf', url: renamed.url }]);
   check(rRen.status === 400 && /program/.test(rRen.body.error ?? ''), 'a program renamed to .pdf can’t be sent');
-  const zipped = await aqeel.upload('photos.zip', makeZip([{ name: 'a.jpg', data: 'jpg' }, { name: 'sub/run.bat', data: 'echo' }]));
+  const zipped = await raka.upload('photos.zip', makeZip([{ name: 'a.jpg', data: 'jpg' }, { name: 'sub/run.bat', data: 'echo' }]));
   const rZip = await sendMail('zip out', [{ name: 'photos.zip', url: zipped.url }]);
   check(rZip.status === 400 && /zip/.test(rZip.body.error ?? ''), 'a zip holding a .bat can’t be sent');
-  const nested = await aqeel.upload('outer.zip', makeZip([{ name: 'inner.zip', data: makeZip([{ name: 'evil.js', data: 'x' }]) }]));
+  const nested = await raka.upload('outer.zip', makeZip([{ name: 'inner.zip', data: makeZip([{ name: 'evil.js', data: 'x' }]) }]));
   const rNest = await sendMail('nested out', [{ name: 'outer.zip', url: nested.url }]);
   check(rNest.status === 400, 'a zip in a zip holding a .js can’t be sent');
-  const okZip = await aqeel.upload('fine.zip', makeZip([{ name: 'a.txt', data: 'hello' }]));
+  const okZip = await raka.upload('fine.zip', makeZip([{ name: 'a.txt', data: 'hello' }]));
   check((await sendMail(`fine zip ${randomBytes(2).toString('hex')}`, [{ name: 'fine.zip', url: okZip.url }])).status === 200, 'an ordinary zip goes out');
-  const big = await aqeel.upload('video.mov', Buffer.alloc(20 * MB, 1), 'video/quicktime');
+  const big = await raka.upload('video.mov', Buffer.alloc(20 * MB, 1), 'video/quicktime');
   const rBig = await sendMail('too big', [{ name: 'video.mov', url: big.url }]);
   check(rBig.status === 400 && /25 MB/.test(rBig.body.error ?? ''), 'an email over 25 MB with its files is refused, pointing at Drive links');
 
   // A scheduled email keeps its files (the app saves them with their addresses now): it goes out with them.
   const s2 = `scheduled files ${randomBytes(3).toString('hex')}`;
   const tid2 = `t-sched-${randomBytes(4).toString('hex')}`;
-  const saved = await aqeel.j('POST', '/api/sync', { coll: 'threads', upserts: [{ id: tid2, accountId: 'pnp-aqeel', subject: s2, location: 'drafts', starred: false, unread: false, labels: [], sendAt: new Date(Date.now() - 1000).toISOString(), messages: [{ id: 'm-s', from: { name: 'Aqeel', email: 'aqeel@pixelandprofits.com' }, to: [{ name: 'Client', email: 'client@outside-files.example' }], date: new Date().toISOString(), body: 'Later', attachments: [{ name: 'brief.pdf', size: '3.0 KB', url: pdf.url }] }] }], deletes: [] });
+  const saved = await raka.j('POST', '/api/sync', { coll: 'threads', upserts: [{ id: tid2, accountId: 'pnp-raka', subject: s2, location: 'drafts', starred: false, unread: false, labels: [], sendAt: new Date(Date.now() - 1000).toISOString(), messages: [{ id: 'm-s', from: { name: 'Raka', email: 'raka@demo.sprint2go.com' }, to: [{ name: 'Client', email: 'client@outside-files.example' }], date: new Date().toISOString(), body: 'Later', attachments: [{ name: 'brief.pdf', size: '3.0 KB', url: pdf.url }] }] }], deletes: [] });
   check(saved.status === 200, 'a scheduled email is saved with its files');
   const out2 = await waitFor(() => sunk.find((m) => m.raw.includes(s2)), 400);
   const parsed2 = out2 ? await simpleParser(out2.raw) : null;
@@ -313,7 +313,7 @@ try {
   const s3 = `incoming ${randomBytes(3).toString('hex')}`;
   await smtp.sendMail({
     from: 'Outside <someone@outside-files.example>',
-    to: 'aqeel@pixelandprofits.com',
+    to: 'raka@demo.sprint2go.com',
     subject: s3,
     text: 'Files',
     html: '<p>Our logo: <img src="cid:logo123"></p>',
@@ -325,7 +325,7 @@ try {
       { filename: 'logo.png', content: PNG, cid: 'logo123' },
     ],
   });
-  const t3 = await waitFor(() => threadWith(s3).find((t) => t.accountId === 'pnp-aqeel'));
+  const t3 = await waitFor(() => threadWith(s3).find((t) => t.accountId === 'pnp-raka'));
   const a3 = t3?.messages[0].attachments ?? [];
   const by = (n) => a3.find((a) => a.name === n);
   check(by('notes.txt')?.url && by('notes.txt')?.scan === 'clean', 'an ordinary file arrives, scanned clean');
@@ -338,7 +338,7 @@ try {
   check(!db.prepare("SELECT 1 FROM mail_raw WHERE thread_id = ? AND kind = 'raw'").get(t3.id), 'mail apps (IMAP) get a copy without the refused files, not the source as it arrived');
 
   /* ---------- 5. Download all ---------- */
-  const zr = await aqeel.call('GET', `/api/mail/zip?threadId=${t3.id}&messageId=${t3.messages[0].id}`);
+  const zr = await raka.call('GET', `/api/mail/zip?threadId=${t3.id}&messageId=${t3.messages[0].id}`);
   check(zr.status === 200 && zr.headers.get('content-type') === 'application/zip', 'Download all answers with a zip');
   const zipPath = join(work, 'all.zip');
   writeFileSync(zipPath, Buffer.from(await zr.arrayBuffer()));
@@ -347,32 +347,32 @@ try {
   check(names.join(',') === 'notes.txt', `the zip holds the kept files only, not blocked ones or inline pictures (${names.join(', ')})`);
   const text = Buffer.concat(await Array.fromAsync(await openEntry(zipPath, entries[0]))).toString();
   check(text === 'hello', 'and unpacks to the same bytes (checksums verified)');
-  const zr1 = await rizky.call('GET', `/api/mail/zip?threadId=${rz1.id}`);
+  const zr1 = await bima.call('GET', `/api/mail/zip?threadId=${rz1.id}`);
   const zip1 = join(work, 'sent.zip');
   writeFileSync(zip1, Buffer.from(await zr1.arrayBuffer()));
   const e1 = await readZip(zip1, { maxFiles: 50, maxTotal: 50 * MB });
   const pdfBack = Buffer.concat(await Array.fromAsync(await openEntry(zip1, e1.find((e) => e.name === 'brief.pdf'))));
   check(pdfBack.equals(pdfBytes) && !e1.some((e) => e.name === 'chart.png'), 'a teammate’s copy zips its files too (the picture inside the words stays out)');
-  check((await rizky.call('GET', `/api/mail/zip?threadId=${t3.id}`)).status === 404, 'someone without that mailbox gets nothing');
+  check((await bima.call('GET', `/api/mail/zip?threadId=${t3.id}`)).status === 404, 'someone without that mailbox gets nothing');
 
   /* ---------- 6. Save to Drive ---------- */
   const folder = { id: `d-folder-${randomBytes(3).toString('hex')}`, name: 'Clients', kind: 'folder', parentId: null, size: 0, modified: new Date().toISOString(), workspaceId: 'pnp' };
-  check((await aqeel.j('POST', '/api/sync', { coll: 'drive', upserts: [folder], deletes: [] })).status === 200, 'a Drive folder to save into');
-  const sv = await aqeel.j('POST', '/api/mail/files/drive', { threadId: t3.id, messageId: t3.messages[0].id, folderId: folder.id });
+  check((await raka.j('POST', '/api/sync', { coll: 'drive', upserts: [folder], deletes: [] })).status === 200, 'a Drive folder to save into');
+  const sv = await raka.j('POST', '/api/mail/files/drive', { threadId: t3.id, messageId: t3.messages[0].id, folderId: folder.id });
   const item = sv.body.items?.[0];
   check(sv.status === 200 && item?.name === 'notes.txt' && item.parentId === folder.id && /^\/api\/files\/[a-f0-9]{32}$/.test(item.url ?? ''), 'Save to Drive makes a Drive file with the real file behind it, in the folder picked');
   check(!!item && doc('drive', item.id)?.threadId === t3.id, 'the Drive file remembers the email it came from');
-  const got = item ? await aqeel.call('GET', item.url) : null;
+  const got = item ? await raka.call('GET', item.url) : null;
   check(!!got && (await got.text()) === 'hello', 'the saved file opens from Drive with the same content');
   const copies = db.prepare("SELECT uploaded_by AS by FROM files WHERE workspace_id = 'pnp' AND name = 'notes.txt'").all();
   check(copies.length === 2 && copies.some((c) => c.by === 'mail') && copies.some((c) => c.by !== 'mail'), 'the copy is its own file, the person’s, counted in the company’s storage');
-  const svAll = await rizky.j('POST', '/api/mail/files/drive', { threadId: rz1.id });
+  const svAll = await bima.j('POST', '/api/mail/files/drive', { threadId: rz1.id });
   check(svAll.status === 200 && svAll.body.items?.length === 2 && svAll.body.items.every((i) => i.parentId === null), 'Save all to Drive saves every file (into My Drive)');
-  check((await aqeel.j('POST', '/api/mail/files/drive', { threadId: t3.id, folderId: 'd-nope' })).status === 404, 'a folder that isn’t there is refused');
-  check((await rizky.j('POST', '/api/mail/files/drive', { threadId: t3.id })).status === 404, 'someone without that mailbox can’t save its files');
+  check((await raka.j('POST', '/api/mail/files/drive', { threadId: t3.id, folderId: 'd-nope' })).status === 404, 'a folder that isn’t there is refused');
+  check((await bima.j('POST', '/api/mail/files/drive', { threadId: t3.id })).status === 404, 'someone without that mailbox can’t save its files');
 
   /* ---------- 7. big files as links ---------- */
-  const lk = await aqeel.j('POST', '/api/mail/links', { workspaceId: 'pnp', access: 'anyone', recipients: [], files: [{ name: 'video.mov', url: big.url }] });
+  const lk = await raka.j('POST', '/api/mail/links', { workspaceId: 'pnp', access: 'anyone', recipients: [], files: [{ name: 'video.mov', url: big.url }] });
   const href = lk.body.links?.[0]?.href ?? '';
   check(lk.status === 200 && /\/f\/[a-f0-9]{40}$/.test(href), 'a big file gets a link');
   const path = href.replace(/^https?:\/\/[^/]+/, '');
@@ -382,7 +382,7 @@ try {
   const dl = await fetch(`${base}${path}/download`);
   check(dl.status === 200 && (await dl.arrayBuffer()).byteLength === 20 * MB && /attachment/.test(dl.headers.get('content-disposition') ?? ''), 'and downloads it');
   check(db.prepare("SELECT 1 FROM docs WHERE coll = 'drive' AND data LIKE ?").get(`%${big.url}%`), 'the linked file is in Drive (Sent as links from Mail)');
-  const lk2 = await aqeel.j('POST', '/api/mail/links', { workspaceId: 'pnp', access: 'recipients', recipients: ['client@outside-files.example'], files: [{ name: 'brief.pdf', url: pdf.url }] });
+  const lk2 = await raka.j('POST', '/api/mail/links', { workspaceId: 'pnp', access: 'recipients', recipients: ['client@outside-files.example'], files: [{ name: 'brief.pdf', url: pdf.url }] });
   const p2 = (lk2.body.links?.[0]?.href ?? '').replace(/^https?:\/\/[^/]+/, '');
   const closed = await fetch(`${base}${p2}/download`, { redirect: 'manual' });
   check(closed.status === 303, 'recipients only: no download without confirming the address');
@@ -402,26 +402,26 @@ try {
   const forged = decodeURIComponent(fcookie.slice(5)).split('|');
   const fake = `s2gf=${encodeURIComponent(`stranger@else.example|${forged[1]}|${forged[2]}`)}`;
   check((await fetch(`${base}${p2}/download`, { headers: { cookie: fake }, redirect: 'manual' })).status === 303, 'a cookie changed to another address doesn’t work');
-  const team = await rizky.call('GET', `${p2}/download`);
+  const team = await bima.call('GET', `${p2}/download`);
   check(team.status === 200, 'a teammate of the sender, signed in, opens it straight away');
   check((await fetch(`${base}/f/${'0'.repeat(40)}`)).status === 404, 'an unknown link says it doesn’t work');
-  const notMine = await rizky.j('POST', '/api/mail/links', { workspaceId: 'pnp', access: 'anyone', files: [{ name: 'plan.docx', url: word.url }] });
+  const notMine = await bima.j('POST', '/api/mail/links', { workspaceId: 'pnp', access: 'anyone', files: [{ name: 'plan.docx', url: word.url }] });
   check(notMine.status === 403, 'nobody can make a link to a teammate’s private upload');
 
   /* ---------- previews over the file route ---------- */
-  const pv = await aqeel.call('GET', `${word.url}/preview`);
+  const pv = await raka.call('GET', `${word.url}/preview`);
   const pvText = await pv.text();
   check(pv.status === 200 && pvText.includes('Quarterly plan') && /sandbox/.test(pv.headers.get('content-security-policy') ?? '') && !/script-src/.test(pv.headers.get('content-security-policy') ?? ''), 'a Word file previews as a sandboxed page with no scripts');
-  check((await rizky.call('GET', `${word.url}/preview`)).status === 404 || (await rizky.call('GET', word.url)).status === 200, 'a preview follows the same rule as opening the file');
-  const pvPdf = await aqeel.j('GET', `${pdf.url}/preview`);
+  check((await bima.call('GET', `${word.url}/preview`)).status === 404 || (await bima.call('GET', word.url)).status === 200, 'a preview follows the same rule as opening the file');
+  const pvPdf = await raka.j('GET', `${pdf.url}/preview`);
   check(pvPdf.status === 415 && !!pvPdf.body.error, 'a kind the server doesn’t convert says so');
 
   /* ---------- 8. every attachment ---------- */
-  const fl = await aqeel.j('GET', '/api/mail/files?workspaceId=pnp');
+  const fl = await raka.j('GET', '/api/mail/files?workspaceId=pnp');
   check(fl.status === 200 && fl.body.files.some((f) => f.name === 'notes.txt') && !fl.body.files.some((f) => f.name === 'setup.exe' || f.name === 'logo.png'), 'every attachment across the mail: kept files, not blocked ones or inline pictures');
-  const fq = await aqeel.j('GET', '/api/mail/files?workspaceId=pnp&q=pdf');
+  const fq = await raka.j('GET', '/api/mail/files?workspaceId=pnp&q=pdf');
   check(fq.body.files.length > 0 && fq.body.files.every((f) => /pdf/i.test(f.name)), 'filename: finds by name or kind');
-  const fr = await rizky.j('GET', '/api/mail/files?workspaceId=pnp');
+  const fr = await bima.j('GET', '/api/mail/files?workspaceId=pnp');
   check(!fr.body.files.some((f) => f.threadId === t3.id), 'nobody sees another person’s mailbox’s files');
 } catch (e) {
   console.log('FAIL', e);

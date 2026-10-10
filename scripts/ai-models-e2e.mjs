@@ -109,7 +109,7 @@ const env = {
   MAIL_HOST: 'localhost',
   MAIL_ENABLED: '0',
   SEED_PASSWORD: randomBytes(12).toString('hex'),
-  S2G_OPERATORS: 'aqeel@pixelandprofits.com',
+  S2G_OPERATORS: 'raka@demo.sprint2go.com',
   ANTHROPIC_API_KEY: '',
   SES_KEY: '',
   SES_SECRET: '',
@@ -189,15 +189,15 @@ try {
       sync: (coll, upserts) => call('POST', '/api/sync', { coll, upserts, deletes: [] }).then(j),
     };
   };
-  const aqeel = await signIn('aqeel@pixelandprofits.com');
-  const dewi = await signIn('dewi@pixelandprofits.com');
-  check(aqeel.ok && dewi.ok, `the owner and a member sign in (${aqeel.why} ${dewi.why})`);
+  const raka = await signIn('raka@demo.sprint2go.com');
+  const intan = await signIn('intan@demo.sprint2go.com');
+  check(raka.ok && intan.ok, `the owner and a member sign in (${raka.why} ${intan.why})`);
 
   /* ---------- a company adds a SumoPod key and picks from SumoPod's own list ---------- */
-  const bad = await aqeel.post('/api/ai/keys', { workspaceId: 'pnp', provider: 'sumopod', key: 'sk-wrong-000000000000' });
+  const bad = await raka.post('/api/ai/keys', { workspaceId: 'pnp', provider: 'sumopod', key: 'sk-wrong-000000000000' });
   check(bad.status === 400 && /rejected the key/.test(bad.error ?? ''), `a key the provider rejects isn’t saved (${bad.error})`);
   const SUMO_KEY = 'sk-test-sumopod-key-0001';
-  const added = await aqeel.post('/api/ai/keys', { workspaceId: 'pnp', provider: 'sumopod', key: SUMO_KEY });
+  const added = await raka.post('/api/ai/keys', { workspaceId: 'pnp', provider: 'sumopod', key: SUMO_KEY });
   check(added.status === 200 && added.keyLast4 === '0001', 'the key is tested and saved; only its last 4 come back');
   check(!added.text.includes(SUMO_KEY), 'the key never comes back to the browser');
   const ids = (l) => (l?.models ?? []).map((m) => m.id);
@@ -209,18 +209,18 @@ try {
   check(kimi.name === 'Kimi K2 0905' && kimi.price === null && !kimi.recommended, 'the rest get a readable name and no price');
   check(calls.some((c) => c.provider === 'sumopod' && c.model === 'claude-haiku-4-5'), 'the key was tested on a model SumoPod offers');
 
-  const denied = await dewi.get('/api/ai/models?workspaceId=pnp&provider=sumopod');
+  const denied = await intan.get('/api/ai/models?workspaceId=pnp&provider=sumopod');
   check(denied.status === 403, 'a member can’t read the company’s model lists');
-  const listed = await aqeel.get('/api/ai/models?workspaceId=pnp&provider=sumopod');
+  const listed = await raka.get('/api/ai/models?workspaceId=pnp&provider=sumopod');
   check(listed.status === 200 && listed.source === 'live' && ids(listed).includes('kimi-k2-0905') && !listed.text.includes(SUMO_KEY), 'an admin reads the list (kept on the server), without the key');
 
-  const typedOk = await aqeel.post('/api/ai/models/check', { workspaceId: 'pnp', provider: 'sumopod', model: 'secret-model-1' });
+  const typedOk = await raka.post('/api/ai/models/check', { workspaceId: 'pnp', provider: 'sumopod', model: 'secret-model-1' });
   check(typedOk.status === 200 && typedOk.ok, 'a model id typed in is tried with one call and works');
-  const typedBad = await aqeel.post('/api/ai/models/check', { workspaceId: 'pnp', provider: 'sumopod', model: 'no-such-model' });
+  const typedBad = await raka.post('/api/ai/models/check', { workspaceId: 'pnp', provider: 'sumopod', model: 'no-such-model' });
   check(typedBad.status === 400 && /doesn’t offer/.test(typedBad.error ?? ''), `one that isn’t there says so (${typedBad.error})`);
-  const typedJunk = await aqeel.post('/api/ai/models/check', { workspaceId: 'pnp', provider: 'sumopod', model: 'https://evil.example/x?y' });
+  const typedJunk = await raka.post('/api/ai/models/check', { workspaceId: 'pnp', provider: 'sumopod', model: 'https://evil.example/x?y' });
   check(typedJunk.status === 400 && !calls.some((c) => /evil/.test(c.model)), 'something that isn’t a model id is never sent');
-  check((await dewi.post('/api/ai/models/check', { workspaceId: 'pnp', provider: 'sumopod', model: 'kimi-k2-0905' })).status === 403, 'a member can’t try models on the company’s key');
+  check((await intan.post('/api/ai/models/check', { workspaceId: 'pnp', provider: 'sumopod', model: 'kimi-k2-0905' })).status === 403, 'a member can’t try models on the company’s key');
 
   // The admin picks Kimi K2 (not in our catalogue) for summaries, DeepSeek V4 Flash as the key's model, and a typed id for replies.
   const pnp = doc('workspaces', 'pnp');
@@ -228,24 +228,24 @@ try {
     ...pnp.ai,
     payer: 'own',
     preset: 'custom',
-    providers: [{ id: 'sumopod', keyLast4: '0001', addedAt: new Date().toISOString(), addedBy: 'u-aqeel', status: 'ok', spentUsd: 0, model: 'deepseek-v4-flash' }],
+    providers: [{ id: 'sumopod', keyLast4: '0001', addedAt: new Date().toISOString(), addedBy: 'u-raka', status: 'ok', spentUsd: 0, model: 'deepseek-v4-flash' }],
     jobs: { ...pnp.ai.jobs, summary: { provider: 'sumopod', model: 'kimi-k2-0905' }, replies: { provider: 'sumopod', model: 'secret-model-1', typed: true } },
   };
-  await aqeel.sync('workspaces', [{ ...pnp, ai }]);
+  await raka.sync('workspaces', [{ ...pnp, ai }]);
   check(doc('workspaces', 'pnp').ai.jobs.summary.model === 'kimi-k2-0905', 'the pick is saved');
-  const thread = { id: 't1', subject: 'Launch', messages: [{ from: 'budi@client.example', to: 'aqeel@pixelandprofits.com', date: new Date().toISOString(), body: 'Can we launch Monday?' }] };
+  const thread = { id: 't1', subject: 'Launch', messages: [{ from: 'budi@client.example', to: 'raka@demo.sprint2go.com', date: new Date().toISOString(), body: 'Can we launch Monday?' }] };
   calls.length = 0;
-  const s1 = await aqeel.post('/api/ai/summarize', { workspaceId: 'pnp', thread });
+  const s1 = await raka.post('/api/ai/summarize', { workspaceId: 'pnp', thread });
   check(s1.status === 200 && /kimi-k2-0905/.test(s1.summary ?? ''), 'the job runs');
   check(calls.length === 1 && calls[0].model === 'kimi-k2-0905' && calls[0].key === SUMO_KEY, `with exactly the model id picked, on the company’s key (${calls.map((c) => c.model).join(', ')})`);
   calls.length = 0;
-  await aqeel.post('/api/ai/replies', { workspaceId: 'pnp', thread, me: 'aqeel@pixelandprofits.com' });
+  await raka.post('/api/ai/replies', { workspaceId: 'pnp', thread, me: 'raka@demo.sprint2go.com' });
   check(calls[0]?.model === 'secret-model-1', 'a typed model id is sent as typed');
 
   // SumoPod stops offering Kimi K2.
   sumo.listed = sumo.listed.filter((m) => m !== 'kimi-k2-0905');
   calls.length = 0;
-  const s2 = await aqeel.post('/api/ai/summarize', { workspaceId: 'pnp', thread });
+  const s2 = await raka.post('/api/ai/summarize', { workspaceId: 'pnp', thread });
   check(s2.status === 200 && calls.map((c) => c.model).join(',') === 'kimi-k2-0905,deepseek-v4-flash', `the job still answers, on its fallback (${calls.map((c) => c.model).join(', ')})`);
   const moved = await waitFor(() => {
     const a = doc('workspaces', 'pnp').ai;
@@ -255,44 +255,44 @@ try {
   check(/^SumoPod no longer offers Kimi K2 0905; summaries & catch me up moved to DeepSeek V4 Flash\.$/.test(moved?.notes?.[0]?.text ?? ''), `with a note for Settings: “${moved?.notes?.[0]?.text}”`);
   check(moved?.jobs.replies.model === 'secret-model-1', 'a typed model id isn’t on lists, so it stays');
   calls.length = 0;
-  await aqeel.post('/api/ai/summarize', { workspaceId: 'pnp', thread });
+  await raka.post('/api/ai/summarize', { workspaceId: 'pnp', thread });
   check(calls.map((c) => c.model).join(',') === 'deepseek-v4-flash', 'the next run goes straight to the new model');
 
   /* ---------- Anthropic's and Gemini's own lists ---------- */
-  const ant = await aqeel.post('/api/ai/keys', { workspaceId: 'pnp', provider: 'anthropic', key: 'sk-ant-test-anthropic-0002' });
+  const ant = await raka.post('/api/ai/keys', { workspaceId: 'pnp', provider: 'anthropic', key: 'sk-ant-test-anthropic-0002' });
   check(ant.status === 200 && ant.models?.source === 'live' && ids(ant.models).join(',') === 'claude-opus-5-5,claude-haiku-4-5,claude-sonnet-4-5-20250929', `Anthropic’s list (${ids(ant.models).join(', ')})`);
   check(ant.models?.models[2]?.name === 'Claude Sonnet 4.5', 'with Anthropic’s own names');
-  const gem = await aqeel.post('/api/ai/keys', { workspaceId: 'pnp', provider: 'google', key: 'AIza-test-gemini-key-0003' });
+  const gem = await raka.post('/api/ai/keys', { workspaceId: 'pnp', provider: 'google', key: 'AIza-test-gemini-key-0003' });
   check(gem.status === 200 && gem.models?.source === 'live' && ids(gem.models).join(',') === 'gemini-3.1-pro,gemini-3.5-flash', `Gemini’s list, only models that write text (${ids(gem.models).join(', ')})`);
 
   /* ---------- the operator console: our keys ---------- */
-  const setup = await aqeel.post('/api/admin/2fa/setup', {});
-  const verified = await aqeel.post('/api/admin/2fa/verify', { code: totp(setup.secret ?? '') });
+  const setup = await raka.post('/api/admin/2fa/setup', {});
+  const verified = await raka.post('/api/admin/2fa/verify', { code: totp(setup.secret ?? '') });
   check(verified.status === 200, 'the operator confirms two-step sign-in');
   sumo.listed.push('kimi-k2-0905');
-  const ourKey = await aqeel.post('/api/admin/ai/key', { provider: 'sumopod', key: 'sk-test-ours-0004' });
+  const ourKey = await raka.post('/api/admin/ai/key', { provider: 'sumopod', key: 'sk-test-ours-0004' });
   check(ourKey.status === 200 && ourKey.last4 === '0004', 'an operator adds our SumoPod key');
-  let ov = await aqeel.get('/api/admin/ai');
+  let ov = await raka.get('/api/admin/ai');
   const sumoOpts = (ov.options?.text ?? []).filter((o) => o.provider === 'sumopod').map((o) => o.model);
   check(sumoOpts.includes('glm-4.6') && sumoOpts.includes('kimi-k2-0905') && !sumoOpts.includes('qwen3.7-plus'), 'Models per job offers SumoPod’s own list for our key, not the catalogue');
   check(ov.lists?.some((l) => l.provider === 'sumopod' && l.source === 'live'), 'and says where the list came from');
-  const notOffered = await aqeel.post('/api/admin/ai/job', { job: 'summary', primary: { provider: 'sumopod', model: 'qwen3.7-plus' }, fallback: null });
+  const notOffered = await raka.post('/api/admin/ai/job', { job: 'summary', primary: { provider: 'sumopod', model: 'qwen3.7-plus' }, fallback: null });
   check(notOffered.status === 400, 'a model SumoPod doesn’t offer our key can’t be picked');
-  const picked = await aqeel.post('/api/admin/ai/job', { job: 'summary', primary: { provider: 'sumopod', model: 'glm-4.6' }, fallback: { provider: 'sumopod', model: 'deepseek-v4-flash' } });
+  const picked = await raka.post('/api/admin/ai/job', { job: 'summary', primary: { provider: 'sumopod', model: 'glm-4.6' }, fallback: { provider: 'sumopod', model: 'deepseek-v4-flash' } });
   check(picked.status === 200, 'GLM 4.6 (not in the catalogue) is picked for summaries');
-  ov = await aqeel.get('/api/admin/ai');
+  ov = await raka.get('/api/admin/ai');
   const glm = ov.prices?.find((p) => p.model === 'glm-4.6');
   check(!!glm && glm.price === null && glm.usedBy.includes('summary'), 'it shows in the price list without a price');
   check(ov.problems?.some((p) => p.kind === 'ai-prices' && /No price for .*(GLM 4\.6|more)/.test(p.text)), 'and the AI page asks for the missing prices');
   const kimiRow = ov.prices?.find((p) => p.model === 'kimi-k2-0905');
   check(!!kimiRow && kimiRow.uses > 0 && kimiRow.price === null, 'a model companies used this month without a price is listed for operators too');
-  const priced = await aqeel.post('/api/admin/ai/prices', { prices: { 'glm-4.6': [0.6, 2.2] } });
-  ov = await aqeel.get('/api/admin/ai');
+  const priced = await raka.post('/api/admin/ai/prices', { prices: { 'glm-4.6': [0.6, 2.2] } });
+  ov = await raka.get('/api/admin/ai');
   check(priced.status === 200 && JSON.stringify(ov.prices.find((p) => p.model === 'glm-4.6')?.price) === '[0.6,2.2]', 'an operator fills in its price');
   // SumoPod stops offering GLM 4.6 to our key.
   sumo.listed = sumo.listed.filter((m) => m !== 'glm-4.6');
-  await aqeel.post('/api/admin/ai/models/refresh', {});
-  ov = await aqeel.get('/api/admin/ai');
+  await raka.post('/api/admin/ai/models/refresh', {});
+  ov = await raka.get('/api/admin/ai');
   const sj = ov.jobs?.find((j) => j.id === 'summary');
   check(sj?.state === 'fallback' && /SumoPod no longer offers GLM 4\.6/.test(sj?.gone ?? ''), `summaries run on their fallback (${sj?.state}: ${sj?.gone})`);
   check(ov.problems?.some((p) => p.kind === 'ai-gone:summary' && p.to === '/admin/ai/models'), 'and the AI page says so');

@@ -786,7 +786,7 @@ await test('Invites we send: a repeating event goes to its guests as one series;
 });
 
 await test('Invites we get: a repeating invite is one repeating event; a date moved, a date cancelled and an update keep what was answered', () => {
-  const inv = icsMod.parseInvite(icsMod.buildInvite({ method: 'REQUEST', uid: 'series@google.example', sequence: 0, organizer: { name: 'Nadia', email: 'nadia@kopikita.example' }, attendees: [{ name: 'Ana', email: `ana.undo@${mailer.MAIL_HOST}` }], title: 'KopiKita weekly', start: '2026-10-06T02:00:00.000Z', end: '2026-10-06T03:00:00.000Z', tz: 'Asia/Jakarta', rrule: 'FREQ=WEEKLY;BYDAY=TU', url: 'https://meet.google.com/abc-defg-hij' }));
+  const inv = icsMod.parseInvite(icsMod.buildInvite({ method: 'REQUEST', uid: 'series@google.example', sequence: 0, organizer: { name: 'Laras', email: 'laras@kopinara.example' }, attendees: [{ name: 'Ana', email: `ana.undo@${mailer.MAIL_HOST}` }], title: 'Kopinara weekly', start: '2026-10-06T02:00:00.000Z', end: '2026-10-06T03:00:00.000Z', tz: 'Asia/Jakarta', rrule: 'FREQ=WEEKLY;BYDAY=TU', url: 'https://meet.google.com/abc-defg-hij' }));
   const made = invitesIn.eventsFor(inv, { userId: 'aj-ana', workspaceId: 'w-undo', threadId: 't-inv', rsvp: 'accepted', mine: [`ana.undo@${mailer.MAIL_HOST}`] });
   assert.equal(made.docs.length, 1, 'one event, not a copy per date');
   const doc = made.docs[0];
@@ -802,15 +802,15 @@ await test('Invites we get: a repeating invite is one repeating event; a date mo
   invitesIn.applyInbound({ id: 'w-undo' }, acct, { ...inv, method: 'REQUEST', rrule: undefined, sequence: 1, recurrenceId: '2026-10-13T02:00:00.000Z', start: '2026-10-13T07:00:00.000Z', end: '2026-10-13T08:00:00.000Z' }, 't-inv', () => {}, notify);
   let e = db.getDoc('events', doc.id);
   assert.deepEqual(e.overrides.find((o) => o.occurrence === '2026-10-13T02:00:00.000Z'), { occurrence: '2026-10-13T02:00:00.000Z', start: '2026-10-13T07:00:00.000Z', end: '2026-10-13T08:00:00.000Z' });
-  assert.match(said.at(-1), /changed “KopiKita weekly” on one of its dates/);
+  assert.match(said.at(-1), /changed “Kopinara weekly” on one of its dates/);
   // …and cancels 27 October.
   invitesIn.applyInbound({ id: 'w-undo' }, acct, { ...inv, method: 'CANCEL', sequence: 2, recurrenceId: '2026-10-27T02:00:00.000Z', rrule: undefined }, 't-inv', () => {}, notify);
   e = db.getDoc('events', doc.id);
   assert.deepEqual(e.exdates, ['2026-10-27T02:00:00.000Z']);
   // A new title for the whole series: the same event, Ana's Maybe for the 20th stays.
-  invitesIn.applyInbound({ id: 'w-undo' }, acct, { ...inv, title: 'KopiKita weekly sync', sequence: 3 }, 't-inv', () => {}, notify);
+  invitesIn.applyInbound({ id: 'w-undo' }, acct, { ...inv, title: 'Kopinara weekly sync', sequence: 3 }, 't-inv', () => {}, notify);
   e = db.getDoc('events', doc.id);
-  assert.equal(e.title, 'KopiKita weekly sync');
+  assert.equal(e.title, 'Kopinara weekly sync');
   assert.equal(e.rsvp, 'accepted');
   assert.equal(e.overrides.find((o) => o.occurrence === '2026-10-20T02:00:00.000Z')?.rsvp, 'tentative');
   assert.equal(invitesIn.eventsOf('series@google.example', 'w-undo', ['aj-ana']).length, 1);
@@ -1190,13 +1190,13 @@ await test('Trials: one per person and per company domain; an operator can allow
 
 await test('BIMI: a logo passes only with the SVG Tiny PS basics, and the record points at its stable address', async () => {
   const bimi = await import('../server/bimi.ts');
-  const good = '<?xml version="1.0" encoding="UTF-8"?><svg xmlns="http://www.w3.org/2000/svg" version="1.2" baseProfile="tiny-ps" viewBox="0 0 100 100"><title>Pixel and Profits</title><rect width="100" height="100" fill="#5b5bf6"/><path d="M20 20h60v60H20z" fill="url(#g)"/></svg>';
+  const good = '<?xml version="1.0" encoding="UTF-8"?><svg xmlns="http://www.w3.org/2000/svg" version="1.2" baseProfile="tiny-ps" viewBox="0 0 100 100"><title>sprint2go Studio</title><rect width="100" height="100" fill="#5b5bf6"/><path d="M20 20h60v60H20z" fill="url(#g)"/></svg>';
   assert.deepEqual(bimi.svgProblems(good), []);
   const has = (svg, re) => bimi.svgProblems(svg).some((p) => re.test(p));
   assert.ok(has(good.replace(' baseProfile="tiny-ps"', ''), /baseProfile="tiny-ps"/), 'the profile');
   assert.ok(has(good.replace('version="1.2"', 'version="1.1"'), /version="1\.2"/), 'the version');
   assert.ok(has(good.replace('0 0 100 100', '0 0 120 80'), /isn’t square: its viewBox is 120 by 80/), 'square');
-  assert.ok(has(good.replace('<title>Pixel and Profits</title>', ''), /<title>/), 'a title');
+  assert.ok(has(good.replace('<title>sprint2go Studio</title>', ''), /<title>/), 'a title');
   assert.ok(has(good.replace('<rect', '<script>alert(1)</script><rect'), /script/), 'no scripts');
   assert.ok(has(good.replace('<rect', '<rect onclick="x()"'), /event handlers/), 'no handlers');
   assert.ok(has(good.replace('<rect', '<image href="https://evil.example/x.png"/><rect'), /embedded picture/), 'no pictures');
@@ -1447,15 +1447,15 @@ await test('Demo company: a copy of the sample company, every id in the person�
   assert.deepEqual(ws.members[0], { userId: 'u-maria', role: 'owner' }, 'the person owns it');
   assert.ok(ws.members.length > 1 && ws.members.slice(1).every((m) => m.userId.startsWith('demo-u-maria-')), 'the teammates are the demo’s own people');
   const json = JSON.stringify(built);
-  assert.ok(!/"u-aqeel"|"pnp"|"elk"/.test(json), 'nothing points at the demo’s own ids any more');
+  assert.ok(!/"u-raka"|"pnp"|"elk"/.test(json), 'nothing points at the demo’s own ids any more');
   for (const [coll, docs] of Object.entries(built)) for (const d of docs) if (coll !== 'workspaces') assert.ok(d.id.startsWith('demo-u-maria-') || coll === 'calendars', `${coll} ${d.id} is in their space`);
   assert.ok(built.threads.length && built.threads.every((t) => ws.accounts.some((a) => a.id === t.accountId)), 'mail only in its own mailboxes');
   assert.ok(built.messages.every((m) => built.channels.some((c) => c.id === m.channelId)), 'chat only in its own channels');
   assert.ok(built.todos.every((t) => t.workspaceId === ws.id) && built.events.every((e) => e.workspaceId === ws.id), 'tasks and events say whose they are');
-  assert.ok(!built.clients.some((c) => /Kopi Harian|Supplements/.test(c.name)), 'the other company stays out');
+  assert.ok(!built.clients.some((c) => /Lereng Coffee|Supplements/.test(c.name)), 'the other company stays out');
   assert.ok(!built.calendars.some((c) => c.source === 'google'), 'no pretend Google account in their name');
   assert.ok(built.calendars.some((c) => c.id === 'hol-demo-u-maria'), 'the holiday calendar has the name the app looks for');
-  assert.ok(!/Aqeel/.test(json) && /Hi María,/.test(json) && /maria@pixelandprofits\.com/.test(json), 'the seat’s name and address are theirs');
+  assert.ok(!/Raka/.test(json) && /Hi María,/.test(json) && /maria@demo\.sprint2go\.com/.test(json), 'the seat’s name and address are theirs');
   assert.ok(built.users.every((u) => u.id.startsWith('demo-u-maria-')) && !built.users.some((u) => u.id === 'u-maria'), 'their own profile stays their real one');
 });
 await test('Demo company: ids that start with demo- are the demo’s, whatever the company', () => {
@@ -1620,23 +1620,23 @@ await test('Task dates: snoozing a team-queue task says exactly when it comes ba
 const qctx = {
   today: TODAY,
   now: new Date(2026, 9, 9, 10, 0),
-  projects: [{ id: 'c-kopi', name: 'Kopi Harian' }, { id: 'c-elk', name: 'Elkiya Group' }],
-  people: [{ id: 'u-dewi', name: 'Dewi Lestari' }, { id: 'u-rizky', name: 'Rizky Pratama' }],
+  projects: [{ id: 'c-kopi', name: 'Lereng Coffee' }, { id: 'c-elk', name: 'Rimba Group' }],
+  people: [{ id: 'u-intan', name: 'Intan Kusnadi' }, { id: 'u-bima', name: 'Bima Anggara' }],
   stages: [{ id: 'todo', name: 'To do' }, { id: 'doing', name: 'In progress' }, { id: 'review', name: 'Review' }],
 };
 await test('Quick Add: reads the date and time, project, person and priority, and leaves the title', () => {
-  const r = qa.parseQuickAdd('Send invoice tomorrow 3pm #kopi +dewi p1', qctx);
+  const r = qa.parseQuickAdd('Send invoice tomorrow 3pm #kopi +intan p1', qctx);
   assert.equal(r.title, 'Send invoice');
   assert.equal(r.due, '2026-10-10');
   assert.equal(r.time, '15:00');
   assert.equal(r.clientId, 'c-kopi');
-  assert.deepEqual(r.assignees, ['u-dewi']);
+  assert.deepEqual(r.assignees, ['u-intan']);
   assert.equal(r.priority, 'high');
   assert.equal(new Date(r.remindAt).getHours(), 15, 'a time with the date reminds then');
   assert.deepEqual(r.tokens.map((t) => [t.kind, t.text, t.label]), [
     ['date', 'tomorrow 3pm', 'Tomorrow 15:00'],
-    ['project', '#kopi', 'Kopi Harian'],
-    ['person', '+dewi', 'Dewi'],
+    ['project', '#kopi', 'Lereng Coffee'],
+    ['person', '+intan', 'Intan'],
     ['priority', 'p1', 'P1'],
   ]);
   assert.equal(r.tokens[0].keys.length, 2, 'the date and its time are one highlight');
@@ -1659,7 +1659,7 @@ await test('Quick Add: weekdays, "next", "in 2 weeks", dates and stages', () => 
 });
 await test('Quick Add: repeats, reminders, and words that only look like tokens', () => {
   const p = (t, off) => qa.parseQuickAdd(t, { ...qctx, off });
-  const mon = p('Call Dimas every Monday');
+  const mon = p('Call Yusuf every Monday');
   assert.equal(mon.repeat, 'weekly');
   assert.equal(mon.due, '2026-10-12', 'the first one on Monday');
   assert.equal(p('Pay rent every month').repeat, 'monthly');
@@ -1684,19 +1684,19 @@ await test('Quick Add: repeats, reminders, and words that only look like tokens'
 });
 await test('Quick Add: reads Indonesian too (besok, lusa, hari ini, minggu depan, Senin to Minggu, jam 3 sore, setiap Senin)', () => {
   const p = (t) => qa.parseQuickAdd(t, qctx);
-  const full = p('Kirim invoice besok jam 3 sore #kopi +dewi p1');
+  const full = p('Kirim invoice besok jam 3 sore #kopi +intan p1');
   assert.equal(full.title, 'Kirim invoice');
   assert.equal(full.due, '2026-10-10');
   assert.equal(full.time, '15:00', 'jam 3 sore is 15:00');
   assert.equal(full.clientId, 'c-kopi');
-  assert.deepEqual(full.assignees, ['u-dewi']);
+  assert.deepEqual(full.assignees, ['u-intan']);
   assert.equal(full.tokens[0].text, 'besok jam 3 sore', 'the day and its time are one highlight');
   assert.equal(p('Rapat lusa').due, '2026-10-11', 'lusa is the day after tomorrow');
   assert.equal(p('Laporan hari ini').due, TODAY);
   assert.equal(p('Laporan hari ini').title, 'Laporan');
   assert.equal(p('Review minggu depan').due, '2026-10-12', 'minggu depan is next week (its Monday)');
   assert.equal(p('Review pekan depan').due, '2026-10-12');
-  assert.equal(p('Telepon Dimas Jumat depan').due, '2026-10-16', 'Jumat depan is the Friday of next week');
+  assert.equal(p('Telepon Yusuf Jumat depan').due, '2026-10-16', 'Jumat depan is the Friday of next week');
   assert.equal(p('Kirim Senin').due, '2026-10-12');
   assert.equal(p('Telepon hari Minggu').due, '2026-10-11', 'hari Minggu is Sunday');
   assert.equal(p("Rapat Jum'at").due, TODAY, 'Jum’at with an apostrophe, today being a Friday');
@@ -1742,7 +1742,7 @@ await test('Quick Add: suggestions follow the word being typed', () => {
   assert.deepEqual(qa.triggerAt('Send #ko', 8), { char: '#', query: 'ko', start: 5 });
   assert.deepEqual(qa.triggerAt('Ask +', 5), { char: '+', query: '', start: 4 });
   assert.equal(qa.triggerAt('Send it', 7), null);
-  assert.equal(qa.asToken('#', 'Kopi Harian'), '#Kopi-Harian');
+  assert.equal(qa.asToken('#', 'Lereng Coffee'), '#Kopi-Harian');
   assert.equal(qa.parseQuickAdd('Brief #Kopi-Harian', qctx).clientId, 'c-kopi', 'what a suggestion puts in is read back');
 });
 
@@ -1760,9 +1760,9 @@ await test('Needs you: what needs me, in order, with notifications folded in and
     tasks: [
       task('late', { due: '2026-10-07' }),
       task('today', { due: TODAY }),
-      task('review', { userId: 'dewi', assignees: ['dewi'], supervisorId: 'me', status: 'r' }),
+      task('review', { userId: 'intan', assignees: ['intan'], supervisorId: 'me', status: 'r' }),
       task('queue', { userId: '', assignees: [], teamId: 'design' }),
-      task('handed', { userId: 'dewi', assignees: ['dewi'], createdBy: 'me', due: '2026-10-01' }),
+      task('handed', { userId: 'intan', assignees: ['intan'], createdBy: 'me', due: '2026-10-01' }),
       task('fresh', { due: '2026-10-20' }),
       task('done', { done: true, due: '2026-10-01' }),
     ],
@@ -1770,18 +1770,18 @@ await test('Needs you: what needs me, in order, with notifications folded in and
     teams: [{ id: 'design', name: 'Design', leadId: 'me' }],
     clients: [{ id: 'c', name: 'Kopi', domain: 'kopi.id' }],
     isOwner: false,
-    firstName: (id) => ({ dewi: 'Dewi' })[id] ?? '',
+    firstName: (id) => ({ intan: 'Intan' })[id] ?? '',
     events: [
       { id: 'soon', title: 'Standup', start: new Date(now + 12 * 60_000).toISOString(), end: new Date(now + 40 * 60_000).toISOString() },
       { id: 'later', title: 'Lunch', start: new Date(now + 3 * 3_600_000).toISOString(), end: new Date(now + 4 * 3_600_000).toISOString() },
     ],
-    threads: [{ id: 'th', subject: 'Invoice?', location: 'inbox', unread: true, messages: [{ from: { name: 'Nadia', email: 'nadia@kopi.id' } }] }],
+    threads: [{ id: 'th', subject: 'Invoice?', location: 'inbox', unread: true, messages: [{ from: { name: 'Laras', email: 'laras@kopi.id' } }] }],
     mine: (e) => e === 'me@agency.id',
     notices: [
-      { id: 'n1', kind: 'task', text: 'Dewi finished “review”. Ready for your review', at: '2026-10-09T01:00:00Z', read: false, link: { app: 'tasks', id: 'review' } },
-      { id: 'n2', kind: 'mention', text: 'Rizky mentioned you in #design', at: '2026-10-09T02:00:00Z', read: false, link: { app: 'chat', id: 'ch' } },
-      { id: 'n3', kind: 'task', text: 'Dewi assigned you “fresh”', at: '2026-10-09T01:30:00Z', read: false, link: { app: 'tasks', id: 'fresh' } },
-      { id: 'n4', kind: 'done', text: 'Dewi finished “logo”', at: '2026-10-09T01:40:00Z', read: false, link: { app: 'tasks', id: 'gone' } },
+      { id: 'n1', kind: 'task', text: 'Intan finished “review”. Ready for your review', at: '2026-10-09T01:00:00Z', read: false, link: { app: 'tasks', id: 'review' } },
+      { id: 'n2', kind: 'mention', text: 'Bima mentioned you in #design', at: '2026-10-09T02:00:00Z', read: false, link: { app: 'chat', id: 'ch' } },
+      { id: 'n3', kind: 'task', text: 'Intan assigned you “fresh”', at: '2026-10-09T01:30:00Z', read: false, link: { app: 'tasks', id: 'fresh' } },
+      { id: 'n4', kind: 'done', text: 'Intan finished “logo”', at: '2026-10-09T01:40:00Z', read: false, link: { app: 'tasks', id: 'gone' } },
       { id: 'n5', kind: 'mention', text: 'old', at: '2026-10-08T01:00:00Z', read: true },
     ],
   });
@@ -1932,11 +1932,11 @@ await test('Snooze presets: exact times, only the ones that make sense now', () 
   assert.equal(week.getHours(), 9);
 });
 await test('People, not systems: newsletters and notification senders are automated', () => {
-  assert.equal(mailRules.fromPerson({ from: { email: 'nadia@kopikita.co.id' } }), true);
+  assert.equal(mailRules.fromPerson({ from: { email: 'laras@kopinara.example' } }), true);
   assert.equal(mailRules.fromPerson({ from: { email: 'no-reply@aws.amazon.com' } }), false);
   assert.equal(mailRules.fromPerson({ from: { email: 'notifications@dokploy.com' } }), false);
   assert.equal(mailRules.fromPerson({ from: { email: 'news+weekly@shop.example' } }), false);
-  assert.equal(mailRules.fromPerson({ from: { email: 'dina@figma.com' }, listUnsubscribe: { url: 'https://x', oneClick: true } }), false);
+  assert.equal(mailRules.fromPerson({ from: { email: 'billing@figma.com' }, listUnsubscribe: { url: 'https://x', oneClick: true } }), false);
   const mine = (e) => e.endsWith('@team.example');
   assert.equal(mailRules.needsReply({ location: 'inbox', messages: [msg('a', 'client@outside.example')] }, mine), true);
   assert.equal(mailRules.needsReply({ location: 'inbox', messages: [msg('a', 'client@outside.example'), msg('b', 'me@team.example')] }, mine), false, 'answered');
@@ -2005,7 +2005,7 @@ await test('Mail pushes: people only, held about 20 seconds, dropped once read e
 const lang = await import('../server/lang.ts');
 const { textOf } = await import('../src/i18n/index.ts');
 db.writeDocs('workspaces', [{ id: 'w-lang-id', name: 'Kopi Nusantara', language: 'id', members: [{ userId: 'u-lang-co', role: 'owner' }] }, { id: 'w-lang-en', name: 'Plain Co', members: [{ userId: 'u-lang-en', role: 'owner' }, { userId: 'u-lang-own', role: 'member' }] }], [], null);
-db.writeDocs('users', [{ id: 'u-lang-co', name: 'Sari Dewi', email: 'sari@kopi.example' }, { id: 'u-lang-en', name: 'Ann Lee', email: 'ann@plain.example' }, { id: 'u-lang-own', name: 'Budi', email: 'budi@plain.example' }], [], null);
+db.writeDocs('users', [{ id: 'u-lang-co', name: 'Sari Intan', email: 'sari@kopi.example' }, { id: 'u-lang-en', name: 'Ann Lee', email: 'ann@plain.example' }, { id: 'u-lang-own', name: 'Budi', email: 'budi@plain.example' }], [], null);
 db.writeDocs('prefs', [{ id: 'u-lang-own', value: { 'pm-settings:u-lang-own': { language: 'id' } } }], [], null);
 await test('Language: a person’s own pick, else the company’s default, else English', () => {
   assert.equal(lang.langOf('u-lang-own'), 'id', 'their own pick wins');

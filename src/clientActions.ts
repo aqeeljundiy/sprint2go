@@ -51,7 +51,7 @@ export function clientActions(c: ClientCtx) {
   /** Files on their comments: only where they may add files (the project lets guests upload, and their role does). */
   const canAttach = () => !!c.access.uploads && can(c.person, 'upload') && c.client.status !== 'ended';
 
-  /** The folder in the project's Drive where a guest's uploads go ("From KopiKita", "From Pixel & Profits"). */
+  /** The folder in the project's Drive where a guest's uploads go ("From Kopinara", "From sprint2go Studio"). */
   const uploadFolder = (): { id: string; create?: DriveItem } => {
     const base = c.drive.find((d) => d.kind === 'folder' && d.clientId === c.client.id && !c.drive.some((x) => x.id === d.parentId && x.clientId === c.client.id));
     const name = `From ${who}`; // a folder name: data the team sees in Drive, and how it's found again, so always English

@@ -576,7 +576,7 @@ export function AutomationsPanel({ t: tb, tables, users, channels, onPatch, onCl
       </div>
     );
   };
-  const example = JSON.stringify(Object.fromEntries(tb.fields.filter((f) => !['button', 'link'].includes(f.type)).slice(0, 4).map((f) => [f.name.toLowerCase().replace(/\W+/g, '_'), f.type === 'email' ? 'rina@example.com' : f.type === 'phone' ? '+62 812 0000 0000' : f.type === 'money' || f.type === 'number' ? 1000000 : f.options?.[0]?.label ?? t('Example {field}', { field: f.name.toLowerCase() })])), null, 2);
+  const example = JSON.stringify(Object.fromEntries(tb.fields.filter((f) => !['button', 'link'].includes(f.type)).slice(0, 4).map((f) => [f.name.toLowerCase().replace(/\W+/g, '_'), f.type === 'email' ? 'nina@example.com' : f.type === 'phone' ? '+62 812 0000 0000' : f.type === 'money' || f.type === 'number' ? 1000000 : f.options?.[0]?.label ?? t('Example {field}', { field: f.name.toLowerCase() })])), null, 2);
 
   const failed = (tb.log ?? []).filter((e) => !e.ok).length;
   const sections: { id: typeof tab; label: string; icon: typeof Zap; meta?: string; bad?: boolean }[] = [

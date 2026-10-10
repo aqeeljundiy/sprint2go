@@ -40,7 +40,7 @@ const DAY = 86_400_000;
 
   // The parser.
   const txt = (s) => q.queryText(q.parseQuery(s));
-  check(txt('from:nadia has:attachment') === 'from:nadia has:attachment', 'reads field:value terms');
+  check(txt('from:laras has:attachment') === 'from:laras has:attachment', 'reads field:value terms');
   check(JSON.stringify(q.parseQuery('"quarterly report"')) === JSON.stringify({ k: 'term', field: '', value: 'quarterly report', exact: true }), 'reads a quoted phrase');
   check(q.parseQuery('a OR b').k === 'or' && q.parseQuery('a | b').k === 'or', 'reads OR and |');
   check(q.parseQuery('-spam').k === 'not', 'reads -exclude');
@@ -56,14 +56,14 @@ const DAY = 86_400_000;
   check(q.spanOf('2d') === 2 * DAY && q.spanOf('1y') === 365 * DAY, 'spans: 2d, 1y');
 
   // Matching.
-  const me = 'aqeel@pnp.test';
+  const me = 'raka@pnp.test';
   const ctx = { isMine: (e) => e.toLowerCase() === me, labelName: (id) => ({ fin: 'Finance' })[id], now: Date.now() };
-  const msg = (o) => ({ id: 'm' + Math.random(), from: { name: 'Nadia Rahma', email: 'nadia@kopikita.id' }, to: [{ name: 'Aqeel', email: me }], date: iso(DAY), body: 'Here is the quarterly report for Q3.', ...o });
+  const msg = (o) => ({ id: 'm' + Math.random(), from: { name: 'Laras Rahma', email: 'laras@kopinara.example' }, to: [{ name: 'Raka', email: me }], date: iso(DAY), body: 'Here is the quarterly report for Q3.', ...o });
   const th = (o, m = [msg()]) => ({ id: 't', subject: 'Q3 numbers', location: 'inbox', starred: false, unread: true, labels: [], messages: m, ...o });
   const t1 = th({ labels: ['fin'], category: 'primary', important: true }, [msg({ attachments: [{ name: 'report-q3.pdf', size: '2.4 MB' }] })]);
   const m = (s, t = t1) => q.threadMatches(s, t, ctx);
-  check(m('from:nadia') && m('from:kopikita.id') && !m('from:faisal'), 'from: by name or address');
-  check(m('to:me') && m('from:nadia to:me') && !m('from:me'), 'to:me and from:me');
+  check(m('from:laras') && m('from:kopinara.example') && !m('from:hendra'), 'from: by name or address');
+  check(m('to:me') && m('from:laras to:me') && !m('from:me'), 'to:me and from:me');
   check(m('subject:q3') && !m('subject:report'), 'subject: looks only at the subject');
   check(m('quarterly report') && m('"quarterly report"') && !m('"report quarterly"'), 'words and exact phrases');
   check(m('has:attachment') && m('filename:pdf') && m('filename:report') && !m('filename:docx'), 'has:attachment and filename:');
@@ -75,9 +75,9 @@ const DAY = 86_400_000;
   check(m('label:finance') && m('label:fin') && !m('label:team') && m('has:userlabels'), 'label: by name or id');
   check(m('in:inbox') && !m('in:sent') && m('is:unread') && !m('is:read') && m('is:important') && !m('is:starred'), 'in: and is:');
   check(m('category:primary') && !m('category:promotions'), 'category:');
-  check(m('from:nadia OR from:faisal') && !m('from:zed OR from:yon'), 'OR');
+  check(m('from:laras OR from:hendra') && !m('from:zed OR from:yon'), 'OR');
   check(m('quarterly -invoice') && !m('quarterly -report'), '-exclude');
-  check(m('(from:faisal OR subject:q3) has:attachment'), 'groups');
+  check(m('(from:hendra OR subject:q3) has:attachment'), 'groups');
   const spamT = th({ location: 'spam' });
   check(!m('quarterly', spamT) && m('quarterly in:spam', spamT) && m('quarterly in:anywhere', spamT), 'Spam and Trash only when the search names them');
   const listT = th({}, [msg({ listId: 'news.shop.example', listUnsubscribe: { url: 'https://shop.example/u', oneClick: true } })]);
@@ -85,36 +85,36 @@ const DAY = 86_400_000;
   check(m('is:muted', th({ muted: true })) && m('is:snoozed', th({ snoozedUntil: iso(-DAY) })), 'is:muted and is:snoozed');
 
   // The options panel and the chips.
-  const form = { ...q.EMPTY_FORM, from: 'nadia', subject: 'q3 numbers', words: 'report', without: 'draft', size: { op: 'larger', n: '2', unit: 'MB' }, within: '7d', attachment: true };
+  const form = { ...q.EMPTY_FORM, from: 'laras', subject: 'q3 numbers', words: 'report', without: 'draft', size: { op: 'larger', n: '2', unit: 'MB' }, within: '7d', attachment: true };
   const built = q.formToQuery(form);
-  check(built === 'report from:nadia subject:(q3 numbers) -draft larger:2M newer_than:7d has:attachment', `the options panel builds a search (${built})`);
+  check(built === 'report from:laras subject:(q3 numbers) -draft larger:2M newer_than:7d has:attachment', `the options panel builds a search (${built})`);
   const back = q.queryToForm(built);
-  check(back.from === 'nadia' && back.subject === 'q3 numbers' && back.words === 'report' && back.without === 'draft' && back.size?.n === '2' && back.within === '7d' && back.attachment, 'and reads it back');
+  check(back.from === 'laras' && back.subject === 'q3 numbers' && back.words === 'report' && back.without === 'draft' && back.size?.n === '2' && back.within === '7d' && back.attachment, 'and reads it back');
   check(q.toggleTerm('invoice', 'is', 'unread') === 'invoice is:unread' && q.toggleTerm('invoice is:unread', 'is', 'unread') === 'invoice', 'a chip switches its operator on and off');
   check(q.toggleTerm('from:a x', 'from', 'b') === 'x from:b' && q.hasTerm('x from:b', 'from') === 'b', 'a person chip replaces the person');
 
   // Phishing signs.
   check(safe.lookalikeOf('paypa1.com', safe.TRUSTED) === 'paypal.com', 'paypa1.com imitates paypal.com');
   check(safe.lookalikeOf('rnicrosoft.com', safe.TRUSTED) === 'microsoft.com', 'rnicrosoft.com imitates microsoft.com');
-  check(safe.lookalikeOf('pixelandprofit.com', ['pixelandprofits.com']) === 'pixelandprofits.com', 'a one-letter change of the company’s own domain');
+  check(safe.lookalikeOf('pixelandprofit.com', ['demo.sprint2go.com']) === 'demo.sprint2go.com', 'a one-letter change of the company’s own domain');
   check(safe.lookalikeOf('google.com.account-check.net', safe.TRUSTED) === 'google.com', 'a trusted name dressed up inside another domain');
-  check(safe.lookalikeOf('mail.google.com', safe.TRUSTED) === null && safe.lookalikeOf('kopikita.id', safe.TRUSTED) === null && safe.lookalikeOf('bca.co.id', safe.TRUSTED) === null, 'the real domains and unrelated ones are fine');
+  check(safe.lookalikeOf('mail.google.com', safe.TRUSTED) === null && safe.lookalikeOf('kopinara.example', safe.TRUSTED) === null && safe.lookalikeOf('bca.co.id', safe.TRUSTED) === null, 'the real domains and unrelated ones are fine');
   check(safe.baseDomain('a.mail.bank.co.id') === 'bank.co.id' && safe.baseDomain('x.y.example.com') === 'example.com', 'the domain a company owns');
-  const company = { ownDomains: ['pnp.test'], colleagues: [{ name: 'Faisal Tirtonady', email: 'faisal@pnp.test' }] };
-  const w1 = safe.warningsFor({ from: { name: 'Faisal Tirtonady', email: 'faisal.t@gmail.com' }, body: 'Can you buy gift cards?' }, { ...company, firstTime: true });
-  check(w1.some((x) => x.kind === 'spoof' && x.detail === 'Faisal Tirtonady') && w1.some((x) => x.kind === 'first'), 'a colleague’s name on an outside address (and first time)');
-  check(safe.warningsFor({ from: { name: 'Faisal Tirtonady', email: 'faisal@pnp.test' }, body: 'hi' }, company).length === 0, 'the colleague themselves is fine');
+  const company = { ownDomains: ['pnp.test'], colleagues: [{ name: 'Hendra Wijaya', email: 'hendra@pnp.test' }] };
+  const w1 = safe.warningsFor({ from: { name: 'Hendra Wijaya', email: 'hendra.t@gmail.com' }, body: 'Can you buy gift cards?' }, { ...company, firstTime: true });
+  check(w1.some((x) => x.kind === 'spoof' && x.detail === 'Hendra Wijaya') && w1.some((x) => x.kind === 'first'), 'a colleague’s name on an outside address (and first time)');
+  check(safe.warningsFor({ from: { name: 'Hendra Wijaya', email: 'hendra@pnp.test' }, body: 'hi' }, company).length === 0, 'the colleague themselves is fine');
   const w2 = safe.warningsFor({ from: { name: 'Bank', email: 'x@bank.example' }, auth: 'spf=fail dkim=none dmarc=fail', html: '<a href="https://bank-login.ru/x">www.bank.example</a>' }, company);
   check(w2.some((x) => x.kind === 'auth') && w2.some((x) => x.kind === 'links' && x.detail === 'bank-login.ru') && safe.warningLevel(w2) === 'danger', 'failed checks and a link that hides where it goes');
-  check(safe.warningsFor({ from: { name: 'New person', email: 'hello@kopikita.id' }, auth: 'spf=pass dkim=pass dmarc=pass' }, { ...company, firstTime: true }).length === 0, 'a first email alone shows nothing');
+  check(safe.warningsFor({ from: { name: 'New person', email: 'hello@kopinara.example' }, auth: 'spf=pass dkim=pass dmarc=pass' }, { ...company, firstTime: true }).length === 0, 'a first email alone shows nothing');
   check(safe.authOf('spf=fail dkim=none dmarc=fail arc=pass(google.com)').failed === false, 'a trusted ARC seal counts as verified');
   check(safe.checkLink('javascript:alert(1)', '', []).why.includes('scheme'), 'links: javascript: is refused');
   check(safe.checkLink('http://192.168.4.4/login', 'Log in', []).why.includes('ip'), 'links: a bare address');
   check(safe.checkLink('https://xn--pypal-4ve.com/', 'PayPal', []).why.includes('punycode'), 'links: punycode');
   check(safe.checkLink('https://paypa1.com/x', 'PayPal', []).why.includes('lookalike'), 'links: a lookalike');
-  check(safe.checkLink('https://evil.example/x', 'www.kopikita.id', []).why.includes('mismatch'), 'links: words and target differ');
+  check(safe.checkLink('https://evil.example/x', 'www.kopinara.example', []).why.includes('mismatch'), 'links: words and target differ');
   check(safe.checkLink('https://bit.ly/x', 'here', [], true).why.includes('shortener') && safe.checkLink('https://bit.ly/x', 'here', []).why.length === 0, 'links: a shortener only in a suspicious email');
-  check(safe.checkLink('https://www.kopikita.id/menu', 'kopikita.id', []).why.length === 0 && safe.checkLink('mailto:a@b.c', '', []).why.length === 0, 'links: ordinary links open');
+  check(safe.checkLink('https://www.kopinara.example/menu', 'kopinara.example', []).why.length === 0 && safe.checkLink('mailto:a@b.c', '', []).why.length === 0, 'links: ordinary links open');
 
   // Categories.
   const arr = (o) => ({ from: { name: 'Shop', email: 'news@shop.example' }, subject: 'Hello', text: '', headers: {}, ...o });
@@ -122,8 +122,8 @@ const DAY = 86_400_000;
   check(smart.classify(arr({ from: { name: 'Shop', email: 'no-reply@shop.example' }, subject: 'Your order #1234 has shipped' })) === 'updates', 'a shipping notice is Updates');
   check(smart.classify(arr({ from: { name: 'LinkedIn', email: 'messages-noreply@linkedin.com' }, subject: 'You appeared in 5 searches' })) === 'social', 'LinkedIn is Social');
   check(smart.classify(arr({ subject: '[dev] Re: build fails', headers: { 'list-id': 'Dev <dev.groups.io>', 'list-post': '<mailto:dev@groups.io>' }, listId: 'dev.groups.io' })) === 'forums', 'a discussion list is Forums');
-  check(smart.classify(arr({ from: { name: 'Nadia', email: 'nadia@kopikita.id' }, subject: 'Lunch tomorrow?' })) === 'primary', 'a person writing is Primary');
-  check(smart.classify(arr({ from: { name: 'Nadia', email: 'nadia@kopikita.id' }, subject: 'Promo' , headers: { 'list-unsubscribe': '<x>' } }), { knownPerson: true }) === 'primary', 'someone the mailbox wrote to stays Primary');
+  check(smart.classify(arr({ from: { name: 'Laras', email: 'laras@kopinara.example' }, subject: 'Lunch tomorrow?' })) === 'primary', 'a person writing is Primary');
+  check(smart.classify(arr({ from: { name: 'Laras', email: 'laras@kopinara.example' }, subject: 'Promo' , headers: { 'list-unsubscribe': '<x>' } }), { knownPerson: true }) === 'primary', 'someone the mailbox wrote to stays Primary');
   smart.teachCategory('box1', 'news@shop.example', 'primary');
   check(smart.classify(arr({ subject: 'Flash sale: 50% off', headers: { 'list-unsubscribe': '<x>' } }), { accountId: 'box1' }) === 'primary', 'moving a sender’s email teaches its tab (that mailbox only)');
   check(smart.classify(arr({ subject: 'Flash sale: 50% off', headers: { 'list-unsubscribe': '<x>' } }), { accountId: 'box2' }) === 'promotions', 'another mailbox keeps its own');
@@ -132,7 +132,7 @@ const DAY = 86_400_000;
   const spamMail = { workspaceId: 'w1', from: { name: 'Prize desk', email: 'winner@lotto.example' }, subject: 'CONGRATULATIONS YOU HAVE WON!!!', text: 'Dear friend, you have won a lottery. Claim your prize by wire transfer.' };
   const s1 = smart.scoreSpam(spamMail);
   check(s1.spam && s1.why.includes('promises a prize'), `obvious spam scores high (${s1.score}: ${s1.why.join(', ')})`);
-  const ham = { workspaceId: 'w1', from: { name: 'Nadia', email: 'nadia@kopikita.id' }, subject: 'Menu for Friday', text: 'Can you check the new menu before Friday?' };
+  const ham = { workspaceId: 'w1', from: { name: 'Laras', email: 'laras@kopinara.example' }, subject: 'Menu for Friday', text: 'Can you check the new menu before Friday?' };
   check(!smart.scoreSpam(ham).spam, 'ordinary mail does not');
   check(smart.scoreSpam({ ...ham, auth: 'spf=fail dkim=none dmarc=fail' }).spam, 'a failed DMARC check is spam');
   check(!smart.scoreSpam({ ...spamMail, internal: true }).spam, 'the company’s own mail never is');
@@ -153,7 +153,7 @@ const DAY = 86_400_000;
   // The 30 days, Report spam through a save, mute and Important, with real documents.
   const ws = { id: 'w1', name: 'PnP', accounts: [{ id: 'box1', email: me, users: ['u1'] }], members: [{ userId: 'u1' }] };
   db.writeDocs('workspaces', [ws], [], null);
-  db.writeDocs('users', [{ id: 'u1', name: 'Aqeel Jundiy', email: me }], [], null);
+  db.writeDocs('users', [{ id: 'u1', name: 'Raka Jundiy', email: me }], [], null);
   const base = { accountId: 'box1', subject: 'Hi', starred: false, unread: true, labels: [], workspaceId: 'w1' };
   db.writeDocs('threads', [
     { ...base, id: 'old-spam', location: 'spam', spamAt: iso(31 * DAY), messages: [msg()] },
@@ -182,22 +182,22 @@ const DAY = 86_400_000;
   check(marked.importantBy === 'you' && smart.predictImportant('box1', { from: { name: 'Cold', email: 'cold@pitchy.example' } }, { direct: false, category: 'promotions' }), 'marking Important teaches it for the sender');
 
   // Important from what people do.
-  const nadia = { name: 'Nadia', email: 'nadia@kopikita.id' };
-  check(!smart.predictImportant('box9', { from: nadia }, { direct: true, category: 'primary' }), 'a stranger is not important at first');
-  const ib = { ...base, accountId: 'box1', id: 't-i', location: 'inbox', messages: [msg({ from: nadia })] };
-  smart.guardSmart({ ...ib, messages: [...ib.messages, msg({ from: { name: 'Aqeel', email: me }, to: [nadia] })] }, ib, 'w1');
-  check(smart.predictImportant('box1', { from: nadia }, { direct: true, category: 'primary' }), 'after a reply, their mail is important');
+  const laras = { name: 'Laras', email: 'laras@kopinara.example' };
+  check(!smart.predictImportant('box9', { from: laras }, { direct: true, category: 'primary' }), 'a stranger is not important at first');
+  const ib = { ...base, accountId: 'box1', id: 't-i', location: 'inbox', messages: [msg({ from: laras })] };
+  smart.guardSmart({ ...ib, messages: [...ib.messages, msg({ from: { name: 'Raka', email: me }, to: [laras] })] }, ib, 'w1');
+  check(smart.predictImportant('box1', { from: laras }, { direct: true, category: 'primary' }), 'after a reply, their mail is important');
   check(!smart.predictImportant('box1', { from: { name: 'News', email: 'news@shop.example' }, listUnsubscribe: { url: 'x' } }, { direct: false, category: 'promotions' }), 'newsletters are not');
 
   // Arrival: phishing signs, tab, spam and mute.
-  const arrival = (o) => ({ from: nadia, subject: 'Re: Q3', text: 'Thanks!', headers: {}, ...o });
-  const muted = { ...base, id: 't-m', location: 'archive', muted: true, messages: [msg({ from: nadia })] };
-  const reply = msg({ from: nadia, to: [{ name: 'Team', email: 'team@kopikita.id' }] });
-  const mt = await smart.arrive({ ...muted, unread: true, location: 'inbox', messages: [...muted.messages, reply] }, { ws, accountId: 'box1', accountEmail: me, arrival: arrival({}), authSpam: false, directTo: ['team@kopikita.id'], existing: muted });
+  const arrival = (o) => ({ from: laras, subject: 'Re: Q3', text: 'Thanks!', headers: {}, ...o });
+  const muted = { ...base, id: 't-m', location: 'archive', muted: true, messages: [msg({ from: laras })] };
+  const reply = msg({ from: laras, to: [{ name: 'Team', email: 'team@kopinara.example' }] });
+  const mt = await smart.arrive({ ...muted, unread: true, location: 'inbox', messages: [...muted.messages, reply] }, { ws, accountId: 'box1', accountEmail: me, arrival: arrival({}), authSpam: false, directTo: ['team@kopinara.example'], existing: muted });
   check(mt.location === 'archive' && mt.muted, 'a reply in a muted conversation skips the inbox');
   const mt2 = await smart.arrive({ ...muted, unread: true, location: 'inbox', messages: [...muted.messages, reply] }, { ws, accountId: 'box1', accountEmail: me, arrival: arrival({}), authSpam: false, directTo: [me], existing: muted });
   check(mt2.location === 'inbox' && !mt2.muted, 'addressed to you directly again: back in the inbox, unmuted');
-  const spoofed = await smart.arrive({ ...base, id: 't-s', location: 'inbox', messages: [msg({ from: { name: 'Aqeel Jundiy', email: 'aqeel.jundiy@gmail.com' }, body: 'Urgent: can you pay this invoice today?' })] }, { ws, accountId: 'box1', accountEmail: me, arrival: arrival({ from: { name: 'Aqeel Jundiy', email: 'aqeel.jundiy@gmail.com' }, subject: 'Urgent', text: 'Urgent: can you pay this invoice today?' }), authSpam: false, directTo: [me], existing: null });
+  const spoofed = await smart.arrive({ ...base, id: 't-s', location: 'inbox', messages: [msg({ from: { name: 'Raka Jundiy', email: 'raka.personal@example.com' }, body: 'Urgent: can you pay this invoice today?' })] }, { ws, accountId: 'box1', accountEmail: me, arrival: arrival({ from: { name: 'Raka Jundiy', email: 'raka.personal@example.com' }, subject: 'Urgent', text: 'Urgent: can you pay this invoice today?' }), authSpam: false, directTo: [me], existing: null });
   check(spoofed.messages[0].warn?.some((x) => x.kind === 'spoof'), 'on arrival: a colleague’s name from outside is flagged');
   const lottery = await smart.arrive({ ...base, id: 't-l', location: 'inbox', messages: [msg({ from: spamMail.from, body: spamMail.text })] }, { ws, accountId: 'box1', accountEmail: me, arrival: arrival({ from: spamMail.from, subject: spamMail.subject, text: spamMail.text }), authSpam: false, directTo: [me], existing: null });
   check(lottery.location === 'spam' && !!lottery.spamAt && lottery.spamWhy?.length > 0, 'on arrival: obvious spam goes to Spam, with the reasons');
@@ -205,15 +205,15 @@ const DAY = 86_400_000;
   // Search over the full-text index.
   db.writeDocs('threads', [
     { ...base, id: 's1', location: 'inbox', subject: 'Invoice October', messages: [msg({ body: 'Please find the invoice attached.', attachments: [{ name: 'invoice-oct.pdf', size: '120 KB' }] })] },
-    { ...base, id: 's2', location: 'archive', subject: 'Lunch', messages: [msg({ from: { name: 'Faisal', email: 'faisal@pnp.test' }, body: 'Lunch on Friday?' })] },
+    { ...base, id: 's2', location: 'archive', subject: 'Lunch', messages: [msg({ from: { name: 'Hendra', email: 'hendra@pnp.test' }, body: 'Lunch on Friday?' })] },
     { ...base, id: 's3', accountId: 'other-box', location: 'inbox', subject: 'Invoice for someone else', messages: [msg()] },
   ], [], null);
   const ids = (s) => smart.search(s, ['box1']).map((t) => t.id).sort().join();
   check(ids('invoice') === 's1', 'search: a word, only in your own mailboxes');
   check(ids('invo') === 's1', 'search: the start of a word');
-  check(ids('filename:pdf') === 's1' && ids('from:faisal') === 's2' && ids('lunch OR invoice') === 's1,s2', 'search: operators');
-  check(smart.ftsQuery(['faisal@pnp.test']) === '"faisal pnp test" *', 'search: an address is searched as its parts');
-  db.writeDocs('threads', [{ ...base, id: 's2', location: 'archive', subject: 'Dinner', messages: [msg({ from: { name: 'Faisal', email: 'faisal@pnp.test' }, body: 'Dinner instead?' })] }], [], null);
+  check(ids('filename:pdf') === 's1' && ids('from:hendra') === 's2' && ids('lunch OR invoice') === 's1,s2', 'search: operators');
+  check(smart.ftsQuery(['hendra@pnp.test']) === '"hendra pnp test" *', 'search: an address is searched as its parts');
+  db.writeDocs('threads', [{ ...base, id: 's2', location: 'archive', subject: 'Dinner', messages: [msg({ from: { name: 'Hendra', email: 'hendra@pnp.test' }, body: 'Dinner instead?' })] }], [], null);
   check(ids('lunch') === '' && ids('dinner') === 's2', 'search: the index follows changes');
 }
 
@@ -288,7 +288,7 @@ try {
     return null;
   };
   const tag = () => randomBytes(3).toString('hex');
-  const to = 'aqeel@pixelandprofits.com';
+  const to = 'raka@demo.sprint2go.com';
 
   // A newsletter.
   const n1 = `Flash sale ${tag()}: 40% off`;
@@ -297,14 +297,14 @@ try {
   check(tn?.category === 'promotions' && tn.location === 'inbox' && tn.messages[0].listId === 'news.kopishop.example', 'a newsletter arrives in Promotions with its list');
   // A person.
   const p1 = `Lunch ${tag()}`;
-  await smtp.sendMail({ from: 'Nadia Rahma <nadia@kopikita.example>', to, subject: p1, text: 'Lunch on Friday?' });
+  await smtp.sendMail({ from: 'Laras Rahma <laras@kopinara.example>', to, subject: p1, text: 'Lunch on Friday?' });
   const tp = await waitFor(() => threadWith(p1)[0]);
   check(tp?.category === 'primary' && tp.location === 'inbox', 'a person’s email is Primary');
   // A lookalike of the company's own domain.
   const l1 = `Invoice ${tag()}`;
   await smtp.sendMail({ from: 'Billing <billing@pixelandprofit.com>', to, subject: l1, text: 'Please pay the attached invoice today.' });
   const tl = await waitFor(() => threadWith(l1)[0]);
-  check(tl?.messages[0].warn?.some((w) => w.kind === 'lookalike' && w.detail === 'pixelandprofits.com'), 'a lookalike of the company’s domain is flagged');
+  check(tl?.messages[0].warn?.some((w) => w.kind === 'lookalike' && w.detail === 'demo.sprint2go.com'), 'a lookalike of the company’s domain is flagged');
   // Obvious spam.
   const s1 = `YOU HAVE WON ${tag()}!!!`;
   await smtp.sendMail({ from: 'Prize Desk <winner@lotto-desk.example>', to, subject: s1, text: 'Dear friend, you have won the lottery. Claim your prize by wire transfer.' });
@@ -321,7 +321,7 @@ try {
   // Mute, then a reply that isn't addressed to this mailbox directly.
   await call('POST', '/api/sync', { coll: 'threads', upserts: [{ ...tp, muted: true, location: 'archive' }], deletes: [] });
   const mid = tp.messages[0].mid;
-  await smtp.sendMail({ from: 'Nadia Rahma <nadia@kopikita.example>', to: 'team@kopikita.example', cc: to, envelope: { from: 'nadia@kopikita.example', to: [to] }, subject: `Re: ${p1}`, text: 'Adding the team.', inReplyTo: mid, references: [mid] });
+  await smtp.sendMail({ from: 'Laras Rahma <laras@kopinara.example>', to: 'team@kopinara.example', cc: to, envelope: { from: 'laras@kopinara.example', to: [to] }, subject: `Re: ${p1}`, text: 'Adding the team.', inReplyTo: mid, references: [mid] });
   const tm = await waitFor(() => (threadWith(p1)[0]?.messages.length === 2 ? threadWith(p1)[0] : null));
   check(tm?.location === 'archive' && tm.muted === true, 'a muted conversation’s reply (in Cc) stays out of the inbox');
 
