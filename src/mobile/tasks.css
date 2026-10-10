@@ -820,6 +820,9 @@
   .tdp > .parent-brief :is(.pb-head, .pb-owner) {
     gap: 8px;
   }
+  .tdp > .parent-brief svg {
+    flex: none;
+  }
   .tdp > .parent-brief .pb-open {
     font: var(--t-segment);
   }

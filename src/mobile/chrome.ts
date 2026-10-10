@@ -14,7 +14,6 @@ import type { SheetAction } from '../components/ui/ActionSheet';
  *   useFocusedScreen(open, back?)                                                 the tab bar steps aside
  *   useSidebarDrawer(on)                                                          the app's Sidebar opens as a left drawer
  *   <TopBar lead={…} title={…} actions={…} search={false} />  (src/mobile/TopBar.tsx)  the app owns parts of the top bar
- *   <LargeTitle title="Home">…</LargeTitle>  (src/mobile/TopBar.tsx)  a big title in the page that tucks into the bar
  *
  * Registrations follow the component: they're there while it's mounted and gone when it unmounts. When two parts of an
  * app register the same thing, the one mounted last wins.

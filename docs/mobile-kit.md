@@ -3,6 +3,48 @@
 For the Wave 2 builders (one per app). Phase 0 of `docs/mobile-plan.md` is in: the phone shell, the touch pieces and one
 phone CSS layer. This page says how to use them. CLAUDE.md's bar still applies to everything here.
 
+## 0. The system (read first)
+
+One set of values for every phone screen (approved 10 Oct 2026; research/mobile/consistency/audit.md). Tokens live in
+`src/tokens.css` only; the shared roles (icons, top bar, pushed screens, section headers, segmented controls, badges,
+buttons, empty states) are in `src/mobile/system.css`, loaded last. `node scripts/ui-tokens-check.mjs` (in CI) fails on
+any size in the phone layer that isn't a token or an allowed value; a real exception says why on its line:
+`/* system: <reason> */`. `research/mobile/consistency/measure.mjs` re-measures the 44 screens and lists what's off.
+
+| Role | Token | Size / weight | Use |
+|---|---|---|---|
+| Display | `--t-display` | 24/30, 700 | the root screen's title in the top bar, an item's title on its own screen |
+| Title | `--t-title` | 17/22, 600 | pushed screen, sheet and dialog titles |
+| Heading | `--t-heading` | 15/20, 600 | section headers (sentence case, primary), unread row titles |
+| Body | `--t-body`, `--t-para` | 15/20 (22 in paragraphs), 400 | row titles, messages, values |
+| Label | `--t-label` | 15/20, 600 | buttons and text buttons |
+| Secondary | `--t-secondary`, `--t-segment` | 13/18, 400 (600 for segmented) | second lines, hints, footers |
+| Caption | `--t-caption`, `--t-chip` | 12/16, 400 for times, 600 for chips, badges, tab labels | |
+| Field | `--t-field` | 16, 400 | every input (iPhone zooms under 16) |
+
+- **Spacing**: 4, 8, 12, 16, 24, 32, 48 only. `--gutter` 16 on every screen; cards at 16 from the edge with their rows'
+  text at 32; 24 above a section header and 8 below it; 12 from a leading picture to its text; lists end with
+  `var(--fab-space)`.
+- **Rows**: `--row-compact` 44 (one line, no picture or a 20 icon), `--row-1` 48 (one line with a 32 picture or a value),
+  `--row-2` 64 (two lines, 40 picture), `--row-3` 80 (three lines). A wrapped title may grow a row, nothing shrinks it.
+- **Dividers**: 1 px `var(--line)` from the row's text to the right edge, none after the last row, none in message
+  streams, schedules or card layouts. Bars get a line only when content scrolls under them.
+- **Shapes**: `--r-tile` 10 (tiles, thumbnails, events, framed fields), `--r-card` 16 (cards, sheets, drawers),
+  `--r-pill` for anything you press (buttons, chips, segmented, search, tags, the create button), `--r-round` for
+  people and dots. Cards only for grouped lists and real objects (note cards, board cards, the brief in a task).
+- **Icons and pictures**: icons 16 inline, 20 in rows, 24 in bars (Lucide's `size` is snapped by `system.css`);
+  avatars and company logos 24, 32, 40, 56 (`Avatar` and `WorkspaceLogo` snap on phones).
+- **Top bar**: 52 px, the page's colour (white for Mail, Chat, Drive, Calendar, Meet; grey for grouped screens). A main
+  screen: the square company logo (no badge), its title at 24/700, up to two 24 icons. A sub-screen: the back arrow
+  alone and its name at 17/600 (`<TopBarBack />` and `<h1 className="mt-title plain small">`). A sheet: 17/600 and X.
+  No large title rows: the title is the bar's.
+- **One accent**: the company colour only on the create button, primary buttons, selected states, links and text
+  buttons, the unread dot, focus rings and switches that are on. As text it is `var(--accent-text)` (worked out per
+  company to read at 4.5:1). Icons are `--text-2`, never accent. Red, amber and green mean late, waiting and done; a
+  project's or calendar's colour is a dot or a fill, never text. Badges carry a number or a word, never a dot alone.
+- **Switches under the bar**: an app with parts uses one segmented control under the bar (Chat: Home, DMs, Activity;
+  Tasks: Today, Upcoming, My tasks, Browse). Chips are 32 tall pills that wrap; nothing runs off the edge.
+
 ## 1. Where phone CSS goes
 
 `src/mobile/` is loaded last, after `src/system.css` (`src/mobile/index.css` imports the files in order). A rule there
@@ -19,6 +61,7 @@ wins over the old ones with the same selector, so it never needs `!important`.
 | `calendar.css` | Calendar |
 | `notes.css` | Notes |
 | `tables.css` | Tables |
+| `system.css` | the system's shared roles (section 0), loaded last: change it for every app at once |
 | `settings.css`, `projects.css`, `meet.css`, `drive.css`, `misc.css` | Everything else (Settings, Projects, Meet, Drive; onboarding, guest portal, Teams, Vault, demo bar in `misc.css`) |
 
 - Only edit your own file. If you need something in `shell.css` or `kit.css`, say so in your report instead.
@@ -54,7 +97,7 @@ The shell (10 Oct 2026, docs/mobile-fix-plan.md Step 0) copies Teams and Gmail:
   when something in Needs you is new since you last looked. Long-press the bar to edit it.
 - **Create button**: floats 16 px above the bar at the right, 56 px, owned by the app on screen (below).
 - **Top bar**: one row, 52 px plus the status bar: the company logo with your avatar on its corner (you, your status,
-  your companies with a tick on this one, Add a company, Settings), the title (22 px), search. No line under it until
+  your companies with a tick on this one, Add a company, Settings), the title (24/700), search. No line under it until
   the content scrolls under it. An app can take over parts of it (below).
 - **Toasts** sit at the bottom, above the bar and above the create button when it shows; never over the top bar or a
   sheet's header. Quiet ones (`quiet: true`) last 4 s.
@@ -89,8 +132,8 @@ Parts you leave out keep the default.
 <TopBar app="calendar" lead={<TopBarButton icon={Menu} label={t('Menu')} onClick={openDrawer} />} title={<MonthButton />} actions={<TodayButton />} />
 // Mail: the whole row is Gmail's search pill (the shell keeps the safe area, the sticky position and the hairline).
 <TopBar app="mail" replace={<MailSearchPill />} />
-// Tasks: back to Browse ("‹ Tasks"), the title stays the default; no search button.
-<TopBar app="tasks" lead={<TopBarBack label={t('Tasks')} onClick={toBrowse} />} search={false} />
+// A sub-screen (a team's tasks, a table): the back arrow alone and its name at 17/600.
+<TopBar app="tasks" lead={<TopBarBack onClick={toBrowse} />} title={<h1 className="mt-title plain small"><span className="mt-title-text">{name}</span></h1>} />
 ```
 
 `lead` replaces the logo (or a focused screen's Back), `title` the title, `actions` sit before search, `search={false}`
@@ -98,20 +141,13 @@ drops search, `replace` takes the whole row. `TopBarButton` (a 44 px icon button
 or without the screen's name) are ready-made parts. The company sheet stays reachable: put it in your drawer's header
 (Calendar) or behind your own avatar (Mail's pill) with the shell's `CompanySheet` (`src/components/MobileTop.tsx`).
 
-**A large title** (Apple's; Home's greeting, a Tasks list's name):
+**No large titles.** A screen's title is the bar's (24/700 on a main screen, 17/600 on a sub-screen); Home's bar says
+the greeting. `LargeTitle` is gone.
 
-```tsx
-<LargeTitle app="tasks"><h1 className="tv-title">{t('Today')}</h1></LargeTitle>
-```
-
-While it's on screen the bar's title is tucked away; once it scrolls under the bar the app's name fades into the bar at
-17 px. Use one per screen, at the top of the scrolling list.
-
-**Worked example, Tasks** (Todoist): `TasksView` is a two-level stack. Browse (`TasksBrowse`, grouped cards, its own
-`<LargeTitle>`) is the root; a list claims the bar with `<TopBar app="tasks" lead={<TopBarBack label={t('Tasks')} … />}
-title={<BarTitle …/>} actions={…"…"…} />`, where the title follows `useTitleTucked(app)` so the list's name fades into the
-bar once its large title scrolls away. Tapping Tasks in the bar again opens Browse (App's `onApp`). The same page shows
-the Projects app's list on phones.
+**Worked example, Tasks** (Todoist's lists on the system): Today, Upcoming, My tasks and Browse sit in one switch under
+the bar (`TasksSwitch` in TasksView), with the bar's own logo and "Tasks". Browse (`TasksBrowse`) is grouped cards;
+anything opened from it (a team, a project, Assigned by me) is a sub-screen with `<TopBarBack />` and its name. Tapping
+Tasks in the bar again opens Browse (App's `onApp`). The same Browse shows the Projects app's list on phones.
 
 **A left drawer**: Mail opens the desktop `Sidebar` as a drawer with `useSidebarDrawer(phone)` and App's `sidebarOpen`
 (the shell gives `.sidebar.open` the drawer look, scrim and motion on phones only while this is on). Any other app uses

@@ -652,6 +652,11 @@
     display: inline-flex;
     align-items: center;
   }
+  /* polish.css gives every field in a member list a grey fill with a long :is() selector; a role is a value here. */
+  .settings-push .acct-row .role-select {
+    min-width: 0 !important;
+    background: none !important;
+  }
   .settings-push .acct-row .acct-icon {
     width: var(--av-m);
     height: var(--av-m);

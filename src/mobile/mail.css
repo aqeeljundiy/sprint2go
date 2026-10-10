@@ -271,6 +271,14 @@
   .gm-row.unread .row-subject {
     font-weight: 600;
   }
+  /* Three lines exactly (80): an emoji or the tag never makes a line taller. */
+  .gm-row .row-top {
+    height: var(--lh-body);
+  }
+  .gm-row .row-subject {
+    height: var(--lh-secondary);
+    overflow: hidden;
+  }
   .row-subj-text {
     min-width: 0;
     overflow: hidden;
@@ -289,11 +297,11 @@
   .gm-tag {
     flex: none;
     max-width: 40%;
-    height: 20px;
+    height: var(--lh-secondary);
     padding: 0 8px;
     border-radius: var(--r-pill);
     font: var(--t-chip);
-    line-height: 20px;
+    line-height: var(--lh-secondary);
     color: var(--text-2);
     background: color-mix(in oklab, var(--c, var(--text-3)) 16%, transparent);
     overflow: hidden;

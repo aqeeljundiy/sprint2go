@@ -801,7 +801,8 @@ export function HomeView(p: Props) {
             app="home"
             title={
               <h1 className="mt-title plain">
-                <span className="mt-title-text">{greeting.replace(/\.$/, '')}</span>
+                {/* "Good afternoon": the name would be cut off at 24 px beside the logo on a 375 px phone. */}
+                <span className="mt-title-text">{greeting.replace(/\.$/, '').split(',')[0]}</span>
               </h1>
             }
           />

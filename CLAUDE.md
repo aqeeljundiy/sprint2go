@@ -38,8 +38,18 @@ Every change has to pass this bar before it's called done. It isn't optional pol
 - Long-press: `useLongPress` (src/components/ui/useLongPress.ts). 350 ms hold, a small lift and a tick; moving first always scrolls; hold then move drags.
 - A screen pushed over another on phones: `PushScreen` (src/components/ui/PushScreen.tsx). Back, swipe from the left edge, slides both ways.
 - A drawer from the left on phones: `SideDrawer` and `useEdgeSwipe` (src/components/ui/SideDrawer.tsx).
-- The phone shell: `useCreateAction`, `useTitleMenu`, `useAppSettings`, `useFocusedScreen`, `useSidebarDrawer` (src/mobile/chrome.ts); an app's own parts of the top bar and large titles: `TopBar`, `LargeTitle` (src/mobile/TopBar.tsx); the keyboard: `useKeyboard` and `var(--kb)` (src/mobile/keyboard.ts). How to use all of these: docs/mobile-kit.md.
+- The phone shell: `useCreateAction`, `useTitleMenu`, `useAppSettings`, `useFocusedScreen`, `useSidebarDrawer` (src/mobile/chrome.ts); an app's own parts of the top bar: `TopBar`, `TopBarBack`, `TopBarButton` (src/mobile/TopBar.tsx); the keyboard: `useKeyboard` and `var(--kb)` (src/mobile/keyboard.ts). How to use all of these: docs/mobile-kit.md.
 - The shared styles live in src/system.css. The phone layer, src/mobile/ (one file per area), loads after it.
+
+## The system (phones)
+
+Every phone screen uses one set of values: tokens in `src/tokens.css` (nowhere else), shared roles in
+`src/mobile/system.css`, the rules in docs/mobile-kit.md section 0. In short: type on 24/17/15/13/12 with 400, 600,
+700 (fields 16); spacing 4/8/12/16/24/32/48 with a 16 gutter; rows 44/48/64/80; one divider rule (1 px from the
+text, none after the last row or in streams); radii 10, 16, pill, round; icons 16/20/24; avatars 24/32/40/56; a 52 px
+top bar (logo and 24/700 on main screens, back arrow and 17/600 on sub-screens); section headers 15/600 in sentence
+case; the company colour only on the create button, primary buttons, selected states, links, the unread dot and focus.
+`node scripts/ui-tokens-check.mjs` (CI) fails on anything else in the phone layer.
 
 ## Which surface
 
