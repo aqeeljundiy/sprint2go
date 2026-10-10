@@ -1,3 +1,4 @@
+import { TopBar } from '../../mobile/TopBar';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronRight, ListTodo, Lock, MoreHorizontal, Pin, PinOff, Plus, RotateCcw, Search, SquarePen, Trash2, Users, X } from 'lucide-react';
 import type { Note } from '../../types';
@@ -239,6 +240,8 @@ export function NotesList({
   const same = (a: Facet | null, b: Facet) => !!a && a.kind === b.kind && ('id' in a ? a.id : '') === ('id' in b ? b.id : '');
   return (
     <section ref={phoneRoot} className={`notes-phone view-enter${searching || looking ? ' searching' : ''}`}>
+      {/* One search: the pill at the bottom (Apple Notes). No magnifier in the bar. */}
+      <TopBar app="notes" search={false} />
       {/* While searching, the ways to narrow it sit at the top (Apple Notes' suggestions), not floating over the list. */}
       <div className={`fold nl-facets-top${searching && !query ? ' open' : ''}`}>
           <div>

@@ -3,6 +3,7 @@ import { CalendarDays, Check, ChevronDown, Menu, Paperclip, Search, User, X } fr
 import type { DriveItem, Thread } from '../../types';
 import { mailFiles, type FileKind, type MailFile } from '../../mailAttachments';
 import { Popover } from '../ui/Popover';
+import { TopBar } from '../../mobile/TopBar';
 import { EmptyState } from '../ui/EmptyState';
 import { FileIcon } from '../FileIcon';
 import { AttachmentViewer, driveKind, sizeOf, type ViewItem } from './AttachmentViewer';
@@ -77,7 +78,8 @@ export function FilesView({ threads, onOpenThread, onMenu }: { threads: Thread[]
 
   return (
     <section className="tracking-pane files-pane view-enter">
-      {/* Phones: the top bar and the Files tab already say where you are, so no second "Files" heading. */}
+      {/* Phones: the bar's title says Files (not "Mail"), so no second "Files" heading here. */}
+      {phone && <TopBar app="mail" title={<h1 className="mt-title">{t('Files')}</h1>} />}
       {!phone && (
         <header className="tracking-head">
           <button className="icon-btn menu-btn" onClick={onMenu} aria-label={t('Open menu')}>

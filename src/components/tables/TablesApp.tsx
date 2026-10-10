@@ -1,3 +1,4 @@
+import { Sheet } from '../ui/Sheet';
 import { useState } from 'react';
 import { ChevronRight, Menu, Plus, Table2, X } from 'lucide-react';
 import { Group } from '../ui/Grouped';
@@ -54,6 +55,7 @@ export function TablesSidebar({ tables, clients, current, onOpen, onNew }: { tab
 /* ---------- new table ---------- */
 
 export function NewTableDialog({ clients, clientId: startClient, onCreate, onClose }: { clients: Client[]; clientId?: string; onCreate: (d: { name: string; clientId?: string; template: TemplateId }) => void; onClose: () => void }) {
+  const phoneSheet = usePhone();
   const [template, setTemplate] = useState<TemplateId>('leads');
   const [clientId, setClientId] = useState(startClient ?? '');
   const tplName = TEMPLATES.find((x) => x.id === template)!.name;
@@ -61,19 +63,9 @@ export function NewTableDialog({ clients, clientId: startClient, onCreate, onClo
   const suggested = template === 'blank' ? t('Untitled table') : project ? t('{project} {template}', { project: project.name, template: tplName.toLowerCase() }) : tplName;
   const [name, setName] = useState('');
   const create = () => onCreate({ name: name.trim() || suggested, clientId: clientId || undefined, template });
-  return (
-    <div className="modal-scrim" onMouseDown={onClose}>
-      <div className="modal" role="dialog" aria-label={t('New table')} onMouseDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.key === 'Escape' && !document.querySelector('.pop') && onClose()}>
-        <header className="modal-head">
-          <span className="dump-title">
-            <Table2 size={15} /> {t('New table')}
-          </span>
-          <button className="icon-btn sm" onClick={onClose} aria-label={t('Close')}>
-            <X size={15} />
-          </button>
-        </header>
-        <div className="modal-body connect-form">
-          <SmoothHeight>
+  // The form itself, shared by the phone's sheet and the computer's dialog.
+  const body = (
+    <>
             <div className="field">
               <span>{t('Start from')}</span>
               <div className="cat-pick two tb-tpl-pick">
@@ -94,6 +86,29 @@ export function NewTableDialog({ clients, clientId: startClient, onCreate, onClo
               <ProjectPicker value={clientId} onChange={setClientId} projects={clients} none={t('The whole company')} label={t('Belongs to')} />
             </div>
             <p className="muted small">{clientId ? t('It shows in the {project}’s Tables tab too. Every column can be changed later.', { project: term.one }) : t('Everyone in the company can open it. Every column can be changed later.')}</p>
+          </>
+  );
+  // Phones: a bottom sheet with the name field focused (it rides above the keyboard), not a centred dialog.
+  if (phoneSheet)
+    return (
+      <Sheet title={t('New table')} onClose={onClose} className="new-sheet" footer={<button type="button" className="primary-btn new-sheet-go" disabled={false} onClick={create}>{t('Create table')}</button>}>
+        {body}
+      </Sheet>
+    );
+  return (
+    <div className="modal-scrim" onMouseDown={onClose}>
+      <div className="modal" role="dialog" aria-label={t('New table')} onMouseDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.key === 'Escape' && !document.querySelector('.pop') && onClose()}>
+        <header className="modal-head">
+          <span className="dump-title">
+            <Table2 size={15} /> {t('New table')}
+          </span>
+          <button className="icon-btn sm" onClick={onClose} aria-label={t('Close')}>
+            <X size={15} />
+          </button>
+        </header>
+        <div className="modal-body connect-form">
+          <SmoothHeight>
+            {body}
           </SmoothHeight>
         </div>
         <footer className="modal-foot">
@@ -181,7 +196,6 @@ export function TablesHome({ tables, rows, clients, onOpen, onNew, onMenu }: { t
                   <span className="g-label">
                     <span className="g-text">{tb.name}</span>
                   </span>
-                  <span className="g-val">{tn(rows.filter((r) => r.tableId === tb.id).length, '{n} row', '{n} rows')}</span>
                   <ChevronRight size={18} className="g-chev" aria-hidden />
                 </button>
               ))}

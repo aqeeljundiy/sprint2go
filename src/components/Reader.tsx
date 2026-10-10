@@ -1242,11 +1242,7 @@ export function Reader(props: Props) {
         className="mail-reader gm-reader-screen"
         actions={
           <>
-            {props.shared && (
-              <button type="button" className="icon-btn gm-assignee" onClick={() => setAssignOpen(true)} aria-label={assignee ? t('{name} handles this', { name: assignee.name }) : t('Who handles this')} title={t('Who handles this')}>
-                {assignee ? <Avatar person={assignee} size={28} /> : <UserPlus size={22} />}
-              </button>
-            )}
+            {/* Who handles it is the Assign chip under the subject (and in "…"): not a sixth icon up here (Gmail has four). */}
             {primary && PrimaryIcon && (
               <button type="button" className="icon-btn" onClick={primary.run} aria-label={primary.label} title={primary.label}>
                 <PrimaryIcon size={22} />

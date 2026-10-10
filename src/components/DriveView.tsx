@@ -1,3 +1,4 @@
+import { TopBar } from '../mobile/TopBar';
 import { useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { flushSync } from 'react-dom';
 import { ArrowDown, ArrowUp, Camera, Check, ChevronRight, Download, Eye, Folder, FolderInput, FolderPlus, HardDrive, Info, LayoutGrid, Link2, List, Mail, Menu, MoreHorizontal, PenLine, Play, Plus, RotateCcw, Search, Star, Trash2, Upload, X } from 'lucide-react';
@@ -477,9 +478,9 @@ function DriveItemCard({ className, style, label, actions, onOpen, children, hea
 
 type Sort = { by: 'name' | 'modified' | 'size'; dir: 1 | -1 };
 const SORTS: { by: Sort['by']; label: string }[] = [
-  { by: 'name', label: 'Name' },
-  { by: 'modified', label: 'Last modified' },
-  { by: 'size', label: 'Size' },
+  { by: 'name', label: mark('Name') },
+  { by: 'modified', label: mark('Last modified') },
+  { by: 'size', label: mark('Size') },
 ];
 
 function sorter(s: Sort) {
@@ -572,7 +573,7 @@ function DrivePhone(props: Props & { live: DriveItem[]; q: string; query: string
               : section === 'my'
                 ? t('Files you upload and folders you make live here. Files from chat and email stay in Home and Shared.')
                 : section === 'starred'
-                  ? t('Star a file from its … menu and it waits for you here.')
+                  ? t('Star a file from its menu and it waits for you here.')
                   : section === 'trash'
                     ? t('Deleted files stay here for 30 days.')
                     : section === 'shared'
@@ -639,6 +640,8 @@ function DrivePhone(props: Props & { live: DriveItem[]; q: string; query: string
 
   return (
     <section className="drive-pane drive-phone view-enter">
+      {/* One search: the field under the bar (Google Drive). No magnifier on top of it. */}
+      <TopBar app="drive" search={false} />
       <div className="drive-scroll" key={`${section}:${layout}`}>
         <label className="dp-search">
           <Search size={20} />

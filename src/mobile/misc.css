@@ -1099,3 +1099,33 @@
     justify-content: flex-start;
   }
 }
+
+@media (max-width: 767px) {
+  .tdir-seg {
+    display: flex;
+    margin: 8px 16px;
+  }
+  .tdir-seg button {
+    flex: 1;
+    min-height: 36px;
+  }
+}
+
+@media (max-width: 767px) {
+  /* Vault's passphrase: a disabled button is neutral grey (pale green read as broken), fields at 16 (no iOS zoom). */
+  .vault-gate .primary-btn:disabled {
+    background: var(--surface-2);
+    color: var(--text-3);
+    box-shadow: none;
+    opacity: 1;
+  }
+  .vault-gate input {
+    font-size: var(--fs-field);
+  }
+}
+/* New team, new table on phones: the sheet's create button runs the width. */
+.new-sheet .new-sheet-go {
+  width: 100%;
+  min-height: var(--tap);
+  justify-content: center;
+}

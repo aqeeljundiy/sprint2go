@@ -13,7 +13,7 @@ import { ProjectsCtx } from './components/ProjectPicker';
 import { ProjectsSidebar } from './components/ProjectsSidebar';
 import { ProjectsHome } from './components/ProjectsHome';
 import { Popover } from './components/ui/Popover';
-import { Brain, Briefcase, Building2, CalendarPlus, Copy, FileText, Hash, ListChecks, Mail, PenLine, Send, Sparkles, Timer, Trash2, Undo2, Upload, User as UserIcon, Video, Table2, MessagesSquare, AlertTriangle, Menu, Inbox, Search as SearchIcon, Paperclip, Contact, House, MessageCircle, Bell, Sun, CalendarRange, CircleCheck, Layers, List, CalendarDays, NotebookPen, Users, Star, Folder, UserRound, Archive, UsersRound, NotebookText } from 'lucide-react';
+import { Brain, Briefcase, Building2, CalendarPlus, Copy, FileText, Hash, ListChecks, Mail, PenLine, Send, Sparkles, Timer, Trash2, Undo2, Upload, User as UserIcon, Video, Table2, MessagesSquare, AlertTriangle, Menu, Inbox, Search as SearchIcon, Paperclip, Contact, House, MessageCircle, Bell, Sun, CalendarRange, CircleCheck, Layers, List, CalendarDays, Users, Star, Folder, UserRound, Archive, NotebookText } from 'lucide-react';
 import { DEFAULT_PERMISSIONS } from './types';
 import type { Quote, Team, Note, Account, AppId, Attachment, BlockRule, CalEvent, Channel, ChannelCategory, Client, ClientPerson, ChatFile, ChatMessage, CommentFile, Meeting, Message, Notice, RsvpStatus, TaskEvent, TaskStatus, Todo, DriveItem, DriveSection, Location, Person, Thread, User, View, Workspace, FolderId } from './types';
 import { useMailOrganize } from './components/mail/Organize';
@@ -3886,7 +3886,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         label: t('Drive'),
         value: driveSection,
         // Drive: Recent is the Home tab on phones, so it's called Home here too; each place has its icon (Google Drive's drawer).
-        options: DRIVE_SECTIONS.map((s) => ({ value: s.id, label: s.id === 'recent' && isPhone() ? t('Home') : t(s.name), icon: <s.icon size={20} /> })),
+        // Phones: Home, Starred, Shared and My Drive are tabs; the title menu holds only the places that aren't.
+        options: DRIVE_SECTIONS.filter((s) => !isPhone() || s.id === driveSection || !['recent', 'starred', 'shared', 'my'].includes(s.id)).map((s) => ({ value: s.id, label: s.id === 'recent' && isPhone() ? t('Home') : t(s.name), icon: <s.icon size={20} /> })),
         onChange: (v: string) => (setDriveSection(v as DriveSection), setDriveFolder(null)),
       };
     return undefined;
@@ -3972,8 +3973,9 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   // An app's settings, opened over the app (Back returns to it) instead of jumping to the Settings page.
   const [pushed, setPushed] = useState<{ kind: 'own' | 'section'; id: string; label: string } | null>(null);
   useEffect(() => setPushed(null), [mode, ws.id]);
+  // Title menus hold views only in Notes, Drive, Tables, Teams and Vault (their settings live in Settings).
   const settingsRows =
-    mode === 'settings'
+    mode === 'settings' || (mobile && ['notes', 'drive', 'tables', 'teams', 'vault'].includes(mode))
       ? []
       : [
           // Mail's own settings screen (it was at the bottom of the folders drawer).
@@ -4283,8 +4285,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     switch (mode) {
       case 'mail':
         return bar([
+          // No Search tab: a tab is a place, never a screen over the bar. Search is the pill at the top of the inbox.
           { id: 'inbox', label: t('Inbox'), icon: Inbox, badge: accountUnread.all ?? 0 },
-          { id: 'search', label: t('Search'), icon: SearchIcon, run: mailSearch },
           { id: 'files', label: t('Files'), icon: Paperclip },
           { id: 'contacts', label: t('Contacts'), icon: Contact },
         ]);
@@ -4309,17 +4311,15 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
           { id: 'meetings', label: t('Meetings'), icon: Video },
         ]);
       case 'notes':
-        return bar([
-          { id: 'notes', label: t('Notes'), icon: NotebookPen },
-          { id: 'shared', label: t('Shared'), icon: Users },
-          { id: 'search', label: t('Search'), icon: SearchIcon, run: () => (noteId && setNoteId(null), dispatchEvent(new Event('s2g:notes-search'))) },
-        ]);
+        // Notes: no bar (Apple Notes). Which notes is the title menu (All, Only me, Shared with me); search is the pill
+        // at the bottom of the list.
+        return null;
       case 'drive':
         return bar([
           { id: 'home', label: t('Home'), icon: House },
           { id: 'starred', label: t('Starred'), icon: Star },
           { id: 'shared', label: t('Shared'), icon: Users },
-          { id: 'files', label: t('Files'), icon: Folder },
+          { id: 'files', label: t('My Drive'), icon: Folder },
         ]);
       case 'projects':
         return bar([
@@ -4334,10 +4334,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
           { id: 'folders', label: t('Folders'), icon: Folder },
         ]);
       case 'teams':
-        return bar([
-          { id: 'teams', label: t('Teams'), icon: UsersRound },
-          { id: 'people', label: t('People'), icon: Contact },
-        ]);
+        // Teams and People: a segmented control under the title (TeamsHome), not a two-item bottom bar.
+        return null;
       default:
         return null; // Home, Tables, Vault, Settings: no bar
     }
@@ -5776,7 +5774,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
                 }}
               />
             ) : (
-              <TeamsHome teams={wsTeams} users={members} tasks={wsTasks} me={user.id} canCreate={canCreateTeams} actions={teamActions} onOpen={setTeamId} onNew={() => setNewTeam(true)} onMenu={() => setSidebarOpen(true)} part={teamsPart} />
+              <TeamsHome teams={wsTeams} users={members} tasks={wsTasks} me={user.id} canCreate={canCreateTeams} actions={teamActions} onOpen={setTeamId} onNew={() => setNewTeam(true)} onMenu={() => setSidebarOpen(true)} part={teamsPart} onPart={setTeamsPart} />
             );
           })()}
         {newTeam && (

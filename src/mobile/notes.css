@@ -109,9 +109,12 @@
   }
   .nl-shared {
     position: absolute;
-    left: 8px;
-    top: 14px;
+    right: 16px; /* at the right edge, never over the title's first letter */
+    top: 16px;
     color: var(--text-3);
+  }
+  .notes-phone .nl-row:has(.nl-shared) .nl-title {
+    padding-right: 24px;
   }
   .nl-title {
     font-size: var(--fs-body);
@@ -257,9 +260,9 @@
     position: relative;
     display: grid;
     place-items: center;
-    width: 36px;
-    height: 36px;
-    margin: 4px 8px 4px 8px;
+    width: 44px; /* a 44 pt target (Done) */
+    height: 44px;
+    margin: 0 4px;
     border-radius: 50%;
     color: #fff;
     background: var(--accent);

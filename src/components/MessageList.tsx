@@ -415,7 +415,11 @@ export const MessageList = forwardRef<HTMLInputElement, Props>(function MessageL
             </button>
           </div>
         ) : (
-          <div className="gm-label">{title}</div>
+          // Gmail's search: a pill at the top of the list (Search is no longer a tab that opens a screen over the bar).
+          <button type="button" className="gm-search-row" onClick={() => dispatchEvent(new Event('s2g:mail-search'))}>
+            <Search size={20} aria-hidden />
+            <span>{t('Search in mail')}</span>
+          </button>
         ))}
       {threads.length === 0 ? (
         <div className={`empty ${pull ? 'pulled' : ''} ${dragging ? 'dragging' : ''}`} ref={(el) => void (bodyRef.current = el)} style={pull ? { transform: `translateY(${pull}px)` } : undefined}>

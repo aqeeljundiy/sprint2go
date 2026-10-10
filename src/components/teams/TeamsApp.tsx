@@ -1,3 +1,4 @@
+import { Sheet } from '../ui/Sheet';
 import { useMemo, useRef, useState } from 'react';
 import { ArrowLeft, Check, ChevronRight, Crown, LogOut, Mail, Menu, Plus, Search, Trash2, UserPlus, Users, X } from 'lucide-react';
 import { useActionMenu } from '../ui/ActionSheet';
@@ -123,13 +124,23 @@ function teamState(tm: Team, tasks: Todo[]) {
 
 /* ---------- all teams ---------- */
 
-export function TeamsHome({ teams, users, tasks, me, canCreate, actions, onOpen, onNew, onMenu, part = 'teams' }: { teams: Team[]; users: User[]; tasks: Todo[]; me: string; canCreate: boolean; actions: TeamActions; onOpen: (id: string) => void; onNew: () => void; onMenu: () => void; part?: 'teams' | 'people' }) {
+export function TeamsHome({ teams, users, tasks, me, canCreate, actions, onOpen, onNew, onMenu, part = 'teams', onPart }: { teams: Team[]; users: User[]; tasks: Todo[]; me: string; canCreate: boolean; actions: TeamActions; onOpen: (id: string) => void; onNew: () => void; onMenu: () => void; part?: 'teams' | 'people'; onPart?: (p: 'teams' | 'people') => void }) {
   const sorted = [...teams].sort((a, b) => Number(b.members.includes(me)) - Number(a.members.includes(me)) || a.name.localeCompare(b.name));
   useCreateAction('teams', canCreate && { label: t('New team'), icon: Plus, run: onNew });
   const phone = usePhone();
   if (phone && teams.length)
     return (
       <section className="tasks-pane view-enter tdir-pane">
+        {/* Teams and People: one segmented control under the bar (a two-item bottom bar isn't an iPhone pattern). */}
+        {onPart && (
+          <div className="segmented tdir-seg" role="tablist" aria-label={t('Teams')}>
+            {(['teams', 'people'] as const).map((x) => (
+              <button key={x} type="button" role="tab" aria-selected={part === x} className={part === x ? 'on' : ''} onClick={() => onPart(x)}>
+                {x === 'teams' ? t('Teams') : t('People')}
+              </button>
+            ))}
+          </div>
+        )}
         <div className="tracking-scroll">
           <TeamsPhone key={part} teams={teams} users={users} tasks={tasks} me={me} actions={actions} onOpen={onOpen} people={part === 'people'} />
         </div>
@@ -701,23 +712,16 @@ function SettingsTab({ tm, users, isAdmin, actions, homeTemplate, onHomeTemplate
 /* ---------- a new team ---------- */
 
 export function NewTeamDialog({ users, me, count, onCreate, onClose }: { users: User[]; me: string; count: number; onCreate: (tm: Omit<Team, 'id' | 'workspaceId'>) => void; onClose: () => void }) {
+  const phoneSheet = usePhone();
   const [name, setName] = useState('');
   const [about, setAbout] = useState('');
   const [leadId, setLeadId] = useState(me);
   const [members, setMembers] = useState<string[]>([me]);
   const [join, setJoin] = useState<'open' | 'lead'>('lead');
   const create = () => name.trim() && (onCreate({ name: name.trim(), about: about.trim() || undefined, color: TEAM_COLORS[count % TEAM_COLORS.length], leadId: leadId || undefined, members: [...new Set([...members, ...(leadId ? [leadId] : [])])], join, keywords: [] }), onClose());
-  return (
-    <div className="modal-scrim" onMouseDown={onClose}>
-      <div className="modal" role="dialog" aria-label={t('New team')} onMouseDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.key === 'Escape' && !document.querySelector('.pop') && onClose()}>
-        <header className="modal-head">
-          <span>{t('New team')}</span>
-          <button className="icon-btn sm" onClick={onClose} aria-label={t('Close')}>
-            <X size={16} />
-          </button>
-        </header>
-        <div className="modal-body">
-          <SmoothHeight>
+  // The form itself, shared by the phone's sheet and the computer's dialog.
+  const body = (
+    <>
             <div className="team-new">
               <input className="title-input" autoFocus value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && create()} placeholder={t('Team name, e.g. Video')} />
               <input value={about} onChange={(e) => setAbout(e.target.value)} placeholder={t('What it does (optional)')} />
@@ -741,6 +745,27 @@ export function NewTeamDialog({ users, me, count, onCreate, onClose }: { users: 
                 </div>
               </div>
             </div>
+          </>
+  );
+  // Phones: a bottom sheet with the name field focused (it rides above the keyboard), not a centred dialog.
+  if (phoneSheet)
+    return (
+      <Sheet title={t('New team')} onClose={onClose} className="new-sheet" footer={<button type="button" className="primary-btn new-sheet-go" disabled={!name.trim()} onClick={create}>{t('Create team')}</button>}>
+        {body}
+      </Sheet>
+    );
+  return (
+    <div className="modal-scrim" onMouseDown={onClose}>
+      <div className="modal" role="dialog" aria-label={t('New team')} onMouseDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.key === 'Escape' && !document.querySelector('.pop') && onClose()}>
+        <header className="modal-head">
+          <span>{t('New team')}</span>
+          <button className="icon-btn sm" onClick={onClose} aria-label={t('Close')}>
+            <X size={16} />
+          </button>
+        </header>
+        <div className="modal-body">
+          <SmoothHeight>
+            {body}
           </SmoothHeight>
         </div>
         <footer className="modal-foot">
