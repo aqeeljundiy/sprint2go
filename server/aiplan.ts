@@ -13,6 +13,7 @@ import { ALLOWANCE, TOP_UP, discountOf, monthlyTotal, planName, priceFor, seatsF
 import type { Plan } from '../src/types.ts';
 import { mark, msg, phrase } from '../src/i18n/index.ts';
 import { sentences, type Said } from './lang.ts';
+import * as whitelist from './whitelist.ts';
 
 db.db.exec(`
   CREATE TABLE IF NOT EXISTS platform_ai_keys (provider TEXT PRIMARY KEY, sealed TEXT NOT NULL, base_url TEXT, last4 TEXT NOT NULL, enabled INTEGER NOT NULL DEFAULT 1, added_by TEXT, added_at TEXT NOT NULL);
@@ -347,12 +348,13 @@ async function testAndRecord(id: string, provider: string, key: string, baseUrl?
 
 /* ---------- who gets our AI ---------- */
 
-export type Why = 'plan' | 'trial' | 'comp';
-/** Our keys serve a company only on the AI plan, in an active trial, or with free months on the AI plan. */
+export type Why = 'plan' | 'trial' | 'comp' | 'unlimited';
+/** Our keys serve a company only on the AI plan, in an active trial, with free months on the AI plan, or on Unlimited. */
 export function planAI(ws: any): { ok: boolean; why: Why | null; until: string | null } {
   const plan: Plan | undefined = ws?.plan;
   const no = { ok: false, why: null, until: null };
   if (!plan || ws.suspended) return no;
+  if (plan.unlimited) return { ok: true, why: 'unlimited', until: null }; // the Whitelist: its own monthly limit (server/whitelist.ts)
   const at = now();
   if (plan.trialEnds && plan.trialEnds > at) return { ok: true, why: 'trial', until: plan.trialEnds };
   if (plan.track !== 'ai' || plan.tier === 'free' || plan.paused) return no;
@@ -452,16 +454,28 @@ export function allowanceOf(ws: any, people = teamSize(ws), c = config()) {
   const gives = Object.entries(TOP_UP_GIVES).map(([job, n]) => n * unit[job]).filter((v) => v > 0);
   const topUpRp = gives.length ? gives.reduce((a, b) => a + b, 0) / gives.length : 0;
   const topUps = why === 'plan' ? plan.topUps ?? 0 : 0;
-  const capRp = seats * perSeatRp + topUps * topUpRp;
   const rows = includedRows(monthStart(), ws.id);
   const usedRp = costOf(rows, c).rp;
+  // Unlimited: the operators' monthly limit for it (US$ at our rate, or rupiah), not seats.
+  const wl = why === 'unlimited' ? whitelist.entry(ws.id) : null;
+  const capRp = why === 'unlimited' ? (wl ? (wl.aiUnit === 'rp' ? wl.aiLimit : wl.aiLimit * c.rate) : 0) : seats * perSeatRp + topUps * topUpRp;
+  if (why === 'unlimited') {
+    const uses: Record<string, number> = {};
+    for (const r of rows) uses[r.job] = (uses[r.job] ?? 0) + r.uses;
+    return { seats, unit, perSeatRp, topUpRp, topUps: 0, capRp, usedRp, uses, unlimited: false };
+  }
   const uses: Record<string, number> = {};
   for (const r of rows) uses[r.job] = (uses[r.job] ?? 0) + r.uses;
   return { seats, unit, perSeatRp, topUpRp, topUps, capRp, usedRp, uses, unlimited: capRp <= 0 };
 }
 
 /** Before a job on our AI: fine, fine after adding an automatic top-up, or used up (with what to do). */
-export function gate(ws: any, people = teamSize(ws)): { state: 'ok' } | { state: 'topup' } | { state: 'out'; message: string } {
+export function gate(ws: any, people = teamSize(ws), userId?: string | null): { state: 'ok' } | { state: 'topup' } | { state: 'out'; message: string } {
+  // Unlimited: its own monthly limit, and the person's share of it (server/whitelist.ts). Never a top-up.
+  if (planAI(ws).why === 'unlimited') {
+    const g = whitelist.aiGate(ws, userId);
+    return g.ok ? { state: 'ok' } : { state: 'out', message: g.message };
+  }
   const a = allowanceOf(ws, people);
   if (a.unlimited || a.usedRp < a.capRp) return { state: 'ok' };
   const why = planAI(ws).why;
@@ -497,7 +511,7 @@ export function companyView(ws: any) {
     const left = Object.fromEntries(ALLOWANCE_JOBS.map(([, job]) => [job, a.unit[job] > 0 ? Math.floor(leftRp / a.unit[job]) : null]));
     const pool = Object.fromEntries(ALLOWANCE_JOBS.map(([k, job]) => [job, ALLOWANCE[k] * a.seats]));
     const d = new Date();
-    allowance = { unlimited: a.unlimited, share: a.unlimited ? 0 : Math.min(1, a.usedRp / a.capRp), left, pool, uses: a.uses, seats: a.seats, topUps: a.topUps, resets: new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1)).toISOString() };
+    allowance = { unlimited: a.unlimited, share: a.unlimited ? 0 : a.capRp > 0 ? Math.min(1, a.usedRp / a.capRp) : 1, left, pool, uses: a.uses, seats: a.seats, topUps: a.topUps, resets: new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1)).toISOString() };
   }
   return { eligible: elig.ok, why: elig.why, until: elig.until, route, allowance };
 }
@@ -529,11 +543,17 @@ export function money(mrrOf: MrrOf, c = config()) {
   for (const r of rows) byWs.set(r.workspaceId, [...(byWs.get(r.workspaceId) ?? []), r]);
   const earning: { id: string; name: string; plan: string; earned: number; cost: number; forecast: number }[] = [];
   const other: { id: string; name: string; why: 'trial' | 'comp' | 'internal' | 'other'; cost: number }[] = [];
+  // Unlimited companies (the Whitelist) are their own line: never in what AI earns or the verdict.
+  const unlimited: { id: string; name: string; cost: number }[] = [];
   for (const ws of db.allDocs('workspaces') as any[]) {
     const people = activePeople(ws).active; // what the invoice bills: the people active this month
     const cost = costOf(byWs.get(ws.id) ?? [], c).rp;
     const internal = set.homeWorkspace === ws.id || set.internal.includes(ws.id);
     const elig = planAI(ws);
+    if (whitelist.on(ws)) {
+      if (cost > 0) unlimited.push({ id: ws.id, name: ws.name, cost });
+      continue;
+    }
     const paying = !internal && ws.plan?.track === 'ai' && mrrOf(ws, people).state === 'paying';
     if (paying) earning.push({ id: ws.id, name: ws.name, plan: planName(ws.plan), earned: aiEarnings(ws.plan, people), cost, forecast: cost / elapsed });
     else if (cost > 0) other.push({ id: ws.id, name: ws.name, why: internal ? 'internal' : elig.why === 'trial' ? 'trial' : elig.why === 'comp' ? 'comp' : 'other', cost });
@@ -565,6 +585,8 @@ export function money(mrrOf: MrrOf, c = config()) {
     losing,
     other: other.sort((a, b) => b.cost - a.cost),
     otherCost: sum(other, 'cost'),
+    unlimited: unlimited.sort((a, b) => b.cost - a.cost),
+    unlimitedCost: sum(unlimited, 'cost'),
     jobs,
     unpriced: Array.from(unpricedUses, ([model, uses]) => ({ model, name: anyName(model), uses })),
   };

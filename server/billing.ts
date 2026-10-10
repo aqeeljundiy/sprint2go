@@ -12,6 +12,7 @@ import { MAIL_PACKS, PAUSE_DAYS_A_YEAR, addAdjustment, billingPeriod, countedMai
 import type { Plan, PlanAdjustment } from '../src/types.ts';
 import { mark, msg } from '../src/i18n/index.ts';
 import { datePhrase, type Said } from './lang.ts';
+import * as whitelist from './whitelist.ts';
 
 const DAY = 86_400_000;
 const now = () => new Date().toISOString();
@@ -134,7 +135,7 @@ const periodInvoiced = (wsId: string, period: string) => platform.invoices(wsId)
  */
 export function adjustmentsOnSave(ws: Ws, prev: Plan | undefined, next: Plan, at = new Date()): PlanAdjustment[] | undefined {
   const kept = prev?.adjustments?.length ? prev.adjustments : undefined;
-  if (!prev || !next || (prev.tier === next.tier && prev.track === next.track && prev.cycle === next.cycle)) return kept;
+  if (!prev || !next || prev.unlimited || next.unlimited || (prev.tier === next.tier && prev.track === next.track && prev.cycle === next.cycle)) return kept;
   const period = billingPeriod(prev, at).key;
   const a = prorate(prev, next, activePeople(ws, at.toISOString().slice(0, 7)).active, at, periodInvoiced(ws.id, period));
   return a ? addAdjustment(kept, a, 'adj-' + randomBytes(5).toString('hex')) : kept;
@@ -155,7 +156,7 @@ export function readOnlyWords(ws: Ws | undefined | null): Said | null {
       : ws.suspended.reason
         ? msg('This company is read-only for now: {reason}', { reason: ws.suspended.reason })
         : msg('This company is read-only for now.');
-  if (ws.plan?.paused)
+  if (ws.plan?.paused && !ws.plan.unlimited)
     return ws.name
       ? msg('{company} is paused, so it’s read-only: everyone can read and export everything. An owner can resume the plan in Settings, Plan & billing.', { company: ws.name })
       : msg('This company is paused, so it’s read-only: everyone can read and export everything. An owner can resume the plan in Settings, Plan & billing.');
@@ -200,7 +201,7 @@ export function pauseOnSave(next: any, prev: any): { paused: boolean | undefined
 export function resumeExpiredPauses(save: (ws: any) => void, tell: (userIds: string[], text: Said, wsId: string) => void) {
   const out: string[] = [];
   for (const ws of db.allDocs('workspaces') as any[]) {
-    if (!ws.plan?.paused || pauseDaysLeft(ws.plan.pauses) > 0) continue;
+    if (!ws.plan?.paused || ws.plan.unlimited || pauseDaysLeft(ws.plan.pauses) > 0) continue;
     const pauses = (ws.plan.pauses ?? []).map((p: Pause) => (p.to ? p : { ...p, to: now() }));
     save({ ...ws, plan: { ...ws.plan, paused: undefined, pauses } });
     platform.event('plan.resumed', ws.id, null, `pause limit of ${PAUSE_DAYS_A_YEAR} days reached`);
@@ -229,7 +230,7 @@ export function endCancelled(save: (ws: any) => void, tell: (userIds: string[], 
   const out: string[] = [];
   for (const ws of db.allDocs('workspaces') as any[]) {
     const at = ws.plan?.cancelAt;
-    if (!at || at > now()) continue;
+    if (!at || at > now() || ws.plan.unlimited) continue;
     save({ ...ws, plan: { ...ws.plan, tier: 'free', track: 'own', cancelAt: undefined, paused: undefined, autoTopUp: undefined, topUps: undefined } });
     platform.event('plan.cancelled', ws.id, null, 'moved to Free at the end of the period');
     const owners = (ws.members ?? []).filter((m: any) => m.role === 'owner').map((m: any) => m.userId);
@@ -297,14 +298,25 @@ export function recordingsBytes(wsId: string) {
   for (const m of db.allDocs('meetings') as any[]) if (m.workspaceId === wsId && m.recording && m.recording.keep !== 'notes') mb += (Number(m.recording.sizeMb) || 0) + (Number(m.recording.videoMb) || 0);
   return Math.round(mb * 1024 * 1024);
 }
-/** A company's storage: its plan's pool (shared by everyone) and what its files and kept recordings take. */
-export function storageRoom(wsId: string) {
+/**
+ * A company's storage: its plan's pool (shared by everyone) and what its files and kept recordings take. Unlimited
+ * (server/whitelist.ts): the server's free disk above its safety reserve. With `userId`, `left` is also what that
+ * person's own cap allows (an Unlimited company's rule), and `why` says which one runs out first.
+ */
+export function storageRoom(wsId: string, userId?: string | null) {
   const ws = db.getDoc('workspaces', wsId) as Ws | undefined;
-  const total = storageGB(planOf(ws), teamSize(ws)) * 1024 ** 3;
   const files = db.storageOf(wsId);
   const recordings = recordingsBytes(wsId);
   const used = files.used + recordings;
-  return { total, used, video: files.video, byPerson: files.byPerson, recordings, left: Math.max(0, total - used) };
+  if (whitelist.on(ws)) {
+    const room = whitelist.diskRoom().room;
+    const cap = whitelist.rule(wsId, userId)?.storageGB;
+    const mine = files.byPerson.find((x) => x.userId === userId)?.bytes ?? 0;
+    const personLeft = cap ? Math.max(0, cap * 1024 ** 3 - mine) : Infinity;
+    return { total: used + room, used, video: files.video, byPerson: files.byPerson, recordings, left: Math.min(room, personLeft), unlimited: true as const, why: personLeft < room ? ('person' as const) : ('disk' as const), cap: cap ?? null, mine };
+  }
+  const total = storageGB(planOf(ws), teamSize(ws)) * 1024 ** 3;
+  return { total, used, video: files.video, byPerson: files.byPerson, recordings, left: Math.max(0, total - used), unlimited: false as const, why: 'plan' as const, cap: null, mine: 0 };
 }
 
 /* ---------- meeting-bot hours ---------- */
@@ -341,7 +353,8 @@ export function openOrders(wsId: string) {
     .map(({ r, inv }) => ({ invoiceId: r.invoice_id, number: inv!.number, credits: r.credits, total: inv!.total, dueAt: inv!.dueAt, at: r.created_at }));
 }
 /** Why credits can't be bought here right now, or null. */
-export function creditsBlocked(boosted: boolean): string | null {
+export function creditsBlocked(boosted: boolean, ws?: Ws | null): string | null {
+  if (whitelist.on(ws)) return mark('Boosted sending is included with Unlimited, so there are no credits to buy.');
   if (!boosted) return mark('Boosted sending isn’t available on this server, so there are no credits to buy.');
   if (!platform.settings().billing?.bank?.trim()) return mark('Credits are paid by bank transfer, and our bank details aren’t set up yet. Write to support to buy credits.');
   return null;
@@ -351,6 +364,7 @@ export function creditsBlocked(boosted: boolean): string | null {
  * credits are added when an operator marks it paid (invoicePaid), never before.
  */
 export function orderCredits(ws: any, packN: number, by: string): { error: string; status: number } | { invoice: platform.Invoice; credits: number } {
+  if (whitelist.on(ws)) return { error: mark('Boosted sending is included with Unlimited, so there are no credits to buy.'), status: 409 };
   const pack = MAIL_PACKS.find((p) => p.n === packN);
   if (!pack) return { error: mark('Pick one of the packs.'), status: 400 };
   if (openOrders(ws.id).length >= 3) return { error: mark('There are already 3 credit invoices waiting for payment. Pay one (Settings, Plan & billing, Invoices), or ask us to cancel one, first.'), status: 409 };

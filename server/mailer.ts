@@ -20,6 +20,7 @@ import { loadTls, onCertChange, startCertKeeper } from './mailcert.ts';
 import { applyInbound, readInvite } from './invites.ts';
 import { maybeAnswer, type Away } from './away.ts';
 import { overRoom, overRoomWhy } from './billing.ts';
+import * as whitelist from './whitelist.ts';
 import * as track from './readTracking.ts';
 import { keepRaw } from './mailRaw.ts';
 import { msg } from '../src/i18n/index.ts';
@@ -539,7 +540,8 @@ export const LOCAL_ONLY = 'Held on this computer: a local sprint2go doesn’t se
 export function heldLocally(o: Pick<Outgoing, 'workspaceId' | 'to' | 'cc' | 'bcc'>): string[] {
   if (!keepsMailLocal()) return [];
   const ws = workspaces().find((w) => w.id === o.workspaceId);
-  if (ws?.mailRoute === 'boosted' && boostedAvailable() && (ws.mailCredits ?? 0) > 0) return []; // Amazon sends it, not our engine
+  // Amazon sends it, not our engine: with credits, or on Unlimited within its monthly limit.
+  if (ws?.mailRoute === 'boosted' && boostedAvailable() && (whitelist.on(ws as any) ? whitelist.sesGate(ws, 1).ok : (ws.mailCredits ?? 0) > 0)) return [];
   const mine = localAccounts();
   return Array.from(new Set([...o.to, ...o.cc, ...(o.bcc ?? [])].map((p) => lower(p.email)).filter((e) => e && !mine.has(e))));
 }
@@ -573,7 +575,17 @@ export async function queueSend(o: Outgoing): Promise<{ mid: string; queued: num
   const mine = localAccounts();
   const local = recipients.filter((p) => mine.has(p.email));
   const remote = recipients.filter((p) => !mine.has(p.email));
-  if (route === 'boosted' && (ws.mailCredits ?? 0) < remote.length) {
+  // Unlimited (server/whitelist.ts): Boosted sending within the month's limit, for people it's on for; otherwise
+  // the mail goes out from our own server (the 100% notice tells the owners once).
+  const sender = o.tracking?.by ?? (acct && acct.kind !== 'shared' ? ((acct as any).users?.[0] ?? null) : null);
+  const unlimited = whitelist.on(ws as any);
+  if (route === 'boosted' && unlimited) {
+    const g = whitelist.sesGate(ws, remote.length, sender);
+    if (!g.ok) {
+      route = 'own';
+      if (g.why === 'used-up') whitelist.checkAlerts(ws, sender, { sesFull: true });
+    }
+  } else if (route === 'boosted' && (ws.mailCredits ?? 0) < remote.length) {
     route = 'own';
     if (!ws.mailCreditsNotified) {
       const admins = ws.members.filter((m) => m.role !== 'member').map((m) => m.userId);
@@ -650,7 +662,8 @@ export async function queueSend(o: Outgoing): Promise<{ mid: string; queued: num
     return { mid, queued: 0, local: localCount, route, held: remote.map((p) => p.email) };
   }
   for (const p of remote) ins.run(randomBytes(8).toString('hex'), ws.id, o.accountId, o.threadId, o.messageId, route, lower(o.from.email), p.email, copies.get(p.email) ?? raw, now(), 'queued', now());
-  if (route === 'boosted' && remote.length) {
+  if (route === 'boosted' && remote.length && unlimited) whitelist.checkAlerts(ws, sender);
+  else if (route === 'boosted' && remote.length) {
     db.writeDocs('workspaces', [{ ...(ws as any), mailCredits: Math.max(0, (ws.mailCredits ?? 0) - remote.length) }], [], null);
     deps.broadcast('workspaces', [db.getDoc('workspaces', ws.id)!], []);
   }

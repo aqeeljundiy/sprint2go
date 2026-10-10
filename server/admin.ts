@@ -16,6 +16,7 @@ import { certState } from './mailcert.ts';
 import * as turn from './turn.ts';
 import * as twostep from './twostep.ts';
 import * as sandbox from './sandbox.ts';
+import * as whitelist from './whitelist.ts';
 import { applyPricing, DEFAULT_PRICES, discountOf, monthlyTotal, planName, PRICES, ADDONS, TOP_UP } from '../src/data/pricing.ts';
 import type { Plan, PlanAdjustment, Tier, Track } from '../src/types.ts';
 import { isZone } from '../src/jobTimes.ts';
@@ -65,10 +66,12 @@ export const isOperatorEmail = (email: string | undefined) => !!platform.operato
 
 /* ---------- money per company ---------- */
 
-export type State = 'free' | 'trial' | 'paused' | 'comp' | 'paying' | 'suspended';
+export type State = 'free' | 'trial' | 'paused' | 'comp' | 'paying' | 'suspended' | 'unlimited';
 export function mrrOf(ws: any, people: number): { mrr: number; state: State; after?: number; discount: number } {
   const plan: Plan | undefined = ws.plan;
   if (ws.suspended) return { mrr: 0, state: 'suspended', discount: 0 };
+  // The Whitelist (server/whitelist.ts): never billed, never in revenue; its own line where companies are counted.
+  if (plan?.unlimited) return { mrr: 0, state: 'unlimited', discount: 0 };
   // A cancelled plan whose period ended is Free, even before the hourly clock moves it.
   const ended = !!plan?.cancelAt && plan.cancelAt <= now();
   // Free with add-ons pays for the add-ons (Free teams can buy them; they're on the invoice).
@@ -95,7 +98,7 @@ function healthOf(c: { lastActive: string | null; people: number; state: State; 
     { key: 'team', label: msg('Team using it'), score: c.people >= 5 ? 20 : c.people >= 2 ? 12 : 4, max: 20 },
     { key: 'setup', label: msg('Set up'), score: Math.round((c.setupDone / Math.max(1, c.setupTotal)) * 20), max: 20 },
     { key: 'support', label: msg('No open problems'), score: Math.max(0, 15 - c.openTickets * 5), max: 15 },
-    { key: 'billing', label: msg('Billing in order'), score: c.state === 'suspended' || c.overdue ? 0 : c.state === 'paying' || c.state === 'comp' ? 15 : c.state === 'trial' ? 10 : 8, max: 15 },
+    { key: 'billing', label: msg('Billing in order'), score: c.state === 'suspended' || c.overdue ? 0 : c.state === 'paying' || c.state === 'comp' || c.state === 'unlimited' ? 15 : c.state === 'trial' ? 10 : 8, max: 15 },
   ];
   const score = parts.reduce((n, p) => n + p.score, 0);
   return { score, label: score >= 70 ? 'healthy' : score >= 40 ? 'watch' : 'risk', parts } as const;
@@ -129,7 +132,7 @@ function companyRows(ctx: AdminCtx) {
       id: ws.id,
       name: ws.name,
       color: ws.color,
-      plan: ws.plan ? { tier: ws.plan.tier, track: ws.plan.track, cycle: ws.plan.cycle, trialEnds: ws.plan.trialEnds ?? null, paused: !!ws.plan.paused, comp: ws.plan.comp ?? null, discount: ws.plan.discount ?? null, addons: ws.plan.addons, billing: ws.plan.billing ?? null } : null,
+      plan: ws.plan ? { tier: ws.plan.tier, track: ws.plan.track, cycle: ws.plan.cycle, trialEnds: ws.plan.trialEnds ?? null, paused: !!ws.plan.paused, comp: ws.plan.comp ?? null, discount: ws.plan.discount ?? null, addons: ws.plan.addons, billing: ws.plan.billing ?? null, unlimited: !!ws.plan.unlimited } : null,
       ...money,
       people,
       active,
@@ -280,6 +283,31 @@ export async function checkAlerts(ctx: AdminCtx) {
       });
       void mailer.sendSystemMail({ ...mail, to }).catch(() => {});
     }
+  }
+}
+
+/**
+ * The operators' alert channel, outside the hourly check: the bell (for operators who have it on) and an email in
+ * each one's language, at most every 6 hours per kind. The Whitelist's 80% and 100% alerts use it.
+ */
+export function tellOperators(kind: string, text: lang.Said, to: string, notifyUsers: (userIds: string[], text: lang.Words, url?: string) => void) {
+  const ops = platform.operators().filter((o) => !o.disabled && o.alerts);
+  if (!ops.length || !platform.alertDue(kind, text.text)) return;
+  const users = db.allDocs('users') as any[];
+  const ids = ops.map((o) => users.find((u) => emailOf(u) === o.email)?.id).filter(Boolean) as string[];
+  notifyUsers(ids, text, to);
+  const byLang = new Map<lang.Lang, string[]>();
+  for (const o of ops) {
+    const l = opLang(o, users);
+    byLang.set(l, [...(byLang.get(l) ?? []), o.email]);
+  }
+  const base = (process.env.PUBLIC_URL ?? '').replace(/\/$/, '');
+  for (const [l, mails] of byLang) {
+    const mail = lang.inLang(l, () => {
+      const said = textOf(text);
+      return { fromName: t('sprint2go alerts'), subject: t('sprint2go: {alert}', { alert: said.slice(0, 90) }), text: `${said}\n\n${t('Open the backend: {link}', { link: `${base}${to}` })}` };
+    });
+    void mailer.sendSystemMail({ ...mail, to: mails }).catch(() => {});
   }
 }
 
@@ -475,7 +503,8 @@ export async function handleAdmin(p: string, ctx: AdminCtx): Promise<boolean> {
         kpis: {
           mrr: real.reduce((n, c) => n + c.mrr, 0),
           mrrLastMonth: mrrLast || null,
-          companies: real.filter((c) => !c.suspended).length,
+          companies: real.filter((c) => !c.suspended && c.state !== 'unlimited').length,
+          unlimited: real.filter((c) => c.state === 'unlimited').length, // the Whitelist: counted on their own
           newThisMonth: real.filter((c) => c.since && c.since >= monthStart()).length,
           active7: activeNow,
           activePrev7: activeBefore,
@@ -618,6 +647,8 @@ export async function handleAdmin(p: string, ctx: AdminCtx): Promise<boolean> {
     // Trials and free months are customer care; tiers, prices and add-ons are billing.
     const billingChange = ['tier', 'track', 'cycle', 'addons', 'discount'].some((k) => k in b);
     if (deny(billingChange ? 'billing' : 'customers')) return true;
+    // A whitelisted company's plan is the Whitelist's: change its limits there, or take it off (its old plan comes back).
+    if (whitelist.on(ws) && Object.keys(b).some((k) => k !== 'id' && k !== 'billing')) return (json(res, 409, { error: mark('This company is on the Whitelist. Change its limits there, or take it off the Whitelist first.') }), true);
     const plan: any = { ...(ws.plan ?? { track: 'own', tier: 'free', cycle: 'monthly', addons: { mailboxes: 0, storage50: 0, meetHours10: 0, branding: false }, billing: { company: ws.name, emails: [] }, since: now() }) };
     const changes: string[] = [];
     if (b.tier && ['free', 'small', 'studio', 'agency', 'business'].includes(b.tier) && b.tier !== plan.tier) (changes.push(`plan ${plan.tier} → ${b.tier}`), (plan.tier = b.tier));
@@ -641,6 +672,57 @@ export async function handleAdmin(p: string, ctx: AdminCtx): Promise<boolean> {
     platform.event('plan.changed', ws.id, null, changes.join('; '));
     log('company.plan', ws.id, changes.join('; '));
     return (json(res, 200, { ok: true }), true);
+  }
+
+  /* ----- the Whitelist: companies with everything and no plan limits (server/whitelist.ts) ----- */
+  if (sub === 'whitelist' && GET) {
+    const d = whitelist.diskRoom();
+    return (json(res, 200, { rows: whitelist.consoleRows(), disk: { total: d.total, free: d.free, reserve: d.reserve, room: d.room }, rate: aiplan.config().rate, can: may('billing') }), true);
+  }
+  if (sub === 'whitelist/find' && GET) {
+    const q = (url.searchParams.get('q') ?? '').trim().toLowerCase();
+    if (q.length < 2) return (json(res, 200, { results: [] }), true);
+    const users = db.allDocs('users') as any[];
+    const out = (db.allDocs('workspaces') as any[])
+      .filter((w) => !w.sandbox && !whitelist.on(w))
+      .map((w) => ({ w, owners: (w.members ?? []).filter((m: any) => m.role === 'owner').map((m: any) => users.find((u) => u.id === m.userId)).filter(Boolean) as any[] }))
+      .filter(({ w, owners }) => [w.name, w.id, ...(w.domains ?? []), ...owners.flatMap((o) => [o.email, o.name])].some((x) => String(x ?? '').toLowerCase().includes(q)))
+      .slice(0, 12)
+      .map(({ w, owners }) => ({ id: w.id, name: w.name, color: w.color ?? null, domains: w.domains ?? [], owner: owners[0] ? { name: owners[0].name, email: owners[0].email } : null, people: (w.members ?? []).length, plan: w.plan ? planName(w.plan) : null, state: mrrNow(w).state }));
+    return (json(res, 200, { results: out }), true);
+  }
+  if ((sub === 'whitelist/add' || sub === 'whitelist/update' || sub === 'whitelist/remove') && POST) {
+    if (deny('billing')) return true;
+    const b = await body(req);
+    const ws = wsById(String(b.workspaceId ?? ''));
+    if (!ws || ws.sandbox) return (json(res, 404, { error: mark('No such company.') }), true);
+    if (sub === 'whitelist/add') {
+      if (whitelist.on(ws) || whitelist.entry(ws.id)) return (json(res, 409, { error: mark('This company is already on the Whitelist.') }), true);
+      const e = whitelist.add(ws.id, ws.plan ?? null, b, email);
+      // Our AI serves them from now on (a choice to pay with their own keys came with their old plan).
+      saveWs({ ...ws, plan: whitelist.unlimitedPlan(ws.plan, ws.name), ai: ws.ai?.payer === 'own' ? { ...ws.ai, payer: undefined } : ws.ai });
+      platform.event('plan.unlimited', ws.id, null, 'whitelisted');
+      log('whitelist.add', ws.id, `${ws.name}: AI ${whitelist.money(e.aiLimit, e.aiUnit)} a month, Boosted ${e.sesLimit} emails a month${e.note ? `; note: ${e.note}` : ''}; was ${ws.plan ? planName(ws.plan) : 'no plan'}`);
+      return (json(res, 200, { ok: true }), true);
+    }
+    if (!whitelist.entry(ws.id)) return (json(res, 404, { error: mark('This company isn’t on the Whitelist.') }), true);
+    if (sub === 'whitelist/update') {
+      const r = whitelist.update(ws.id, b, email)!;
+      const changes: string[] = [];
+      if (r.was.aiLimit !== r.now.aiLimit || r.was.aiUnit !== r.now.aiUnit) changes.push(`AI ${whitelist.money(r.was.aiLimit, r.was.aiUnit)} → ${whitelist.money(r.now.aiLimit, r.now.aiUnit)} a month`);
+      if (r.was.sesLimit !== r.now.sesLimit) changes.push(`Boosted ${r.was.sesLimit} → ${r.now.sesLimit} emails a month`);
+      if (r.was.note !== r.now.note) changes.push(`note: ${r.now.note || '(none)'}`);
+      if (changes.length) log('whitelist.update', ws.id, `${ws.name}: ${changes.join('; ')}`);
+      // The company's page shows the new limits at once.
+      saveWs({ ...ws });
+      return (json(res, 200, { ok: true }), true);
+    }
+    const e = whitelist.remove(ws.id);
+    const plan = whitelist.restoredPlan(e, ws.name);
+    saveWs({ ...ws, plan });
+    platform.event('plan.changed', ws.id, null, `off the Whitelist, back to ${planName(plan)}`);
+    log('whitelist.remove', ws.id, `${ws.name}: back to ${planName(plan)}`);
+    return (json(res, 200, { ok: true, plan: planName(plan) }), true);
   }
 
   if (sub === 'company/suspend' && POST) {
@@ -680,7 +762,7 @@ export async function handleAdmin(p: string, ctx: AdminCtx): Promise<boolean> {
     const days = Math.max(1, Math.min(180, Number(b.days ?? 14)));
     for (const id of ids) {
       const ws = wsById(id);
-      if (!ws?.plan || ws.plan.tier === 'free') continue;
+      if (!ws?.plan || ws.plan.tier === 'free' || ws.plan.unlimited) continue;
       const from = ws.plan.trialEnds && ws.plan.trialEnds > now() ? Date.parse(ws.plan.trialEnds) : Date.now();
       saveWs({ ...ws, plan: { ...ws.plan, trialEnds: new Date(from + days * DAY).toISOString() } });
       log('company.plan', id, `trial +${days} days`);
@@ -1098,6 +1180,7 @@ export async function handleAdmin(p: string, ctx: AdminCtx): Promise<boolean> {
     movement[movement.length - 1].mrr = companies.reduce((n, c) => n + c.mrr, 0);
     const byTier: Record<string, { companies: number; mrr: number }> = {};
     for (const c of companies) {
+      if (c.state === 'unlimited') continue; // their own line below, never in revenue
       const key = c.plan ? planName(c.plan as any) : 'Free';
       byTier[key] ??= { companies: 0, mrr: 0 };
       byTier[key].companies++;
@@ -1116,6 +1199,7 @@ export async function handleAdmin(p: string, ctx: AdminCtx): Promise<boolean> {
         paying: companies.filter((c) => c.state === 'paying').length,
         trials: { count: companies.filter((c) => c.state === 'trial').length, after: companies.filter((c) => c.state === 'trial').reduce((n, c) => n + (c.after ?? 0), 0) },
         comped: companies.filter((c) => c.state === 'comp').length,
+        unlimited: companies.filter((c) => c.state === 'unlimited').length,
         paused: companies.filter((c) => c.state === 'paused').length,
         discounts: companies.reduce((n, c) => n + (c.discount ?? 0), 0),
         movement,
@@ -1144,6 +1228,7 @@ export async function handleAdmin(p: string, ctx: AdminCtx): Promise<boolean> {
     const b = await body(req);
     const ws = wsById(String(b.workspaceId ?? ''));
     if (!ws?.plan) return (json(res, 404, { error: mark('No such company, or it has no plan.') }), true);
+    if (whitelist.on(ws)) return (json(res, 409, { error: mark('This company is on the Whitelist, so it’s never invoiced.') }), true);
     const period = /^\d{4}-(0[1-9]|1[0-2])$/.test(String(b.period ?? '')) ? String(b.period) : monthStart().slice(0, 7);
     const auto = invoiceLinesFor(ws, period);
     const custom = Array.isArray(b.lines) && b.lines.length;
@@ -1160,7 +1245,7 @@ export async function handleAdmin(p: string, ctx: AdminCtx): Promise<boolean> {
     const done = new Set(platform.invoices().filter((i) => i.period === period && i.status !== 'void' && !billing.isCreditInvoice(i.id)).map((i) => i.workspaceId));
     let made = 0;
     for (const c of companyRows(ctx)) {
-      if (c.internal || c.state !== 'paying' || done.has(c.id)) continue;
+      if (c.internal || c.state !== 'paying' || done.has(c.id)) continue; // never the Whitelist (state "unlimited")
       const ws = wsById(c.id);
       const auto = invoiceLinesFor(ws, period);
       platform.createInvoice({ workspaceId: c.id, period, lines: auto.lines, discount: auto.discount, dueDays: 14, billTo: ws.plan.billing ?? { company: ws.name, emails: [] }, by: email, note: auto.note });
