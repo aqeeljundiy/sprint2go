@@ -1708,7 +1708,10 @@ button.td-chip:hover,
 }
 /* ---------- Settings: Task stages ---------- */
 .stage-list {
+  /* One column as wide as the pane (an auto column grows to the widest row and spilled out of Settings at 768 px). */
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
 }
 .stage-row {
   display: flex;

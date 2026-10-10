@@ -28,10 +28,10 @@ Nothing running. The 10 Oct local build (below) is on local main, not pushed or 
 - **Company logo in Gmail (BIMI)**: the upload and record are built; Gmail also needs a VMC or CMC certificate (12 months of logo use or a registered trademark) and DMARC at quarantine or reject.
 - **Still English on purpose**: the demo company's content, audit and activity logs, meeting logs, "Re:"/"Fwd:", and the reply email to an outside organiser.
 - **Not checkable without real traffic or keys**: Outlook.com's image proxy detection; model lists with real SumoPod, Anthropic and Gemini keys (Bedrock needs `bedrock:ListFoundationModels`).
-- **Calendar Day and Week**: multi-day all-day events still show once per day, not as one bar.
-- **Task stages at 768 px**: the stage list overflows the Settings pane on the right.
 
 ## Done
+
+**10 Oct, evening, local:** Calendar Day, Week and 3 days show all-day events and timed ones of a day or more as one bar across their days (Month's layout), square where they go on past the view, "+N" when a day is full; Task stages fit the Settings pane at every width.
 
 **10 Oct, afternoon, live:** the sprint2go system on every phone screen (one type scale, spacing, rows, top bar; drift check in CI); the Whitelist (operator console, Customers: unlimited companies with monthly AI and Boosted limits, 80% alerts, per-person shares, out of revenue numbers); group DMs, following threads, camera and screen share in huddles; multi-day bars in Month and an end date in the editor; files on task comments; every Settings section in the iOS pattern on phones; Home greeting with the name when it fits; fixes from Aqeel's review (chat jump, tab highlight, task panel alignment, Tasks calendar days and actions row, the brand font's digits, sidebar titles).
 

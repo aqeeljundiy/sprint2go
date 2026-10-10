@@ -50,15 +50,17 @@ export function eventSpan(e: Pick<CalEvent, 'start' | 'end' | 'allDay'>, first: 
 
 /**
  * The weeks of `days` (a multiple of seven, Monday first) with each event placed. `fit` is how many lanes a day has
- * room for: the last one turns into "+N" when a day has more.
+ * room for: the last one turns into "+N" when a day has more. `width` is the row's length (Day and Week views' all-day
+ * row is one row of their own days: see `stripLayout`).
  */
-export function monthLayout(events: CalEvent[], days: Date[], fit: number): MonthWeek[] {
+export function monthLayout(events: CalEvent[], days: Date[], fit: number, width = 7): MonthWeek[] {
   const lanesFit = Math.max(1, Math.floor(fit));
   const spans = events.map((e) => ({ e, span: eventSpan(e, days[0]) }));
   const weeks: MonthWeek[] = [];
-  for (let w = 0; w * 7 < days.length; w++) {
-    const lo = w * 7;
-    const hi = lo + 6;
+  for (let w = 0; w * width < days.length; w++) {
+    const lo = w * width;
+    const hi = Math.min(lo + width, days.length) - 1;
+    const cols = hi - lo + 1;
     const segs = spans
       .filter(({ span }) => span[1] >= lo && span[0] <= hi)
       .map(({ e, span }) => ({
@@ -81,7 +83,7 @@ export function monthLayout(events: CalEvent[], days: Date[], fit: number): Mont
           a.e.id.localeCompare(b.e.id),
       );
     // Each one on the lowest lane that's free on all its days.
-    const taken: boolean[][] = Array.from({ length: 7 }, () => []);
+    const taken: boolean[][] = Array.from({ length: cols }, () => []);
     for (const s of segs) {
       let lane = 0;
       while (taken.slice(s.from, s.to + 1).some((col) => col[lane])) lane++;
@@ -89,7 +91,7 @@ export function monthLayout(events: CalEvent[], days: Date[], fit: number): Mont
       for (let c = s.from; c <= s.to; c++) taken[c][lane] = true;
     }
     const covers = (c: number) => segs.filter((s) => s.from <= c && s.to >= c);
-    const need = Array.from({ length: 7 }, (_, c) => covers(c).reduce((m, s) => Math.max(m, s.lane + 1), 0));
+    const need = Array.from({ length: cols }, (_, c) => covers(c).reduce((m, s) => Math.max(m, s.lane + 1), 0));
     const fits = (c: number) => need[c] <= lanesFit;
     const pieces: MonthPiece[] = [];
     for (const s of segs) {
@@ -105,9 +107,20 @@ export function monthLayout(events: CalEvent[], days: Date[], fit: number): Mont
         }
       }
     }
-    const more = Array.from({ length: 7 }, (_, col) => ({ col, n: fits(col) ? 0 : covers(col).filter((s) => s.lane >= lanesFit - 1).length })).filter((m) => m.n > 0);
-    const byDay = Array.from({ length: 7 }, (_, c) => covers(c).sort((a, b) => a.lane - b.lane).map((s) => s.e));
+    const more = Array.from({ length: cols }, (_, col) => ({ col, n: fits(col) ? 0 : covers(col).filter((s) => s.lane >= lanesFit - 1).length })).filter((m) => m.n > 0);
+    const byDay = Array.from({ length: cols }, (_, c) => covers(c).sort((a, b) => a.lane - b.lane).map((s) => s.e));
     weeks.push({ pieces, more, byDay });
   }
   return weeks;
+}
+
+/** Is this event shown as a bar (an all-day event, or a timed one of a day or more) rather than a block on its day? */
+export const isBar = (e: Pick<CalEvent, 'start' | 'end' | 'allDay'>) => !!e.allDay || new Date(e.end).getTime() - new Date(e.start).getTime() >= DAY_MS;
+
+/**
+ * Day and Week views' all-day row (Google Calendar's): every all-day event and timed event of a day or more as one bar
+ * across the shown days, square at the side where it goes on past the view. The same lanes and "+N" as Month.
+ */
+export function stripLayout(events: CalEvent[], days: Date[], fit: number): MonthWeek {
+  return monthLayout(events.filter(isBar), days, fit, days.length)[0] ?? { pieces: [], more: [], byDay: [] };
 }
