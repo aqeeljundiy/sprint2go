@@ -14,7 +14,7 @@ import { HOW, ProgressBar, SOURCE_ICON, madeWords, runningWords, shareOf, untilW
 import { t } from '../../i18n';
 import './imports.css';
 
-const SOURCES: ImportSource[] = ['slack', 'trello', 'drive'];
+const SOURCES: ImportSource[] = ['slack', 'trello', 'drive', 'mail'];
 const live = (j: ImportJob) => j.status === 'reading' || j.status === 'running';
 
 /** What one import is doing, in a line. */
@@ -101,7 +101,7 @@ export function ImportSection({ ws, members, projects, toast }: { ws: Workspace;
       <>
         <h2>{t('Import')}</h2>
         <div className="set-rows">
-          <Group footer={busy ? t('One import at a time: the others can start once this one is done.') : t('Bring your team’s history over from Slack, Trello or Google Drive. You check what comes in before anything is made, and you can undo an import for a day after.')}>
+          <Group footer={busy ? t('One import at a time: the others can start once this one is done.') : t('Bring your team’s history over from Slack, Trello, Google Drive or Gmail. You check what comes in before anything is made, and you can undo an import for a day after.')}>
             {SOURCES.map((s) => {
               const Icon = SOURCE_ICON[s];
               const mine = waiting(s);
@@ -134,7 +134,7 @@ export function ImportSection({ ws, members, projects, toast }: { ws: Workspace;
   return (
     <>
       <h2>{t('Import')}</h2>
-      <p className="set-intro">{t('Bring your team’s history over from Slack, Trello or Google Drive. You check what comes in before anything is made, and you can undo an import for a day after.')}</p>
+      <p className="set-intro">{t('Bring your team’s history over from Slack, Trello, Google Drive or Gmail. You check what comes in before anything is made, and you can undo an import for a day after.')}</p>
       <div className="acct-list imp-sources">
         {SOURCES.map((s) => {
           const Icon = SOURCE_ICON[s];

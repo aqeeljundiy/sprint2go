@@ -12,6 +12,7 @@ import { createHash, randomInt } from 'node:crypto';
 import * as db from './db.ts';
 import * as audit from './mailAudit.ts';
 import { policyOf } from './mailCompliance.ts';
+import { mark } from '../src/i18n/index.ts';
 
 db.db.exec(`
   CREATE TABLE IF NOT EXISTS mail_fwd_addresses (account_id TEXT NOT NULL, address TEXT NOT NULL, workspace_id TEXT NOT NULL, added_by TEXT NOT NULL, added_at TEXT NOT NULL, verified_at TEXT, code_hash TEXT, code_until TEXT, tries INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (account_id, address));
@@ -79,15 +80,15 @@ export class FwdError extends Error {}
 export async function addAddress(ws: Ws, accountId: string, address: string, me: string) {
   const a = lower(address);
   const box = (ws.accounts ?? []).find((x) => x.id === accountId);
-  if (!validAddress(a)) throw new FwdError('That isn’t an email address.');
-  if (lower(box?.email) === a) throw new FwdError('That’s this mailbox’s own address.');
-  if (!allowedByPolicy(ws, a)) throw new FwdError('Your company only allows forwarding to its own addresses.');
+  if (!validAddress(a)) throw new FwdError(mark('That isn’t an email address.'));
+  if (lower(box?.email) === a) throw new FwdError(mark('That’s this mailbox’s own address.'));
+  if (!allowedByPolicy(ws, a)) throw new FwdError(mark('Your company only allows forwarding to its own addresses.'));
   const had = db.db.prepare('SELECT verified_at, code_until FROM mail_fwd_addresses WHERE account_id = ? AND address = ?').get(accountId, a) as { verified_at: string | null; code_until: string | null } | undefined;
   if (had?.verified_at) return { sent: false, verified: true };
   const count = (db.db.prepare('SELECT COUNT(*) AS n FROM mail_fwd_addresses WHERE account_id = ?').get(accountId) as { n: number }).n;
-  if (!had && count >= 10) throw new FwdError('A mailbox can have up to 10 forwarding addresses. Remove one first.');
+  if (!had && count >= 10) throw new FwdError(mark('A mailbox can have up to 10 forwarding addresses. Remove one first.'));
   // A new code at most once a minute.
-  if (had?.code_until && Date.parse(had.code_until) - CODE_MINUTES * 60_000 > Date.now() - 60_000) throw new FwdError('A code was just sent. Wait a minute before asking for another.');
+  if (had?.code_until && Date.parse(had.code_until) - CODE_MINUTES * 60_000 > Date.now() - 60_000) throw new FwdError(mark('A code was just sent. Wait a minute before asking for another.'));
   const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
   const until = new Date(Date.now() + CODE_MINUTES * 60_000).toISOString();
   db.db.prepare('INSERT INTO mail_fwd_addresses (account_id, address, workspace_id, added_by, added_at, code_hash, code_until, tries) VALUES (?, ?, ?, ?, ?, ?, ?, 0) ON CONFLICT (account_id, address) DO UPDATE SET code_hash = excluded.code_hash, code_until = excluded.code_until, tries = 0').run(accountId, a, ws.id, me, now(), hash(accountId, a, code), until);
@@ -101,14 +102,14 @@ export async function addAddress(ws: Ws, accountId: string, address: string, me:
 export function verify(ws: Ws, accountId: string, address: string, code: string, me: string) {
   const a = lower(address);
   const r = db.db.prepare('SELECT code_hash, code_until, tries, verified_at FROM mail_fwd_addresses WHERE account_id = ? AND address = ?').get(accountId, a) as { code_hash: string | null; code_until: string | null; tries: number; verified_at: string | null } | undefined;
-  if (!r) throw new FwdError('Add the address first.');
+  if (!r) throw new FwdError(mark('Add the address first.'));
   if (r.verified_at) return true;
-  if (!r.code_hash || !r.code_until || r.code_until < now()) throw new FwdError('That code has run out. Send a new one.');
-  if (r.tries >= MAX_TRIES) throw new FwdError('Too many wrong codes. Send a new one.');
+  if (!r.code_hash || !r.code_until || r.code_until < now()) throw new FwdError(mark('That code has run out. Send a new one.'));
+  if (r.tries >= MAX_TRIES) throw new FwdError(mark('Too many wrong codes. Send a new one.'));
   const clean = String(code ?? '').replace(/\D/g, '');
   if (hash(accountId, a, clean) !== r.code_hash) {
     db.db.prepare('UPDATE mail_fwd_addresses SET tries = tries + 1 WHERE account_id = ? AND address = ?').run(accountId, a);
-    throw new FwdError('That code isn’t right. Check the email and try again.');
+    throw new FwdError(mark('That code isn’t right. Check the email and try again.'));
   }
   db.db.prepare('UPDATE mail_fwd_addresses SET verified_at = ?, code_hash = NULL, code_until = NULL WHERE account_id = ? AND address = ?').run(now(), accountId, a);
   audit.log(ws.id, me, 'forward.address-verified', accountId, a);
@@ -133,8 +134,8 @@ export function setForwarding(ws: Ws, accountId: string, o: { on: boolean; addre
     return;
   }
   const a = lower(o.address);
-  if (!verified(accountId, a)) throw new FwdError('Confirm the address with its code first.');
-  if (!allowedByPolicy(ws, a)) throw new FwdError('Your company only allows forwarding to its own addresses.');
+  if (!verified(accountId, a)) throw new FwdError(mark('Confirm the address with its code first.'));
+  if (!allowedByPolicy(ws, a)) throw new FwdError(mark('Your company only allows forwarding to its own addresses.'));
   db.db.prepare('INSERT INTO mail_fwd (account_id, workspace_id, address, on_, keep, updated_by, updated_at) VALUES (?, ?, ?, 1, ?, ?, ?) ON CONFLICT (account_id) DO UPDATE SET address = excluded.address, on_ = 1, keep = excluded.keep, updated_by = excluded.updated_by, updated_at = excluded.updated_at').run(accountId, ws.id, a, keep, me, now());
   audit.log(ws.id, me, 'forward.on', accountId, `to ${a}, copy here: ${keep}`);
 }

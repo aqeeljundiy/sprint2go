@@ -7,6 +7,8 @@ import { askBigFile } from './components/BigFileDialog';
 import { store } from './store';
 import { isSandboxId, type DemoState } from './sandbox';
 import { t } from './i18n';
+// Mail offline (src/components/mail/offline.ts): the copy on this device when there's no connection.
+import { clearOffline, offlineState, rememberSession } from './components/mail/offline';
 
 type Doc = { id: string; [k: string]: unknown };
 
@@ -45,6 +47,7 @@ export interface Session {
   twoStep?: 'code' | 'setup';
   email?: string; // shown on the two-step screen
   companies?: string[]; // the companies that require two-step sign-in
+  offline?: boolean; // no connection: opened on the copy kept on this device (Mail offline)
 }
 export async function probe(): Promise<'none' | 'signed-out' | Session> {
   if (!location.protocol.startsWith('http')) return 'none';
@@ -52,9 +55,11 @@ export async function probe(): Promise<'none' | 'signed-out' | Session> {
     const r = await fetch('/api/me');
     if (r.status === 401) return 'signed-out';
     if (!r.ok || !r.headers.get('content-type')?.includes('json')) return 'none';
-    return (await r.json()) as Session;
+    return rememberSession((await r.json()) as Session);
   } catch {
-    return 'none';
+    // No connection: the installed app opens on the mail kept on this device, if there is some.
+    const snap = await offlineState();
+    return snap?.session ? { ...(snap.session as Session), offline: true } : 'none';
   }
 }
 
@@ -73,14 +78,14 @@ const forgetPushDevice = () =>
       .then((s) => s?.unsubscribe()),
     new Promise((r) => setTimeout(r, 1500)),
   ]).catch(() => {});
-export const signOut = () => forgetPushDevice().then(() => fetch('/api/logout', { method: 'POST' })).then(() => location.reload());
+export const signOut = () => forgetPushDevice().then(clearOffline).then(() => fetch('/api/logout', { method: 'POST' })).then(() => location.reload());
 export async function changePassword(current: string, next: string): Promise<string | null> {
   const r = await fetch('/api/password', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ current, next }) });
   return r.ok ? null : ((await r.json().catch(() => null))?.error ?? 'Could not change the password.');
 }
 
 /** The live connection: whether it dropped, and when mail last came in fresh (a load, a refresh or a live change). */
-export const live = { down: false, mailAt: 0 };
+export const live = { down: false, mailAt: 0, offline: false }; // offline: showing the copy kept on this device
 const liveChanged = () => window.dispatchEvent(new CustomEvent('s2g:live'));
 let es: EventSource | null = null;
 let reload: ((only?: CollectionKey[]) => Promise<void>) | null = null;
@@ -109,7 +114,30 @@ export async function connect(apply: <K extends CollectionKey>(k: K, v: Collecti
     if (!only || only.includes('threads')) (live.mailAt = Date.now()), liveChanged();
   };
   reload = load;
-  await load();
+  try {
+    await load();
+  } catch (e) {
+    // No connection (the installed app, offline): open on the copy kept on this device, and connect once it's back.
+    const noConnection = e instanceof TypeError || !navigator.onLine; // fetch fails this way only without a connection
+    const snap = noConnection ? await offlineState() : null;
+    if (!snap) throw e;
+    for (const k of Object.keys(snap.state) as CollectionKey[]) {
+      remember(k, toDocs(k, snap.state[k]));
+      latest[k] = snap.state[k];
+      apply(k, snap.state[k] as Collections[typeof k]);
+    }
+    server.on = true;
+    Object.assign(live, { offline: true, down: true, mailAt: Date.parse(snap.at) || 0 });
+    liveChanged();
+    const back = () => {
+      removeEventListener('online', back);
+      void load().then(
+        () => (Object.assign(live, { offline: false }), liveChanged()),
+        () => addEventListener('online', back),
+      );
+    };
+    addEventListener('online', back); // the live connection below keeps retrying by itself meanwhile
+  }
   server.on = true;
   listen = () => {
     es?.close();

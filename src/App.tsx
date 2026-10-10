@@ -36,7 +36,12 @@ import { holidayCalendarId, holidayCountry } from './data/holidays';
 import { useSettings, usePersisted, usePrefsSync } from './settings';
 import { DEFAULT_TRACK_OPTIONS, REPLY_TRACK_OPTIONS, isTeam } from './tracking';
 import { isMine, setIdentity } from './identity';
-import { scanned, session, useStored } from './store';
+import { scanned, session, store, useStored } from './store';
+// Mail for teams (src/components/mail/): Contacts, compose suggestions (most contacted first), mail kept offline and
+// written offline, the data loss rules' warnings.
+import { ContactsView, useComposeContacts } from './components/mail/Contacts';
+import { flushOutbox, keepOffline, sendMail } from './components/mail/offline';
+import { dlpWords, type DlpStop } from './components/mail/teamsApi';
 import { live, reloadAll, resync, server, uploadFile, uploadPolicy, wasSkipped } from './sync';
 import { TRY_KEYS, isSandbox, isSandboxId, sandboxWsId, type TryKey } from './sandbox';
 import { DemoCompanyBar, DemoInvite, ResetDemoDialog, TryList, demoCompanySeen, hideDemoCompany, openDemoCompany, resetDemoCompany, useDemoState } from './components/DemoCompany';
@@ -264,14 +269,17 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     );
   const role = ws.members.find((m) => m.userId === user.id)?.role ?? 'member';
   // Your personal mailbox first, then shared inboxes.
+  // Mailboxes someone gave you access to (delegation, src/components/mail/MailAccess.tsx) come after your own.
+  const opens = (a: Account) => a.users.includes(user.id) || !!a.delegates?.some((d) => d.userId === user.id);
   const myAccounts = useMemo(
-    () => ws.accounts.filter((a) => a.users.includes(user.id)).sort((a, b) => Number(a.kind === 'shared') - Number(b.kind === 'shared')),
-    [ws.accounts, user.id],
+    () => ws.accounts.filter(opens).sort((a, b) => Number(a.kind === 'shared') - Number(b.kind === 'shared') || Number(!a.users.includes(user.id)) - Number(!b.users.includes(user.id))),
+    [ws.accounts, user.id], // eslint-disable-line react-hooks/exhaustive-deps
   );
   // What really works (worked out on the server). The standalone demo, demo servers and the demo company have everything on.
   const demoOk = !server.on || caps.demo || inSandbox;
   const ready = ws.mailReady;
   const boxReady = (id: string): { receive: boolean; send: boolean; why?: string; sendWhy?: string } => (demoOk ? { receive: true, send: true } : ready?.mailboxes?.[id] ?? { receive: false, send: false, why: ready ? undefined : 'Checking your email setup…' });
+  const delegatedIds = useMemo(() => new Set(myAccounts.filter((a) => !a.users.includes(user.id)).map((a) => a.id)), [myAccounts, user.id]);
   const mailIn = myAccounts.some((a) => boxReady(a.id).receive);
   const mailOut = myAccounts.some((a) => boxReady(a.id).send);
   const whyFor = (k: 'receive' | 'send') =>
@@ -305,13 +313,13 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const tempAnchor = useRef<HTMLElement | null>(null);
   const [inviting, setInviting] = useState(false);
   const allAccounts = allWorkspaces.flatMap((w) => w.accounts);
-  const mine = workspaces.flatMap((w) => w.accounts.filter((a) => a.users.includes(user.id)));
+  const mine = workspaces.flatMap((w) => w.accounts.filter(opens));
   setIdentity(mine.map((a) => a.email), ws.domains);
   const primary = myAccounts.find((a) => a.id === activeAccount) ?? myAccounts[0] ?? { email: user.email };
   const ME: Person & { color: string } = { name: settings.name || user.name, email: primary.email, color: settings.avatarColor };
   const accountOf = (id: string) => allAccounts.find((a) => a.id === id);
   const senderFor = (a: Account | undefined): Person =>
-    a ? { name: a.kind === 'shared' ? a.name : settings.name || a.name, email: a.email } : ME;
+    a ? { name: a.kind === 'shared' || !a.users.includes(user.id) ? a.name : settings.name || a.name, email: a.email } : ME; // a delegated mailbox sends under its owner's name
   /** Team mail: a mailbox more than one person opens (a shared inbox, or one given to several). Comments live there. */
   const teamMail = (t: Thread) => {
     const a = accountOf(t.accountId);
@@ -607,15 +615,32 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
 
   // New mail arrives live. Refresh pulls the mailboxes again, reconnects when the live connection dropped, and asks
   // the server to check the mail setup again; the list says when mail last came in fresh.
-  const [mailLive, setMailLive] = useState(() => ({ down: live.down, at: live.mailAt || Date.now() }));
+  const [mailLive, setMailLive] = useState(() => ({ down: live.down, at: live.mailAt || Date.now(), offline: live.offline }));
   useEffect(() => {
-    const on = () => setMailLive({ down: live.down, at: live.mailAt });
+    const on = () => setMailLive({ down: live.down, at: live.mailAt, offline: live.offline });
     window.addEventListener('s2g:live', on);
     return () => window.removeEventListener('s2g:live', on);
   }, []);
+  // Mail offline (src/components/mail/offline.ts): the latest mail is kept on this device a moment after it changes,
+  // and email written offline goes out once the connection is back.
+  useEffect(() => {
+    if (!real || mailLive.offline) return;
+    const timer = setTimeout(() => void keepOffline(user.id, store), 4000);
+    return () => clearTimeout(timer);
+  }, [threads, workspaces, real, mailLive.offline, user.id]);
+  useEffect(() => {
+    if (!real) return;
+    const flush = () =>
+      void flushOutbox(user.id, (r) =>
+        showToast(r.ok ? { text: t('Sent now that you’re back online: {subject}', { subject: r.subject || t('(no subject)') }) } : { text: r.dlp ? t('Not sent once you were back online: {subject}. {why}', { subject: r.subject || t('(no subject)'), why: dlpWords(r.dlp as DlpStop) }) : t('Not sent once you were back online: {subject}. {why}', { subject: r.subject || t('(no subject)'), why: t(r.why ?? 'The mail engine refused it.') }), ms: 10000 }),
+      );
+    flush();
+    addEventListener('online', flush);
+    return () => removeEventListener('online', flush);
+  }, [real, user.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const readyAsked = useRef(0);
   const refreshMail = async () => {
-    if (!real) return void setMailLive({ down: false, at: Date.now() });
+    if (!real) return void setMailLive({ down: false, at: Date.now(), offline: false });
     // The mailbox check looks at DNS and the server's ports: once a minute is plenty.
     if (Date.now() - readyAsked.current > 60_000) {
       readyAsked.current = Date.now();
@@ -762,13 +787,18 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     }
   };
 
+  // Compose suggests saved contacts and the people you write to most first (server/mailContacts.ts), then the rest.
+  const ranked = useComposeContacts(ws.id);
   const contacts = useMemo(() => {
     const map = new Map<string, Person>();
+    for (const p of ranked) if (!isMine(p.email)) map.set(p.email, p);
+    const first = map.size;
     for (const t of wsThreads) for (const m of t.messages) for (const p of [m.from, ...m.to]) map.set(p.email, p);
     for (const e of events) for (const g of e.guests ?? []) map.set(g.email, g);
     for (const e of [...map.keys()]) if (isMine(e)) map.delete(e);
-    return [...map.values()].sort((a, b) => a.name.localeCompare(b.name));
-  }, [wsThreads, events]); // eslint-disable-line react-hooks/exhaustive-deps
+    const all = [...map.values()];
+    return [...all.slice(0, first), ...all.slice(first).sort((a, b) => a.name.localeCompare(b.name))];
+  }, [wsThreads, events, ranked]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const selected = threads.find((t) => t.id === selectedId) ?? null;
   const selectedAcct = selected ? accountOf(selected.accountId) : undefined;
@@ -926,7 +956,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     return /[.!?]$/.test(why) ? why : `${why}.`;
   };
 
-  const reply = (id: string, html: string, text: string, track = false, all = false) => {
+  const reply = (id: string, html: string, text: string, track = false, all = false, dlpAck = false) => {
     const th = threads.find((x) => x.id === id);
     if (!th) return;
     const acct = accountOf(th.accountId);
@@ -943,29 +973,30 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     const tracking = tracked ? Object.fromEntries(outside.map((p) => [p.email, { opens: [], clicks: [] }])) : undefined;
     setThreads((ts) => ts.map((x) => (x.id === id ? { ...x, messages: [...x.messages, { id: msgId, from, to, date: new Date().toISOString(), body: text, html, ...(tracked ? { tracking, trackOptions: REPLY_TRACK_OPTIONS } : {}) }] } : x)));
     /** It didn't go: the reply leaves the conversation and its words go back in the reply box, to send again or change. */
-    const notSent = (why: string) => {
+    const notSent = (why: string, again?: () => void) => {
       setThreads((ts) => ts.map((x) => (x.id === id ? { ...x, messages: x.messages.filter((m) => m.id !== msgId) } : x)));
       const back = () => setRestoreReply({ threadId: id, html, text, key: Date.now() });
       back();
-      showToast({ text: t('Reply not sent. {why} What you wrote is back in the reply box.', { why }), ms: 10000, action: { label: t('Open'), run: () => (setSelectedId(id), setReaderOpen(true), back()) } });
+      // A data loss warning (server/mailCompliance.ts): "Send anyway" sends it, confirmed.
+      showToast({ text: t('Reply not sent. {why} What you wrote is back in the reply box.', { why }), ms: 10000, action: again ? { label: t('Send anyway'), run: again } : { label: t('Open'), run: () => (setSelectedId(id), setReaderOpen(true), back()) } });
     };
     // With the server, the mail engine sends it for real, threaded under the message it answers.
     if (real && acct && (!acct.provider || acct.provider === 'sprint2go')) {
       const refs = th.messages.map((m) => m.mid).filter(Boolean) as string[];
-      void fetch('/api/mail/send', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ workspaceId: ws.id, accountId: acct.id, threadId: th.id, messageId: msgId, to, cc: [], subject: /^re:/i.test(th.subject) ? th.subject : `Re: ${th.subject}`, text, html, files: [], inReplyTo: last.mid, references: refs, track: tracked, trackOptions: tracked ? { opens: REPLY_TRACK_OPTIONS.opens, clicks: REPLY_TRACK_OPTIONS.clicks, notify: REPLY_TRACK_OPTIONS.notify } : undefined, undoSeconds: settings.undoSend }),
-      }).then(
-        async (r) =>
-          r.ok
+      // With no connection it waits on this device and goes out once the connection is back (Mail offline).
+      void sendMail(user.id, { workspaceId: ws.id, accountId: acct.id, threadId: th.id, messageId: msgId, to, cc: [], subject: /^re:/i.test(th.subject) ? th.subject : `Re: ${th.subject}`, text, html, files: [], inReplyTo: last.mid, references: refs, track: tracked, trackOptions: tracked ? { opens: REPLY_TRACK_OPTIONS.opens, clicks: REPLY_TRACK_OPTIONS.clicks, notify: REPLY_TRACK_OPTIONS.notify } : undefined, undoSeconds: settings.undoSend, dlpAck }).then(
+        async (r) => {
+          const stop = await dlpOf(r);
+          if (stop) return notSent(dlpWords(stop), stop.action === 'warn' ? () => reply(id, html, text, track, all, true) : undefined);
+          return r.ok
             ? sentToast(r, t('Reply sent'), () =>
                 takeBack(id, msgId, () => {
                   setThreads((ts) => ts.map((x) => (x.id === id ? { ...x, messages: x.messages.filter((m) => m.id !== msgId) } : x)));
                   setRestoreReply({ threadId: id, html, text, key: Date.now() });
                 }),
               )
-            : notSent(await refusal(r, t('The mail engine refused it.'))),
+            : notSent(await refusal(r, t('The mail engine refused it.')));
+        },
         async () => notSent(await refusal(null, '')),
       );
     } else showToast({ text: inSandbox ? t('Reply sent in the demo company. Nothing left it.') : t('Reply sent') });
@@ -1030,13 +1061,16 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
    * there: nobody got it, so it isn't kept as sent. It goes back to Drafts, untracked, with the reason and a way to
    * open it again (to change it, or to send it once the problem is fixed).
    */
-  const notSent = (thread: Thread, m: Outgoing, why: string) => {
+  const notSent = (thread: Thread, m: Outgoing, why: string, again?: () => void) => {
     const draft = toThread(m, 'drafts');
     setThreads((ts) => [draft, ...ts.filter((x) => x.id !== thread.id)]);
-    showToast({ text: t('Not sent. {why} It’s in Drafts.', { why }), ms: 10000, action: { label: t('Open draft'), run: () => openCompose({ draftId: draft.id, initial: m }) } });
+    // A data loss warning (server/mailCompliance.ts): "Send anyway" sends the draft, confirmed.
+    showToast({ text: t('Not sent. {why} It’s in Drafts.', { why }), ms: 10000, action: again ? { label: t('Send anyway'), run: () => (setThreads((ts) => ts.filter((x) => x.id !== draft.id)), again()) } : { label: t('Open draft'), run: () => openCompose({ draftId: draft.id, initial: m }) } });
   };
+  /** The data loss rules' answer to a send (a 409 with `dlp`), or null. */
+  const dlpOf = async (r: Response): Promise<DlpStop | null> => (r.status === 409 ? (((await r.clone().json().catch(() => ({}))) as { dlp?: DlpStop }).dlp ?? null) : null);
 
-  const send = (m: Outgoing) => {
+  const send = (m: Outgoing, dlpAck = false) => {
     if (m.sendAt) {
       // Send later: kept as a scheduled draft until its time (the server does this for real).
       const th = { ...toThread(m, 'drafts', undefined, true), sendAt: m.sendAt };
@@ -1068,12 +1102,10 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     // With the server: the mail engine really sends it (our own mailboxes already have their copies).
     const handedOver = real && !!from && (!from.provider || from.provider === 'sprint2go');
     if (handedOver) {
-      void fetch('/api/mail/send', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ workspaceId: ws.id, accountId: from.id, threadId: thread.id, messageId: thread.messages[0].id, to: m.to, cc: m.cc, bcc: m.bcc ?? [], subject: m.subject, text: m.text, html: m.html, files: m.files.map((f) => ({ name: f.name, url: f.url })), inReplyTo: replyOf?.mid, references: replyOf?.references, track: m.track, trackOptions: m.track ? { opens: m.trackOptions.opens, clicks: m.trackOptions.clicks, notify: m.trackOptions.notify, remindDays: m.trackOptions.remindDays } : undefined, undoSeconds: settings.undoSend }),
-      }).then(
+      void sendMail(user.id, { workspaceId: ws.id, accountId: from.id, threadId: thread.id, messageId: thread.messages[0].id, to: m.to, cc: m.cc, bcc: m.bcc ?? [], subject: m.subject, text: m.text, html: m.html, files: m.files.map((f) => ({ name: f.name, url: f.url })), inReplyTo: replyOf?.mid, references: replyOf?.references, track: m.track, trackOptions: m.track ? { opens: m.trackOptions.opens, clicks: m.trackOptions.clicks, notify: m.trackOptions.notify, remindDays: m.trackOptions.remindDays } : undefined, undoSeconds: settings.undoSend, dlpAck }).then(
         async (r) => {
+          const stop = await dlpOf(r);
+          if (stop) return notSent(thread, m, dlpWords(stop), stop.action === 'warn' ? () => send(m, true) : undefined);
           if (!r.ok) return notSent(thread, m, await refusal(r, t('The mail engine refused it.')));
           // Undo while the mail engine still has it waiting: it comes back as a draft, and nobody got it.
           await sentToast(r, t('Message sent'), () =>
@@ -3329,15 +3361,25 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const wsDrive = useMemo(() => drive.filter((i) => (i.workspaceId ?? 'pnp') === ws.id), [drive, ws.id]);
   const allDrive = useMemo(() => [...wsDrive, ...attachments], [wsDrive, attachments]);
 
+  // What mail really takes on the server (server/mailStorage.ts); the demo keeps its made-up figure.
+  const [mailBytes, setMailBytes] = useState<number | null>(null);
+  useEffect(() => {
+    if (!real) return void setMailBytes(null);
+    let on = true;
+    void fetch(`/api/storage?workspaceId=${encodeURIComponent(ws.id)}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { mail?: number } | null) => on && typeof d?.mail === 'number' && setMailBytes(d.mail), () => {});
+    return () => void (on = false);
+  }, [ws.id, real, mode === 'settings']); // eslint-disable-line react-hooks/exhaustive-deps
   const usage = useMemo(() => {
     const own = wsDrive.filter((i) => i.kind !== 'folder');
     return {
-      mail: MAIL_USAGE,
+      mail: mailBytes ?? MAIL_USAGE,
       drive: own.reduce((s, i) => s + i.size, 0),
       media: own.filter((i) => i.kind === 'image' || i.kind === 'video').reduce((s, i) => s + i.size, 0),
       quota: QUOTA,
     };
-  }, [wsDrive]);
+  }, [wsDrive, mailBytes]);
 
   const patchDrive = (id: string, patch: Partial<DriveItem>) => setDrive((d) => d.map((i) => (i.id === id ? { ...i, ...patch } : i)));
 
@@ -3506,7 +3548,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
 
   /* ---------------- Render ---------------- */
 
-  const title = view.kind === 'folder' ? folderName(view.id) : view.kind === 'tracking' ? t('Waiting for reply') : view.kind === 'todos' ? t('To-do') : view.kind === 'project' ? (wsClientsAll.find((c) => c.id === view.id)?.name ?? term.one) : (LABELS.find((l) => l.id === view.id)?.name ?? '');
+  const title = view.kind === 'folder' ? folderName(view.id) : view.kind === 'contacts' ? t('Contacts') : view.kind === 'tracking' ? t('Waiting for reply') : view.kind === 'todos' ? t('To-do') : view.kind === 'project' ? (wsClientsAll.find((c) => c.id === view.id)?.name ?? term.one) : (LABELS.find((l) => l.id === view.id)?.name ?? '');
   const appMode = mode === 'settings' ? lastMode : mode;
 
   /** Each app's gear: Settings at that app's section (only sections this person can use). */
@@ -4119,6 +4161,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
           ) : null
         }
         accounts={myAccounts}
+        delegated={delegatedIds}
         activeAccount={activeAccount}
         accountUnread={accountUnread}
         onNewTemp={() => setTempDialog({})}
@@ -4745,7 +4788,11 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             </div>
           </section>
         )}
-        {mode === 'mail' && myAccounts.length > 0 && (mailIn || mailOut) && view.kind !== 'tracking' && (
+        {/* Mail, Contacts (src/components/mail/Contacts.tsx): in place of the list and the reader. */}
+        {mode === 'mail' && view.kind === 'contacts' && (
+          <ContactsView ws={ws} users={members} me={user.id} onMenu={() => setSidebarOpen(true)} toast={(text) => showToast({ text })} onCompose={(p) => openCompose({ initial: { to: [p], cc: [], subject: '', html: settings.signature, text: '', files: [], track: settings.trackByDefault, trackOptions: DEFAULT_TRACK_OPTIONS, fromId: (sendable.find((a) => a.kind === 'personal') ?? sendable[0] ?? myAccounts[0])?.id ?? '' } })} />
+        )}
+        {mode === 'mail' && myAccounts.length > 0 && (mailIn || mailOut) && view.kind !== 'tracking' && view.kind !== 'contacts' && (
           <div className="mail-view view-enter">
             <MessageList
               notice={
@@ -4782,7 +4829,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
               onCompose={mailOut ? () => openCompose() : undefined}
               onDrafts={() => (setActiveAccount('all'), selectView({ kind: 'folder', id: 'drafts' }))}
               updatedAt={mailLive.at}
-              offline={real && mailLive.down}
+              offline={real && (mailLive.offline ? 'device' : mailLive.down)}
               onQuery={setQuery}
               onFilter={setFilter}
               onOpen={open}
@@ -5200,9 +5247,15 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
               },
             }}
             onRemoveAccount={(id) => setRemoveAcct(ws.accounts.find((a) => a.id === id) ?? null)}
+            mailTeams={{
+              // Settings, Mail storage: delete for good (the server keeps what's on legal hold and says so).
+              onDelete: (ids) => setThreads((ts) => ts.filter((x) => !ids.includes(x.id))),
+              onEmpty: (where) => setThreads((ts) => ts.filter((x) => !(x.location === where && ws.accounts.some((a) => a.id === x.accountId && a.users.includes(user.id))))),
+              onOpen: (id) => openThread(id),
+            }}
             mailExtras={
               <OutOfOffice
-                accounts={myAccounts.filter((a) => !a.temp)}
+                accounts={myAccounts.filter((a) => !a.temp && a.users.includes(user.id))}
                 canSend={(id) => (boxReady(id).send ? null : (boxReady(id).sendWhy ?? boxReady(id).why ?? 'Sending isn’t set up for this mailbox yet.'))}
                 onSave={async (a, away) => {
                   if (!real) {

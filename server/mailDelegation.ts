@@ -5,6 +5,7 @@
 // email a delegate sends is in the mail log.
 // Delegates live on the account (`delegates`), set only here: a sync can't add or change them.
 import * as audit from './mailAudit.ts';
+import { mark } from '../src/i18n/index.ts';
 
 export type SendMode = 'as' | 'behalf';
 export interface Delegate {
@@ -34,8 +35,8 @@ export class DelegationError extends Error {}
  */
 export function setDelegates(ws: Ws, accountId: string, asked: unknown, me: string, now = new Date().toISOString()): { account: Account; changes: { action: string; detail: string }[] } {
   const a = (ws.accounts ?? []).find((x) => x.id === accountId);
-  if (!a || !delegable(a)) throw new DelegationError('Only someone’s own mailbox can be shared this way. Shared inboxes have their own people.');
-  if (!mayManage(ws, a, me)) throw new DelegationError('Only the mailbox’s owner or an admin can give access to it.');
+  if (!a || !delegable(a)) throw new DelegationError(mark('Only someone’s own mailbox can be shared this way. Shared inboxes have their own people.'));
+  if (!mayManage(ws, a, me)) throw new DelegationError(mark('Only the mailbox’s owner or an admin can give access to it.'));
   const members = new Set(ws.members.map((m) => m.userId));
   const before = delegatesOf(a);
   const out: Delegate[] = [];

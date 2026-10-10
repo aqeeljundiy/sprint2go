@@ -8,6 +8,7 @@
 // Kept per person and company in their own table; nobody else sees someone's contacts.
 import { randomBytes } from 'node:crypto';
 import * as db from './db.ts';
+import { mark } from '../src/i18n/index.ts';
 
 db.db.exec(`
   CREATE TABLE IF NOT EXISTS mail_contacts (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, workspace_id TEXT NOT NULL, data TEXT NOT NULL, updated_at TEXT NOT NULL);
@@ -65,8 +66,8 @@ export class ContactError extends Error {}
 export function save(userId: string, wsId: string, raw: any): Contact {
   const old = typeof raw?.id === 'string' ? getOne(userId, wsId, raw.id) : undefined;
   const c = cleanContact(raw, old);
-  if (!c) throw new ContactError('Give the contact a name or an email.');
-  if (!old && count(userId, wsId) >= MAX_CONTACTS) throw new ContactError('You have as many contacts as one person can keep. Remove some first.');
+  if (!c) throw new ContactError(mark('Give the contact a name or an email.'));
+  if (!old && count(userId, wsId) >= MAX_CONTACTS) throw new ContactError(mark('You have as many contacts as one person can keep. Remove some first.'));
   put(userId, wsId, c);
   return c;
 }
@@ -78,7 +79,7 @@ export function remove(userId: string, wsId: string, ids: string[]) {
 /** Several contacts into the first: every email, phone and label kept, the longest name, notes joined. */
 export function merge(userId: string, wsId: string, ids: string[]): Contact {
   const all = ids.map((id) => getOne(userId, wsId, String(id))).filter(Boolean) as Contact[];
-  if (all.length < 2) throw new ContactError('Pick at least two contacts to merge.');
+  if (all.length < 2) throw new ContactError(mark('Pick at least two contacts to merge.'));
   const [first, ...rest] = all;
   const merged = cleanContact({
     ...first,

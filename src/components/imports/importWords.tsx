@@ -1,11 +1,11 @@
 // Words and small pieces the import screens share: how to get each export, what an import made, a progress bar.
-import { FolderInput, MessagesSquare, SquareKanban, type LucideIcon } from 'lucide-react';
+import { FolderInput, Mail, MessagesSquare, SquareKanban, type LucideIcon } from 'lucide-react';
 import { term } from '../../terms';
 import { SOURCE_NAME, type ImportJob, type ImportSource, type ImportSummary } from '../../importTypes';
 import { mark, t, tn } from '../../i18n';
 import { fmtList, fmtNumber, fmtTime, weekdayName } from '../../i18n/format';
 
-export const SOURCE_ICON: Record<ImportSource, LucideIcon> = { slack: MessagesSquare, trello: SquareKanban, drive: FolderInput };
+export const SOURCE_ICON: Record<ImportSource, LucideIcon> = { slack: MessagesSquare, trello: SquareKanban, drive: FolderInput, mail: Mail };
 
 /**
  * What each source brings, and how to get its export, in the order someone does it. Words are functions, so they come
@@ -44,6 +44,19 @@ export const HOW: Record<ImportSource, { line: () => string; lead: () => string;
     accept: '.zip,application/zip,application/x-zip-compressed',
     drop: () => t('Drop the zip here, or choose it'),
     wrongFile: () => t('That’s not a zip. The export comes as a .zip file.'),
+  },
+  // Mail (server/importMail.ts): a Google Takeout of Gmail, or an mbox from a mail app, into one mailbox here.
+  mail: {
+    line: () => t('Email from a Google Takeout of Gmail, or an mbox file, into a mailbox'),
+    lead: () => t('Every email comes over into the mailbox you pick, in the place Gmail had it: Inbox, Sent, archived, Spam or Trash, starred and unread too. Replies join their conversations and attachments come with them.'),
+    steps: () => [
+      t('Go to takeout.google.com and press Deselect all.'),
+      t('Tick Mail, then Next step, then Create export.'),
+      t('When Google emails you, download the zip and drop it here. From Thunderbird or Apple Mail, export the mailbox as an .mbox file instead.'),
+    ],
+    accept: '.zip,.mbox,application/zip,application/x-zip-compressed,application/mbox',
+    drop: () => t('Drop the zip or .mbox file here, or choose it'),
+    wrongFile: () => t('That’s not a zip or an .mbox file.'),
   },
 };
 

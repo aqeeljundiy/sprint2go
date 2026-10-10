@@ -34,6 +34,7 @@ export function blocker(p: ImportPreview, c: ImportChoices): string | null {
       ? t('Free covers 5 people, so nobody else can join. Keep the others as names or match them to people here, or pick a plan in Plan & billing.')
       : t('Free covers 5 people, so only {n} more can join. Keep the others as names or match them to people here, or pick a plan in Plan & billing.', { n: num(p.seatsLeft) });
   if (p.channels && p.channels.length && (c.leaveOut ?? []).length >= p.channels.length) return t('Turn on at least one channel.');
+  if (p.mail && !c.mailbox) return t('Pick the mailbox the mail goes into.');
   if (p.drive && driveNeed(p, c) > p.room.left) {
     const sizes = { need: fmtSize(driveNeed(p, c)), left: fmtSize(p.room.left) };
     return p.drive.big && c.big
@@ -51,6 +52,7 @@ export function ImportPreviewStep({ preview: p, choices: c, onChoices, members, 
     <div className="imp-preview">
       {p.source === 'slack' && <SlackPart p={p} c={c} set={set} />}
       {p.source === 'trello' && <TrelloPart p={p} c={c} set={set} stages={stages} projects={projects} />}
+      {p.source === 'mail' && p.mail && <MailPart p={p} c={c} set={set} />}
       {p.source === 'drive' && p.drive && (
         <section className="imp-sec">
           <h4>{t('Into Drive')}</h4>
@@ -350,6 +352,24 @@ function People({ p, c, set, members }: { p: ImportPreview; c: ImportChoices; se
           </div>
         </>
       )}
+    </section>
+  );
+}
+
+/** Mail: how much there is, and the mailbox it goes into (the one it was addressed to, picked to start with). */
+function MailPart({ p, c, set }: { p: ImportPreview; c: ImportChoices; set: (x: Partial<ImportChoices>) => void }) {
+  const m = p.mail!;
+  const options: Option[] = m.mailboxes.map((b) => ({ value: b.id, label: b.email, hint: b.shared ? t('Shared inbox') : b.name, keywords: b.name }));
+  return (
+    <section className="imp-sec">
+      <h4>{t('Into a mailbox')}</h4>
+      <p className="imp-line">{t('{emails}, {size} in all.', { emails: tn(m.messages, '{n} email', '{n} emails'), size: fmtSize(m.bytes) })}</p>
+      <div className="imp-mailbox">
+        <Select value={c.mailbox} options={options} onChange={(mailbox) => set({ mailbox })} label={t('Mailbox')} title={t('Mailbox')} placeholder={t('Pick a mailbox')} searchable={options.length > 8} width={320} />
+      </div>
+      <Room need={m.bytes} left={p.room.left} total={p.room.total} />
+      {m.tooBig > 0 && <p className="imp-note">{tn(m.tooBig, '1 email is over 30 MB and stays out.', '{n} emails are over 30 MB and stay out.')}</p>}
+      {m.otherParts.length > 0 && <p className="imp-note">{t('This Takeout also has {parts}. Only Mail comes over.', { parts: fmtList(m.otherParts) })}</p>}
     </section>
   );
 }

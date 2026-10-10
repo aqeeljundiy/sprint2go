@@ -7,7 +7,7 @@ import { fmtSize } from '../data/drive';
 import { Avatar } from './Avatar';
 import { t } from '../i18n';
 
-export type SettingsSection = 'workspace' | 'email' | 'agency' | 'permissions' | 'teams' | 'stages' | 'clients' | 'apps' | 'meetings' | 'ai' | 'billing' | 'storage' | 'security' | 'import' | 'account' | 'appearance' | 'mail' | 'notifications' | 'shortcuts' | 'developer' | 'myapps' | 'help' | 'mailapps';
+export type SettingsSection = 'workspace' | 'email' | 'agency' | 'permissions' | 'teams' | 'stages' | 'clients' | 'apps' | 'meetings' | 'ai' | 'billing' | 'storage' | 'security' | 'import' | 'account' | 'appearance' | 'mail' | 'notifications' | 'shortcuts' | 'developer' | 'myapps' | 'help' | 'mailapps' | 'mailaccess' | 'mailstorage' | 'mailgroups' | 'mailrules'; // the last four: Mail for teams (src/components/mail/)
 
 interface Props {
   me: Person & { color?: string };

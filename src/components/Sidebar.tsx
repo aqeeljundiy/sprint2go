@@ -14,7 +14,7 @@ import {
   ShieldAlert,
   Star,
   Trash2,
-  type LucideIcon, Clock, CalendarClock, UserCheck, Timer, MoreHorizontal, Plus, ListChecks, Inbox as InboxIcon, Hourglass, ListTodo, File, Tag, Folder, Settings, HelpCircle } from 'lucide-react';
+  type LucideIcon, Clock, CalendarClock, UserCheck, Timer, MoreHorizontal, Plus, ListChecks, Inbox as InboxIcon, Hourglass, ListTodo, File, Tag, Folder, Settings, HelpCircle, Contact as ContactIcon, UserRoundCheck } from 'lucide-react';
 import type { Account, AppId, FolderId, Label, View, Workspace } from '../types';
 import { usePhone } from '../mobile/media';
 import { WorkspaceLogo } from './WorkspaceLogo';
@@ -82,6 +82,8 @@ interface Props {
   accounts: Account[];
   activeAccount: string; // 'all' or an account id
   accountUnread: Record<string, number>;
+  /** Mailboxes someone gave you access to (delegation): marked as theirs in the list. */
+  delegated?: Set<string>;
   onAccountFilter: (id: string) => void;
   onNewTemp?: () => void;
   onNewProject?: () => void;
@@ -189,10 +191,12 @@ export function Sidebar(props: Props) {
                           onClick={() => props.onAccountFilter(a.id)}
                           title={a.email || a.name}
                         >
-                          {a.kind === 'all' ? <Layers size={17} /> : a.kind === 'shared' ? <Users size={17} /> : <Inbox size={17} />}
+                          {a.kind === 'all' ? <Layers size={17} /> : a.kind === 'shared' ? <Users size={17} /> : props.delegated?.has(a.id) ? <UserRoundCheck size={17} /> : <Inbox size={17} />}
                           <span className="sb-label acct-text">
                             <span>{a.kind === 'all' ? a.name : a.email.split('@')[0] + '@'}</span>
-                            {'connected' in a && !a.connected ? (
+                            {props.delegated?.has(a.id) ? (
+                              <small>{t('Delegated to you')}</small>
+                            ) : 'connected' in a && !a.connected ? (
                               <small>{t('Not connected')}</small>
                             ) : 'provider' in a && a.provider && a.provider !== 'sprint2go' ? (
                               <small className="via">{t('via {provider}', { provider: providerName(a.provider) })}</small>
@@ -267,6 +271,14 @@ export function Sidebar(props: Props) {
                     <ListChecks size={17} />
                     <span className="sb-label">{t('To-do')}</span>
                   </button>
+                  <button
+                    className={`nav-item ${isActive({ kind: 'contacts', id: 'contacts' }) ? 'active' : ''}`}
+                    onClick={() => props.onSelect({ kind: 'contacts', id: 'contacts' })}
+                    title={t('Contacts')}
+                  >
+                    <ContactIcon size={17} />
+                    <span className="sb-label">{t('Contacts')}</span>
+                  </button>
 
                 </nav>
 
@@ -337,7 +349,7 @@ function PhoneMailDrawer(props: Props & { pm: NonNullable<Props['phoneMail']>; i
         <nav className="gm-nav-group" aria-label={t('Inboxes')}>
           {boxes.length > 1 && item('all', Layers, t('All inboxes'), inboxOn('all'), () => props.onAccountFilter('all'), props.accountUnread.all)}
           {boxes.map((a) =>
-            item(a.id, a.kind === 'shared' ? Users : InboxIcon, a.kind === 'shared' ? a.name || a.email : boxes.length > 1 ? t('My inbox') : t('Inbox'), inboxOn(a.id), () => props.onAccountFilter(a.id), props.accountUnread[a.id]),
+            item(a.id, a.kind === 'shared' ? Users : props.delegated?.has(a.id) ? UserRoundCheck : InboxIcon, a.kind === 'shared' || props.delegated?.has(a.id) ? a.name || a.email : boxes.length > 1 ? t('My inbox') : t('Inbox'), inboxOn(a.id), () => props.onAccountFilter(a.id), props.accountUnread[a.id]),
           )}
           {boxes.length === 0 && item('inbox', InboxIcon, t('Inbox'), inboxOn('all'), () => props.onAccountFilter('all'), counts.inbox)}
           {temps.map((a) => item(a.id, Timer, a.email.split('@')[0] + '@', inboxOn(a.id), () => props.onAccountFilter(a.id), props.accountUnread[a.id]))}
@@ -377,6 +389,7 @@ function PhoneMailDrawer(props: Props & { pm: NonNullable<Props['phoneMail']>; i
         )}
         <div className="gm-sep" />
         <nav className="gm-nav-group">
+          {item('contacts', ContactIcon, t('Contacts'), isActive({ kind: 'contacts', id: 'contacts' }), () => props.onSelect({ kind: 'contacts', id: 'contacts' }))}
           {item('settings', Settings, t('Mail settings'), false, pm.onSettings)}
           {item('help', HelpCircle, t('Help'), false, pm.onHelp)}
         </nav>

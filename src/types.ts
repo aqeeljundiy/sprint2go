@@ -7,7 +7,7 @@ export type FolderId = 'inbox' | 'starred' | 'sent' | 'drafts' | 'archive' | 'sp
 /** Where a thread physically lives. "starred" and "sent" are views, not locations. */
 export type Location = 'inbox' | 'drafts' | 'archive' | 'spam' | 'trash';
 
-export type View = { kind: 'folder'; id: FolderId } | { kind: 'label'; id: string } | { kind: 'tracking'; id: 'tracking' } | { kind: 'todos'; id: 'todos' } | { kind: 'project'; id: string };
+export type View = { kind: 'folder'; id: FolderId } | { kind: 'label'; id: string } | { kind: 'tracking'; id: 'tracking' } | { kind: 'todos'; id: 'todos' } | { kind: 'project'; id: string } | { kind: 'contacts'; id: 'contacts' };
 
 export interface Person {
   name: string;
@@ -261,6 +261,38 @@ export interface Account {
   /** A throwaway address: made in seconds, shared with a few people, deleted by itself (or by hand). */
   temp?: { createdBy: string; createdAt: string; expiresAt?: string };
   away?: AwayReply; // out of office
+  delegates?: MailDelegate[]; // people the owner let in (set through the server, /api/mail/delegates)
+  groupId?: string; // a shared inbox that belongs to a group (Settings, Groups & shared inboxes)
+}
+
+/** Someone who reads and sends from another person's mailbox (server/mailDelegation.ts). */
+export interface MailDelegate {
+  userId: string;
+  send: 'as' | 'behalf'; // as the mailbox, or "sent by them on behalf of" its owner
+  by: string;
+  at: string;
+}
+
+/** An address that delivers to several people (a group) or into one shared inbox (server/mailGroups.ts). */
+export interface MailGroup {
+  id: string;
+  address: string;
+  name: string;
+  kind: 'list' | 'inbox';
+  owners: string[];
+  members: string[];
+  whoCanPost: 'anyone' | 'company' | 'members';
+  accountId?: string;
+  createdAt: string;
+  createdBy: string;
+}
+
+/** The company's mail rules (server/mailCompliance.ts): retention, legal holds, data loss rules, forwarding outside. */
+export interface MailPolicy {
+  retention?: { days: number; mailboxes?: Record<string, number>; deleteFrom?: string; lastRun?: { at: string; deleted: number } };
+  holds?: { id: string; userId: string; reason: string; by: string; at: string }[];
+  dlp?: { id: string; name: string; kind: 'card' | 'nik' | 'words'; words?: string; action: 'warn' | 'block'; on: boolean }[];
+  forwardOutside?: boolean;
 }
 
 /** Out of office: an automatic answer, once per sender every 4 days, while it's on and inside its dates. */
@@ -300,6 +332,8 @@ export interface Workspace {
   mailCredits?: number; // emails left on Boosted sending
   mailCreditsNotified?: boolean;
   mailAliases?: MailAlias[]; // extra addresses that deliver into mailboxes (set through the server)
+  mailGroups?: MailGroup[]; // groups and shared inboxes (set through the server)
+  mailPolicy?: MailPolicy; // retention, legal holds, data loss rules (set through the server, admins)
   mailChecks?: { at: string; allOk: boolean; checks: { key: string; ok: boolean; found: string; want: string }[] }; // the last DNS check
   /** What really works, worked out by the server: mail in, mail out, per mailbox, with the reason when it doesn't. */
   mailReady?: { at: string; receive: boolean; send: boolean; why: { receive?: string; send?: string }; mailboxes: Record<string, { receive: boolean; send: boolean; why?: string; sendWhy?: string }> };

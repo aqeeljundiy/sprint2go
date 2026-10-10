@@ -68,7 +68,7 @@ interface Props {
   /** Checks for new mail now (the button, and pulling the list down on a phone). */
   onRefresh?: () => Promise<void>;
   updatedAt?: number; // when mail last came in fresh
-  offline?: boolean; // the live connection dropped: new mail waits for a refresh
+  offline?: boolean | 'device'; // the live connection dropped: new mail waits for a refresh. 'device': no connection, showing the mail kept on this device (src/components/mail/offline.ts)
   onCompose?: () => void; // Compose is Mail's create button (missing: sending isn't set up)
   onDrafts?: () => void; // long-press Compose: the drafts
   /** Phones: your picture in the search pill opens your account and companies; `elsewhere`: another has new mail. */
@@ -354,7 +354,7 @@ export const MessageList = forwardRef<HTMLInputElement, Props>(function MessageL
         </div>
       </header>
       {props.notice}
-      {props.offline && <div className="list-offline">{t('Connection lost. Pull down to check for mail.')}</div>}
+      {props.offline && <div className="list-offline">{props.offline === 'device' ? t('You’re offline. Recent mail kept on this device is here, and what you send goes out once you’re back online.') : t('Connection lost. Pull down to check for mail.')}</div>}
       {props.onRefresh && (
         <div className={`pull-mark ${pull ? 'on' : ''} ${dragging ? 'dragging' : ''} ${refreshing ? 'busy' : ''} ${pull >= PULL_AT ? 'ready' : ''}`} style={{ ['--pull' as string]: `${pull}px` }} aria-hidden>
           <RefreshCw size={16} className={refreshing ? 'spin' : ''} style={refreshing ? undefined : { transform: `rotate(${pull * 3}deg)` }} />

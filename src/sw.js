@@ -1,20 +1,25 @@
 // sprint2go's service worker (built into dist/sw.js by vite.config.ts, which stamps the build on it, so every deploy is
 // a new worker that takes over straight away). It is small on purpose:
-// - Pages always come from the network, so a deploy shows at once. Only with no connection: a simple offline page.
-// - Nothing else is touched: scripts and styles (hashed, the browser caches them), the API, the live stream
-//   (/api/events) and uploads all go straight to the server, exactly as without a worker.
+// - Pages always come from the network, so a deploy shows at once. With no connection: the app as it was last opened
+//   (Mail offline: it then opens on the mail kept on the device, src/components/mail/offline.ts), else a simple
+//   offline page.
+// - The built scripts and styles (hashed names) are kept as they're fetched, for opening the app offline; each build
+//   keeps its own and the old ones go when a new worker takes over.
+// - Nothing else is touched: the API, the live stream (/api/events) and uploads go straight to the server.
 // - Notifications: shows what the server pushes, and a tap opens the exact item in the app.
 const BUILD = '__BUILD__';
 const CACHE = `s2g-offline-${BUILD}`;
 const OFFLINE = '/offline.html';
-const KEEP = [OFFLINE, '/offline.js']; // all that's kept on the device: the offline page and its script
+const KEEP = [OFFLINE, '/offline.js']; // the offline page and its script
+const SHELL = `s2g-shell-${BUILD}`; // the app's page and its built files, as last fetched (Mail offline)
+const SHELL_PAGE = '/__app-shell';
 
 self.addEventListener('install', (e) => {
   // Where the browser supports it, the API (the live stream and uploads too) and the built files don't even wake the
   // worker: they go to the network directly.
   try {
     if (e.addRoutes && typeof URLPattern === 'function')
-      e.waitUntil(e.addRoutes(['/api/*', '/assets/*'].map((pathname) => ({ condition: { urlPattern: new URLPattern({ pathname }) }, source: 'network' }))).catch(() => {}));
+      e.waitUntil(e.addRoutes(['/api/*'].map((pathname) => ({ condition: { urlPattern: new URLPattern({ pathname }) }, source: 'network' }))).catch(() => {}));
   } catch {
     /* older browsers: the fetch handler below leaves these alone anyway */
   }
@@ -30,7 +35,7 @@ self.addEventListener('install', (e) => {
 self.addEventListener('activate', (e) => {
   e.waitUntil(
     (async () => {
-      for (const k of await caches.keys()) if (k.startsWith('s2g-offline-') && k !== CACHE) await caches.delete(k);
+      for (const k of await caches.keys()) if ((k.startsWith('s2g-offline-') && k !== CACHE) || (k.startsWith('s2g-shell-') && k !== SHELL)) await caches.delete(k);
       // Pages start loading while the worker wakes up, so having a worker never makes opening the app slower.
       await self.registration.navigationPreload?.enable().catch(() => {});
       await self.clients.claim();
@@ -44,15 +49,37 @@ self.addEventListener('fetch', (e) => {
   if (req.method !== 'GET' || url.origin !== location.origin) return;
   // The offline page's script, from the device when there's no connection.
   if (url.pathname === '/offline.js') return e.respondWith(fetch(req).catch(() => caches.match(req)));
+  // Built files: the network, kept as they come; from the device when there's no connection.
+  if (url.pathname.startsWith('/assets/'))
+    return e.respondWith(
+      (async () => {
+        const shell = await caches.open(SHELL);
+        const have = await shell.match(req);
+        if (have) return have; // hashed names never change
+        const res = await fetch(req);
+        if (res.ok) e.waitUntil(shell.put(req, res.clone()).catch(() => {}));
+        return res;
+      })(),
+    );
   if (req.mode !== 'navigate') return;
   const api = url.pathname.startsWith('/api/');
   e.respondWith(
     (async () => {
       try {
-        return (await e.preloadResponse) || (await fetch(req));
+        const res = (await e.preloadResponse) || (await fetch(req));
+        // The app's own page (not the landing page or the admin console) is kept for opening offline.
+        if (!api && res.ok && (res.headers.get('content-type') || '').includes('text/html') && !url.pathname.startsWith('/admin'))
+          e.waitUntil(
+            res
+              .clone()
+              .text()
+              .then((html) => (html.includes('id="root"') ? caches.open(SHELL).then((c) => c.put(SHELL_PAGE, new Response(html, { headers: { 'content-type': 'text/html; charset=utf-8' } }))) : null))
+              .catch(() => {}),
+          );
+        return res;
       } catch (err) {
         if (api) throw err;
-        return (await caches.match(OFFLINE)) || new Response('You’re offline. Check your connection and try again.', { status: 503, headers: { 'content-type': 'text/plain; charset=utf-8' } });
+        return (await caches.match(SHELL_PAGE)) || (await caches.match(OFFLINE)) || new Response('You’re offline. Check your connection and try again.', { status: 503, headers: { 'content-type': 'text/plain; charset=utf-8' } });
       }
     })(),
   );

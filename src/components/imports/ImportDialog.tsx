@@ -40,6 +40,7 @@ function startingChoices(job: ImportJob): ImportChoices {
     projectId: p.board?.sameName ?? '',
     archived: false,
     big: false,
+    mailbox: p.mail?.suggested ?? p.mail?.mailboxes[0]?.id,
   };
 }
 
@@ -92,7 +93,7 @@ export function ImportDialog({ source, workspaceId, job: initial, members, stage
     setError('');
     if (unreadable) setJob(null);
     const lower = file.name.toLowerCase();
-    if (source === 'trello' ? !lower.endsWith('.json') : !lower.endsWith('.zip'))
+    if (source === 'trello' ? !lower.endsWith('.json') : source === 'mail' ? !lower.endsWith('.zip') && !lower.endsWith('.mbox') : !lower.endsWith('.zip'))
       return setError(how.wrongFile());
     if (maxUpload && file.size > maxUpload) return setError(t('That file is {size}; imports take up to {max}.', { size: fmtSize(file.size), max: fmtSize(maxUpload) }));
     const up = uploadImport(workspaceId, source, file, (share) => setUpload((u) => (u ? { ...u, share } : u)));
