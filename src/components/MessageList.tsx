@@ -1,11 +1,12 @@
 import { forwardRef, useEffect, useMemo, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
 import { lastTracked, summarize } from '../tracking';
 import { Archive, Check, Clock, Eye, EyeOff, FileText, Inbox, Mail, MailOpen, Menu, MessageSquare, MoreHorizontal, Paperclip, PenLine, RefreshCw, Search, ShieldAlert, Star, Trash2, X } from 'lucide-react';
 import type { Client, Label, Person, Thread, User } from '../types';
 import { lastMessage, listDate, participants, relative, snippet } from '../utils';
 import { Avatar } from './Avatar';
 import { isMine } from '../identity';
-import { useCreateAction, useFocusedScreen } from '../mobile/chrome';
+import { useCreateAction } from '../mobile/chrome';
 import { usePhone } from '../mobile/media';
 import { SwipeRow, type SwipeAction } from './ui/SwipeRow';
 import { useLeaving } from './ui/Smooth';
@@ -14,6 +15,9 @@ import { ActionSheet, type SheetAction } from './ui/ActionSheet';
 import { SnoozePicker } from './mail/MailPickers';
 import { useMailSwipes, type SwipeKind } from './mail/MailSettings';
 import { whenWords } from '../mailRules';
+import { TopBar } from '../mobile/TopBar';
+import { MailSearchPill, MailSelectBar } from './mail/MailTop';
+import { MailSearch } from './mail/MailSearch';
 import { mark, t, tn } from '../i18n';
 
 /** The chips under the title: one at a time, tap again for everything. */
@@ -67,6 +71,12 @@ interface Props {
   offline?: boolean; // the live connection dropped: new mail waits for a refresh
   onCompose?: () => void; // Compose is Mail's create button (missing: sending isn't set up)
   onDrafts?: () => void; // long-press Compose: the drafts
+  /** Phones: your picture in the search pill opens your account and companies; `elsewhere`: another has new mail. */
+  onAccounts?: () => void;
+  elsewhere?: boolean;
+  /** Phones: what Mail's search looks through (every folder but Spam and Trash), and "All apps" for the suite's search. */
+  searchable?: Thread[];
+  onAllApps?: () => void;
 }
 
 const PULL_AT = 64; // px: pull this far, let go, and it refreshes
@@ -84,7 +94,6 @@ const CHIPS: { id: Exclude<MailFilter, 'all'>; label: string }[] = [
 export const MessageList = forwardRef<HTMLInputElement, Props>(function MessageList(props, searchRef) {
   const { title, threads, me, selectedId, query, filter, actions } = props;
   const phone = usePhone();
-  useCreateAction('mail', props.onCompose && { label: t('Compose'), icon: PenLine, run: props.onCompose, extended: true, more: props.onDrafts ? [{ label: t('Drafts'), icon: FileText, run: props.onDrafts }] : undefined });
   const listRef = useRef<HTMLUListElement>(null);
   const unread = threads.filter((t) => t.unread).length;
   const [refreshing, setRefreshing] = useState(false);
@@ -108,7 +117,15 @@ export const MessageList = forwardRef<HTMLInputElement, Props>(function MessageL
       return n;
     });
   const endSelect = () => setPicked(new Set());
-  useFocusedScreen(phone && selecting); // the bulk bar takes the tab bar's place
+  // Gmail's Compose floats above the bar; it steps away while selecting (it would act on nothing).
+  useCreateAction('mail', props.onCompose && { label: t('Compose'), icon: PenLine, run: props.onCompose, extended: true, hidden: phone && selecting, more: props.onDrafts ? [{ label: t('Drafts'), icon: FileText, run: props.onDrafts }] : undefined });
+  // Phones: Mail's own search screen (Gmail's), opened from the pill.
+  const [searching, setSearching] = useState(false);
+  const openSearch = () => {
+    flushSync(() => setSearching(true));
+    document.querySelector<HTMLInputElement>('.mail-search .gm-input')?.focus(); // in the tap itself, so iPhone opens the keyboard
+  };
+  const selMore = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     if (!selecting) return;
     const key = (e: KeyboardEvent) => e.key === 'Escape' && !document.querySelector('.sheet-scrim:not(.is-leaving), .pop:not(.is-leaving)') && endSelect();
@@ -117,7 +134,7 @@ export const MessageList = forwardRef<HTMLInputElement, Props>(function MessageL
   }, [selecting]);
 
   const [snoozing, setSnoozing] = useState<{ ids: string[]; anchor?: React.RefObject<HTMLElement | null> } | null>(null);
-  const [menuFor, setMenuFor] = useState<{ ids: string[]; at?: { x: number; y: number }; anchor?: React.RefObject<HTMLElement | null>; title?: string } | null>(null);
+  const [menuFor, setMenuFor] = useState<{ ids: string[]; at?: { x: number; y: number }; anchor?: React.RefObject<HTMLElement | null>; title?: string; menu?: boolean } | null>(null);
 
   const refresh = async () => {
     if (refreshing || !props.onRefresh) return;
@@ -241,6 +258,17 @@ export const MessageList = forwardRef<HTMLInputElement, Props>(function MessageL
     return out;
   };
 
+  /** The selection bar's ⋮ on phones (Done, Delete and Read are on the bar itself). */
+  const selectMore = (list: Thread[]): SheetAction[] => {
+    const ids = list.map((th) => th.id);
+    const allStarred = list.every((th) => th.starred);
+    const out: SheetAction[] = [];
+    if (list.some((th) => th.location !== 'drafts' && th.location !== 'trash' && th.location !== 'spam')) out.push({ id: 'snooze', label: t('Snooze…'), icon: Clock, run: () => setSnoozing({ ids }) });
+    out.push({ label: allStarred ? t('Unstar') : t('Star'), icon: Star, run: () => actions.star(ids, !allStarred) });
+    if (list.some((th) => th.location === 'inbox') && list.some((th) => th.location !== 'inbox' && th.location !== 'drafts')) out.push({ label: t('Move to Inbox'), icon: Inbox, run: () => actions.inbox(ids) });
+    if (list.some((th) => th.location !== 'spam')) out.push({ label: t('Report spam'), icon: ShieldAlert, group: 'end', run: () => actions.spam(ids) });
+    return out;
+  };
   const rows = useLeaving(threads, (t) => t.id);
   const selList = threads.filter((t) => sel.has(t.id));
   const selUnread = selList.some((t) => t.unread);
@@ -252,6 +280,29 @@ export const MessageList = forwardRef<HTMLInputElement, Props>(function MessageL
   return (
     <section className={`list-pane${selecting ? ' selecting' : ''}`} style={{ ['--list-w' as string]: `${props.width}px` }}>
       <div className="pane-resize" onPointerDown={startResize} onDoubleClick={() => props.onWidth(400)} title={t('Drag to resize')} />
+      {phone && (
+        <TopBar
+          app="mail"
+          replace={
+            selecting ? (
+              <MailSelectBar
+                key="sel"
+                ref={selMore}
+                count={sel.size}
+                inInbox={selList.some((th) => th.location === 'inbox')}
+                unread={selUnread}
+                onClose={endSelect}
+                onDone={() => (selList.some((th) => th.location === 'inbox') ? actions.done(selList.filter((th) => th.location === 'inbox').map((th) => th.id)) : actions.inbox([...sel]), endSelect())}
+                onTrash={() => (actions.trash([...sel]), endSelect())}
+                onRead={() => (actions.read([...sel], !selUnread), endSelect())}
+                onMore={() => setMenuFor({ ids: [...sel], anchor: selMore, title: tn(sel.size, '{n} selected', '{n} selected'), menu: true })}
+              />
+            ) : (
+              <MailSearchPill key="pill" me={me} elsewhere={props.elsewhere} onMenu={props.onMenu} onSearch={openSearch} onAccounts={props.onAccounts} />
+            )
+          }
+        />
+      )}
       <header className="list-header">
         <div className="list-title">
           <button className="icon-btn menu-btn" onClick={props.onMenu} aria-label={t('Open menu')}>
@@ -310,6 +361,19 @@ export const MessageList = forwardRef<HTMLInputElement, Props>(function MessageL
         </div>
       )}
 
+      {phone &&
+        (selecting ? (
+          <div className="gm-label gm-selall">
+            <button type="button" className={`gm-selall-btn${sel.size === threads.length ? ' on' : ''}`} onClick={() => setPicked(sel.size === threads.length ? new Set() : new Set(threads.map((th) => th.id)))}>
+              <span className="gm-selall-box" aria-hidden="true">
+                <Check size={14} strokeWidth={3} />
+              </span>
+              {sel.size === threads.length ? t('Select none') : t('Select all')}
+            </button>
+          </div>
+        ) : (
+          <div className="gm-label">{title}</div>
+        ))}
       {threads.length === 0 ? (
         <div className={`empty ${pull ? 'pulled' : ''} ${dragging ? 'dragging' : ''}`} ref={(el) => void (bodyRef.current = el)} style={pull ? { transform: `translateY(${pull}px)` } : undefined}>
           <div className="empty-art">✓</div>
@@ -374,7 +438,7 @@ export const MessageList = forwardRef<HTMLInputElement, Props>(function MessageL
         </ul>
       )}
 
-      {selecting && (
+      {selecting && !phone && (
         <div className="mail-bulk" role="toolbar" aria-label={tn(sel.size, '{n} selected', '{n} selected')}>
           {selList.some((th) => th.location === 'inbox') ? (
             <button type="button" onClick={() => (actions.done(selList.filter((th) => th.location === 'inbox').map((th) => th.id)), endSelect())}>
@@ -425,14 +489,40 @@ export const MessageList = forwardRef<HTMLInputElement, Props>(function MessageL
         title={menuFor?.title}
         anchor={menuFor?.anchor}
         at={menuFor?.at ?? null}
-        actions={menuFor ? actionsFor(threads.filter((t) => menuFor.ids.includes(t.id)), !!menuFor.at).map((a) => (menuFor.anchor ? { ...a, run: () => (a.run(), a.id !== 'snooze' && endSelect()) } : a)) : []}
+        menu={menuFor?.menu}
+        actions={menuFor ? (menuFor.menu ? selectMore(threads.filter((t) => menuFor.ids.includes(t.id))) : actionsFor(threads.filter((t) => menuFor.ids.includes(t.id)), !!menuFor.at)).map((a) => (menuFor.anchor ? { ...a, run: () => (a.run(), a.id !== 'snooze' && endSelect()) } : a)) : []}
       />
+      {phone && searching && (
+        <MailSearch
+          threads={props.searchable ?? threads}
+          me={me}
+          meId={props.meId}
+          clientOf={props.clientOf}
+          labels={props.labels}
+          personOf={props.personOf}
+          sharedMail={props.sharedMail}
+          assignChip={props.assignChip}
+          showSnippets={props.showSnippets}
+          onStar={(id, on) => actions.star([id], on)}
+          onOpen={props.onOpen}
+          onAllApps={props.onAllApps}
+          onClose={() => setSearching(false)}
+        />
+      )}
     </section>
   );
 });
 
+/** Bold the words someone searched for (Gmail's results). */
+function Hl({ text, q }: { text: string; q?: string }) {
+  const words = (q ?? '').trim().split(/\s+/).filter((w) => w.length > 1).map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  if (!words.length) return <>{text}</>;
+  const parts = text.split(new RegExp(`(${words.join('|')})`, 'gi'));
+  return <>{parts.map((x, i) => (i % 2 ? <b key={i} className="hl">{x}</b> : x))}</>;
+}
+
 /** One email in the list: picture, who and when, subject, a line of it, then one quiet line of status. */
-function MailRow(p: {
+export function MailRow(p: {
   t: Thread;
   me: Person;
   meId: string;
@@ -455,6 +545,7 @@ function MailRow(p: {
   onDone: () => void;
   onTrash: () => void;
   onSnooze: (anchor: React.RefObject<HTMLElement | null>) => void;
+  hl?: string; // search words to bold
 }) {
   const th = p.t;
   const last = lastMessage(th);
@@ -468,6 +559,82 @@ function MailRow(p: {
   const pointer = useRef<string>('');
   const snoozeBtn = useRef<HTMLButtonElement>(null);
   const hold = useLongPress(() => !p.selecting && p.onHold(), { disabled: p.leaving });
+  if (p.phone) {
+    // Gmail's three lines: who and when, the subject, a line of it with the star. Unread is bold, nothing else.
+    // A fourth line only for files. A project (or label) is one small chip after the subject.
+    const files = th.messages.flatMap((m) => m.attachments ?? []);
+    const tag = p.client ?? labels[0];
+    return (
+      <div
+        className={`row gm-row lp${th.unread ? ' unread' : ''}${p.current ? ' selected' : ''}${p.picked ? ' picked' : ''}`}
+        {...hold}
+        onClick={() => (p.selecting ? p.onToggle() : p.onOpen())}
+        role="button"
+        tabIndex={-1}
+        aria-label={th.unread ? t('Unread, {who}: {subject}', { who: participants(th, p.me), subject: th.subject }) : `${participants(th, p.me)}: ${th.subject}`}
+      >
+        <button type="button" className={`row-av${p.picked ? ' on' : ''}`} onClick={(e) => (e.stopPropagation(), p.onToggle())} aria-pressed={p.picked} aria-label={p.picked ? t('Unselect') : t('Select')}>
+          <Avatar person={isMine(last.from.email) ? th.messages[0].from : last.from} size={40} />
+          <span className="row-check" aria-hidden="true">
+            <Check size={20} strokeWidth={3} />
+          </span>
+        </button>
+        <div className="row-main">
+          <div className="row-top">
+            <span className="row-from">
+              <span className="row-names">
+                <Hl text={participants(th, p.me)} q={p.hl} />
+              </span>
+              {th.messages.length > 1 && <span className="row-count">{th.messages.length}</span>}
+            </span>
+            {p.shared && who && (
+              <span className="row-assignee" title={who.id === p.meId ? t('You handle this one') : t('{name} handles this one', { name: who.name.split(' ')[0] })}>
+                <Avatar person={who} size={18} />
+              </span>
+            )}
+            <span className={`row-date${snoozed ? ' snoozed' : ''}`}>{snoozed ? whenWords(new Date(th.snoozedUntil!)) : th.sendAt ? whenWords(new Date(th.sendAt)) : listDate(last.date)}</span>
+          </div>
+          <div className="row-subject">
+            {th.location === 'drafts' && !th.sendAt && <span className="rm-draft">{t('Draft')} </span>}
+            {th.sendAt && <span className="rm-sched">{t('Scheduled')} </span>}
+            <span className="row-subj-text">
+              <Hl text={th.subject} q={p.hl} />
+            </span>
+            {tag && (
+              <span className="gm-tag" style={{ ['--c' as string]: tag.color }}>
+                {tag.name}
+              </span>
+            )}
+          </div>
+          <div className="row-line3">
+            <span className="row-snippet">{p.snippets ? <Hl text={snippet(last.body) || ' '} q={p.hl} /> : ' '}</span>
+            <button
+              type="button"
+              className={`row-star${th.starred ? ' on' : ''}`}
+              onClick={(e) => (e.stopPropagation(), p.onStar())}
+              onPointerDown={(e) => e.stopPropagation()}
+              aria-pressed={th.starred}
+              aria-label={th.starred ? t('Unstar') : t('Star')}
+              tabIndex={p.selecting ? -1 : 0}
+            >
+              <Star size={20} />
+            </button>
+          </div>
+          {files.length > 0 && (
+            <div className="gm-files">
+              {files.slice(0, 2).map((f, i) => (
+                <span key={i} className="gm-file">
+                  <Paperclip size={14} />
+                  <span>{f.name}</span>
+                </span>
+              ))}
+              {files.length > 2 && <span className="gm-file more">+{files.length - 2}</span>}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
   const status =
     (p.shared && (who || th.location === 'inbox')) || comments > 0 || snoozed || !!th.sendAt || hasFiles || !!p.client || labels.length > 0 || !!sum || th.location === 'drafts' || (p.phone && th.starred);
   return (

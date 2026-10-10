@@ -1,4 +1,5 @@
-import { useMemo, useState, type ReactNode, type RefObject } from 'react';
+import { useEffect, useMemo, useState, type ReactNode, type RefObject } from 'react';
+import { createPortal } from 'react-dom';
 import { CalendarClock, CalendarDays, Check, ChevronDown, Clock, Coffee, Moon, Search, Send, Sun, UserX } from 'lucide-react';
 import type { User } from '../../types';
 import { Sheet } from '../ui/Sheet';
@@ -54,6 +55,8 @@ export function SnoozePicker({ open, onClose, anchor, onPick, waiting = false, c
   const pick = useCustomTime();
   const presets = useMemo(() => snoozePresets(), [open]); // eslint-disable-line react-hooks/exhaustive-deps
   const done = (d: Date) => (onClose(), onPick(d.toISOString(), noReply));
+  const phone = usePhone();
+  if (phone) return <SnoozeDialog open={open} onClose={onClose} presets={presets} done={done} pick={pick} custom={custom} setCustom={setCustom} noReply={noReply} setNoReply={setNoReply} waiting={waiting} count={count} />;
   return (
     <PickPanel open={open} onClose={onClose} anchor={anchor} title={count > 1 ? tn(count, 'Snooze {n} email until', 'Snooze {n} emails until') : t('Snooze until')} className="snooze-pick">
       <div className="as-list" role="menu">
@@ -96,6 +99,86 @@ export function SnoozePicker({ open, onClose, anchor, onPick, waiting = false, c
         </button>
       </div>
     </PickPanel>
+  );
+}
+
+/**
+ * Snooze on phones: Gmail's centred dialog of tiles (Later today, Tomorrow, This weekend, Next week), then Pick a date
+ * and time; "Only if nobody replies" when we wrote last and are waiting on them.
+ */
+function SnoozeDialog(p: {
+  open: boolean;
+  onClose: () => void;
+  presets: ReturnType<typeof snoozePresets>;
+  done: (d: Date) => void;
+  pick: ReturnType<typeof useCustomTime>;
+  custom: boolean;
+  setCustom: (f: (c: boolean) => boolean) => void;
+  noReply: boolean;
+  setNoReply: (f: (v: boolean) => boolean) => void;
+  waiting: boolean;
+  count: number;
+}) {
+  useEffect(() => {
+    if (!p.open) return;
+    const key = (e: KeyboardEvent) => e.key === 'Escape' && !document.querySelector('.pop:not(.is-leaving)') && p.onClose();
+    document.addEventListener('keydown', key);
+    return () => document.removeEventListener('keydown', key);
+  }, [p.open]); // eslint-disable-line react-hooks/exhaustive-deps
+  if (!p.open) return null;
+  // Gmail's four: "This evening" only stands in for "Later today" when that's gone.
+  const tiles = p.presets.filter((x) => x.id !== 'evening' || !p.presets.some((y) => y.id === 'later')).slice(0, 4);
+  return createPortal(
+    <div className="modal-scrim gm-dialog-scrim" onMouseDown={p.onClose}>
+      <div className="modal gm-snooze" role="dialog" aria-label={p.count > 1 ? tn(p.count, 'Snooze {n} email until', 'Snooze {n} emails until') : t('Snooze until')} onMouseDown={(e) => e.stopPropagation()}>
+        <h2 className="gm-dialog-title">{p.count > 1 ? tn(p.count, 'Snooze {n} email until', 'Snooze {n} emails until') : t('Snooze until')}</h2>
+        <div className="gm-tiles">
+          {tiles.map((x) => {
+            const Icon = PRESET_ICON[x.id] ?? Clock;
+            return (
+              <button key={x.id} type="button" className="gm-tile" onClick={() => p.done(x.at)}>
+                <Icon size={28} />
+                <b>{t(x.label)}</b>
+                <small>{whenWords(x.at)}</small>
+              </button>
+            );
+          })}
+        </div>
+        <button type="button" className={`gm-tile gm-tile-wide${p.custom ? ' on' : ''}`} aria-expanded={p.custom} onClick={() => p.setCustom((c) => !c)}>
+          <CalendarClock size={24} />
+          <b>{t('Pick date and time')}</b>
+          <ChevronDown size={18} className={`rot-chev${p.custom ? ' open' : ''}`} />
+        </button>
+        <SmoothHeight>
+          {p.custom && (
+            <div className="mp-custom">
+              <DatePicker value={p.pick.day} onChange={p.pick.setDay} clearable={false} label={t('Day')} />
+              <TimePicker value={p.pick.time} onChange={p.pick.setTime} />
+              <button type="button" className="primary-btn" disabled={!p.pick.ok} onClick={() => p.done(p.pick.at)} title={p.pick.ok ? undefined : t('Pick a time in the future')}>
+                {t('Snooze')}
+              </button>
+            </div>
+          )}
+        </SmoothHeight>
+        {p.waiting && (
+          <div className="mp-toggle gm-noreply">
+            <span>
+              <strong>{t('Only if nobody replies')}</strong>
+              <small>{p.noReply ? t('It stays away if anyone writes in this conversation before then.') : t('It comes back at that time either way.')}</small>
+            </span>
+            <button type="button" role="switch" aria-checked={p.noReply} aria-label={t('Only if nobody replies')} className={`switch ${p.noReply ? 'on' : ''}`} onClick={() => p.setNoReply((v) => !v)}>
+              <span />
+            </button>
+          </div>
+        )}
+        <div className="gm-dialog-foot">
+          <button type="button" className="ghost-btn" onClick={p.onClose}>
+            {t('Cancel')}
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body,
   );
 }
 

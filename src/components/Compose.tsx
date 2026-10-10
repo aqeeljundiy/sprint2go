@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type MutableRefObject } from 'react';
-import { Bell, ChevronUp, Clock, Sparkles, Eye, EyeOff, FileText, Maximize2, MousePointerClick, Minimize2, Minus, Paperclip, PenLine, Send, Trash2, Type, X } from 'lucide-react';
+import { Bell, ChevronDown, ChevronUp, Clock, Sparkles, Eye, EyeOff, FileText, Maximize2, MousePointerClick, Minimize2, Minus, MoreVertical, Paperclip, Send, SendHorizontal, Trash2, Type, X } from 'lucide-react';
+import { ActionSheet } from './ui/ActionSheet';
 import type { Person } from '../types';
 import { fmtSize } from '../data/drive';
 import { usePersisted } from '../settings';
@@ -76,7 +77,12 @@ export function Compose({ contacts, signature, trackByDefault, canTrack = true, 
   const [optsOpen, setOptsOpen] = useState(false);
   const [fromId, setFromId] = useState(initial?.fromId && accounts.some((a) => a.id === initial.fromId) ? initial.fromId : defaultFrom);
   const [deskWin, setWin] = useState<WinState>('normal');
-  const win: WinState = phone ? (parked ? 'min' : 'normal') : deskWin;
+  // Phones: one full-screen compose (Gmail's); closing keeps a draft, Drafts is in the drawer. No parked pill.
+  const win: WinState = phone ? 'normal' : deskWin;
+  void parked;
+  void onPark;
+  const [phoneMore, setPhoneMore] = useState(false);
+  const moreBtn = useRef<HTMLButtonElement>(null);
   const [size, setSize] = usePersisted('pm-compose-size', { w: 560, h: 560 });
   const [closing, setClosing] = useState(false);
   const [dragOver, setDragOver] = useState(false);
@@ -139,59 +145,6 @@ export function Compose({ contacts, signature, trackByDefault, canTrack = true, 
     addEventListener('pointerup', up);
   };
 
-  // Phones: swipe the top bar down and the email waits as a pill at the bottom, to come back to.
-  useEffect(() => {
-    const el = box.current;
-    const bar = head.current;
-    if (!phone || parked || !el || !bar) return;
-    let y0 = 0;
-    let dy = 0;
-    let on = false;
-    let alive = true;
-    const start = (e: TouchEvent) => {
-      on = e.touches.length === 1 && !(e.target as Element).closest('button');
-      y0 = e.touches[0].clientY;
-      dy = 0;
-    };
-    const move = (e: TouchEvent) => {
-      if (!on) return;
-      dy = Math.max(0, e.touches[0].clientY - y0);
-      if (dy < 6) return;
-      if (e.cancelable) e.preventDefault();
-      el.style.transition = 'none';
-      el.style.transform = `translateY(${dy}px)`;
-    };
-    const end = () => {
-      if (!on) return;
-      on = false;
-      el.style.transition = 'transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1)';
-      if (dy > 90) {
-        (document.activeElement as HTMLElement | null)?.blur?.();
-        el.style.transform = 'translateY(100%)';
-        setTimeout(() => {
-          if (!alive) return;
-          el.style.transition = '';
-          el.style.transform = '';
-          onPark?.(true);
-        }, 190);
-      } else {
-        el.style.transform = '';
-        setTimeout(() => alive && (el.style.transition = ''), 220);
-      }
-    };
-    bar.addEventListener('touchstart', start, { passive: true });
-    bar.addEventListener('touchmove', move, { passive: false });
-    bar.addEventListener('touchend', end);
-    bar.addEventListener('touchcancel', end);
-    return () => {
-      alive = false;
-      bar.removeEventListener('touchstart', start);
-      bar.removeEventListener('touchmove', move);
-      bar.removeEventListener('touchend', end);
-      bar.removeEventListener('touchcancel', end);
-    };
-  }, [phone, parked]); // eslint-disable-line react-hooks/exhaustive-deps
-
   const title = subject.trim() || t('New message');
   const discard = () => {
     setClosing(true);
@@ -208,20 +161,6 @@ export function Compose({ contacts, signature, trackByDefault, canTrack = true, 
         ? t('{name}’s copy gets an invisible picture and links that pass through {product}, so you see when it’s opened and which links are clicked. Teammates are never tracked. Apple Mail can load pictures by itself, so treat opens as a hint.', { name: external[0].name, product: product.name })
         : t('Each of the {n} people outside the team gets a copy with an invisible picture and links that pass through {product}, so you see when it’s opened and which links are clicked. Teammates are never tracked. Apple Mail can load pictures by itself, so treat opens as a hint.', { n: external.length, product: product.name })
       : t('Not tracked. Turn on to see when people outside the team open it and which links they click.');
-
-  // Parked on a phone: a pill at the bottom; tap to carry on.
-  if (phone && parked)
-    return (
-      <div className={`compose min compose-pill${closing ? ' closing' : ''}`} role="group" aria-label={t('Draft: {title}', { title })}>
-        <button type="button" className="cp-open" onClick={() => onPark?.(false)}>
-          <PenLine size={16} />
-          <span>{title}</span>
-        </button>
-        <button type="button" className="icon-btn" onClick={() => close()} aria-label={t('Save as a draft and close')} title={t('Save as a draft')}>
-          <X size={18} />
-        </button>
-      </div>
-    );
 
   return (
     <>
@@ -256,11 +195,17 @@ export function Compose({ contacts, signature, trackByDefault, canTrack = true, 
         {phone ? (
           <header ref={head} className="compose-head">
             <button type="button" className="icon-btn" onClick={() => close()} aria-label={t('Close and keep as a draft')} title={t('Close (kept in Drafts)')}>
-              <X size={20} />
+              <X size={22} />
             </button>
-            <span className="compose-title">{title}</span>
-            <button type="button" className="primary-btn compose-send lp" onClick={send} disabled={!valid} aria-label={t('Send. Hold for Send later')} {...holdSend}>
-              <Send size={16} /> {t('Send')}
+            <span className="compose-title">{t('Compose')}</span>
+            <button type="button" className="icon-btn" onClick={() => fileInput.current?.click()} aria-label={t('Attach files')} title={t('Attach files')}>
+              <Paperclip size={22} />
+            </button>
+            <button type="button" className={`icon-btn compose-send-icon lp${valid ? ' ready' : ''}`} onClick={send} aria-disabled={!valid} aria-label={t('Send. Hold for Send later')} title={t('Send')} {...holdSend}>
+              <SendHorizontal size={22} />
+            </button>
+            <button type="button" ref={moreBtn} className="icon-btn" onClick={() => setPhoneMore(true)} aria-label={t('More')} title={t('More')}>
+              <MoreVertical size={22} />
             </button>
           </header>
         ) : (
@@ -294,11 +239,16 @@ export function Compose({ contacts, signature, trackByDefault, canTrack = true, 
             autoFocus={!to.length}
             onChange={setTo}
             trailing={
-              !showCc && (
+              !showCc &&
+              (phone ? (
+                <button type="button" className="icon-btn cc-caret" onClick={() => setShowCc(true)} aria-label={t('Add Cc and Bcc')} title="Cc/Bcc">
+                  <ChevronDown size={20} />
+                </button>
+              ) : (
                 <button type="button" className="cc-toggle" onClick={() => setShowCc(true)}>
                   Cc/Bcc
                 </button>
-              )
+              ))
             }
           />
           {showCc && (
@@ -309,11 +259,11 @@ export function Compose({ contacts, signature, trackByDefault, canTrack = true, 
           )}
           <label className="compose-field">
             <span>{t('Subject')}</span>
-            <input value={subject} onChange={(e) => setSubject(e.target.value)} placeholder={t('What’s this about?')} />
+            <input value={subject} onChange={(e) => setSubject(e.target.value)} placeholder={phone ? t('Subject') : t('What’s this about?')} />
           </label>
 
           <div className="compose-body" onClick={(e) => startAtTop(e, typed)}>
-            <RichEditor ref={editor} autoFocus={to.length > 0} initialHtml={body.html} placeholder={t('Write something great…')} onChange={(html, text) => setBody({ html, text })} onSubmit={send} />
+            <RichEditor ref={editor} autoFocus={to.length > 0} initialHtml={body.html} placeholder={phone ? t('Compose email') : t('Write something great…')} onChange={(html, text) => setBody({ html, text })} onSubmit={send} />
           </div>
 
           {files.length > 0 && (
@@ -348,29 +298,19 @@ export function Compose({ contacts, signature, trackByDefault, canTrack = true, 
         )}
         <input ref={fileInput} type="file" multiple hidden onChange={(e) => addFiles(e.target.files)} />
         {phone ? (
-          // The bar above the keyboard: attach, AI, templates, formatting, tracking; Discard at the end.
+          // The strip above the keyboard (only while it's up): help writing, formatting, templates.
           <footer className="compose-foot kb-bar" onMouseDown={(e) => e.preventDefault()}>
-            <button type="button" className="icon-btn" onClick={() => fileInput.current?.click()} aria-label={t('Attach files')} title={t('Attach files')}>
-              <Paperclip size={19} />
-            </button>
-            <button type="button" className={`icon-btn${aiOpen ? ' on' : ''}`} onClick={() => setAiOpen((o) => !o)} aria-pressed={aiOpen} aria-label={t('Write with AI')} title={t('Write with AI')}>
+            <button type="button" className={`icon-btn kb-ai${aiOpen ? ' on' : ''}${!ownText ? ' labelled' : ''}`} onClick={() => setAiOpen((o) => !o)} aria-pressed={aiOpen} aria-label={t('Help me write')} title={t('Help me write')}>
               <Sparkles size={19} />
-            </button>
-            <button type="button" className="icon-btn" onClick={() => setTplOpen(true)} aria-label={t('Templates')} title={t('Templates')}>
-              <FileText size={19} />
+              {!ownText && <span>{t('Help me write')}</span>}
             </button>
             <button type="button" className={`icon-btn${format ? ' on' : ''}`} onClick={() => setFormat((f) => !f)} aria-pressed={format} aria-label={t('Formatting')} title={t('Formatting')}>
               <Type size={19} />
             </button>
-            {canTrack && (
-              <button type="button" className={`icon-btn track-icon${track ? ' on' : ''}`} disabled={!external.length} onClick={() => setTrackChoice(!track)} aria-pressed={track} aria-label={track ? t('Read tracking is on') : t('Read tracking is off')} title={trackTitle}>
-                {track ? <Eye size={19} /> : <EyeOff size={19} />}
-              </button>
-            )}
-            <span className="spacer" />
-            <button type="button" className="icon-btn" onClick={discard} aria-label={t('Discard')} title={t('Discard')}>
-              <Trash2 size={18} />
+            <button type="button" className="icon-btn" onClick={() => setTplOpen(true)} aria-label={t('Templates')} title={t('Templates')}>
+              <FileText size={19} />
             </button>
+            <span className="spacer" />
           </footer>
         ) : (
           <footer className="compose-foot">
@@ -446,6 +386,20 @@ export function Compose({ contacts, signature, trackByDefault, canTrack = true, 
 
         {dragOver && <div className="drop-hint">{t('Drop files to attach')}</div>}
       </div>
+      {phone && (
+        <ActionSheet
+          open={phoneMore}
+          onClose={() => setPhoneMore(false)}
+          anchor={moreBtn}
+          menu
+          actions={[
+            { label: t('Send later'), icon: Clock, disabled: !valid, run: () => setLaterOpen(true) },
+            { label: t('Templates'), icon: FileText, run: () => setTplOpen(true) },
+            ...(canTrack ? [{ label: t('Read tracking'), icon: track ? Eye : EyeOff, checked: track, disabled: !external.length, hint: external.length ? undefined : t('Your team’s mail is never tracked'), run: () => setTrackChoice(!track) }] : []),
+            { label: t('Discard'), icon: Trash2, danger: true, group: 'end', run: discard },
+          ]}
+        />
+      )}
       <SendLaterPicker open={laterOpen} onClose={() => setLaterOpen(false)} anchor={phone ? undefined : laterBtn} onPick={(at) => close(true, at)} />
       <TemplatesPicker open={tplOpen} onClose={() => setTplOpen(false)} anchor={phone ? undefined : tplBtn} userId={userId} current={ownText} onInsert={insertTemplate} />
     </>
