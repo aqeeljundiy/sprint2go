@@ -2013,3 +2013,12 @@ button.td-chip:hover,
     grid-template-columns: minmax(0, 1fr);
   }
 }
+/* The task list's actions on the title's row (TaskViews portals them into TasksView's header). */
+.tq-head-slot {
+  display: contents;
+}
+.tq-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}

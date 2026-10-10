@@ -12,12 +12,11 @@ body,
 }
 
 body {
-  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  font-family: var(--font);
   font-size: 14px;
   background: var(--bg);
   color: var(--text);
   -webkit-font-smoothing: antialiased;
-  font-feature-settings: 'cv11', 'ss01';
 }
 
 button {

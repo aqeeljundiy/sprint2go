@@ -803,6 +803,8 @@ export function TasksView(p: Props) {
           </Layer>
         )}
         {client && <ProjectPeople client={client} users={p.users} me={p.me} canEdit={projectManage} canInvite={projectManage || !!p.canInviteGuests} onPatch={(x) => p.onPatchClient(client.id, x)} onGuests={() => setClientTab('portal')} />}
+        {/* The task list's own actions (layout, Display, New task) sit here, on the title's row (TaskViews). */}
+        <span className="tq-head-slot" id="tq-head-slot" />
         <button className="ghost-btn sm tpl-btn" onClick={p.onTemplate} title={t('Start from a template')}>
           <LayoutTemplate size={14} /> <span>{t('Template')}</span>
         </button>

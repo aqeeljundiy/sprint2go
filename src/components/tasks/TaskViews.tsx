@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { flushSync } from 'react-dom';
+import { createPortal, flushSync } from 'react-dom';
 import { CalendarDays, CalendarPlus, Check, CheckSquare, Clock, Columns3, Copy, Flag, Hand, LayoutList, Link2, MoreHorizontal, Plus, SlidersHorizontal, Sparkles, Trash2, UserRound, CalendarRange, ChevronRight, Wand2 } from 'lucide-react';
 import { useLeaving } from '../ui/Smooth';
 import { EmptyState } from '../ui/EmptyState';
@@ -152,6 +152,9 @@ export function TaskViews({
   /* ---------- adding ---------- */
   const [quick, setQuick] = useState<QuickDefaults | null>(null); // the sheet (phones; board and calendar on desktop)
   const [inline, setInline] = useState(false); // desktop: the field above the list
+  // Desktop: the title row's slot (TasksView) holds layout, Display and New task, so there's no half-empty bar.
+  const [headSlot, setHeadSlot] = useState<HTMLElement | null>(null);
+  useEffect(() => setHeadSlot(document.getElementById('tq-head-slot')), []);
   const quickField = useRef<HTMLTextAreaElement>(null);
   const inlineField = useRef<HTMLTextAreaElement>(null);
   const openAdd = (extra: QuickDefaults = {}, from: 'tap' | 'later' = 'tap') => {
@@ -531,7 +534,7 @@ export function TaskViews({
           </span>
         </div>
       )}
-      {!phone && (
+      {!phone && (canPlan || words.length > 0) && (
       <div className="tq-bar">
         {canPlan && (
           <button type="button" className="ghost-btn sm tq-plan" onClick={() => setPlanning(true)}>
@@ -546,7 +549,9 @@ export function TaskViews({
             </button>
           </span>
         )}
-        <span className="spacer" />
+      </div>
+      )}
+      {!phone && headSlot && createPortal(<span className="tq-actions">
         {layouts.length > 1 && (
           <div className="segmented icon-seg tq-layout" role="radiogroup" aria-label={t('Layout')}>
             {layouts.map((l) => {
@@ -569,8 +574,7 @@ export function TaskViews({
             <Plus size={14} /> {t('New task')} <kbd>N</kbd>
           </button>
         )}
-      </div>
-      )}
+      </span>, headSlot)}
       {top}
       {!phone && (
         <div className={`fold tq-inline ${inline ? 'open' : ''}`}>
