@@ -9,6 +9,8 @@
 import { createHash, randomBytes, randomInt, timingSafeEqual } from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import * as db from './db.ts';
+import { codeEmail, companyBrand } from './emailLayout.ts';
+import { inLang } from './lang.ts';
 
 db.db.exec(`
   CREATE TABLE IF NOT EXISTS mail_confidential (id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL, account_id TEXT NOT NULL, thread_id TEXT NOT NULL, message_id TEXT NOT NULL, by_user TEXT, from_name TEXT NOT NULL, from_email TEXT NOT NULL, subject TEXT NOT NULL, sealed TEXT NOT NULL, expires_at TEXT NOT NULL, passcode INTEGER NOT NULL, revoked_at TEXT, created_at TEXT NOT NULL);
@@ -27,7 +29,7 @@ type Deps = {
   origin: (workspaceId: string) => string;
   broadcast: (coll: string, upserts: db.Doc[], deletes: string[]) => void;
   /** Emails a code to an outside recipient. False when no mail path works (local development: it goes to the log). */
-  sendCode: (to: string, subject: string, text: string) => Promise<boolean>;
+  sendCode: (to: string, subject: string, text: string, html?: string) => Promise<boolean>; // html: server/emailLayout.ts
   log: (line: string) => void;
 };
 let deps: Deps = {
@@ -299,7 +301,8 @@ export async function handlePublic(req: IncomingMessage, res: ServerResponse, p:
     if (opts.tooMany(`conf-code:${a.token}`, 5, 3600_000)) return back('?e=many');
     const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
     db.db.prepare('UPDATE mail_confidential_access SET code_hash = ?, code_at = ?, code_tries = 0 WHERE token = ?').run(hash(a.token, code), now(), a.token);
-    const sent = await deps.sendCode(a.email, `Your code for ${r.from_name}'s confidential email`, `Your code is ${code}\n\nIt works for ${CODE_MINUTES} minutes, only on the page you asked from. If you didn't ask for it, you can ignore this email.`).catch(() => false);
+    const m = confidentialCodeMail(r.from_name, code, r.workspace_id);
+    const sent = await deps.sendCode(a.email, m.subject, m.text, m.html).catch(() => false);
     if (!sent) deps.log(`[confidential] code for ${a.email}: ${code}`);
     return back('?sent=1');
   }
@@ -374,4 +377,13 @@ export function sweep() {
   for (const g of gone) db.db.prepare("UPDATE mail_confidential SET sealed = ? WHERE id = ?").run(db.seal(JSON.stringify({ html: '', text: '', files: [] })), g.id);
   db.db.prepare('DELETE FROM mail_confidential_pass WHERE expires_at < ?').run(now());
   return gone.length;
+}
+
+/** The passcode email for a confidential message (English, as before), in the sender's company colours. */
+export function confidentialCodeMail(fromName: string, code: string, workspaceId: string) {
+  return inLang('en', () => {
+    const subject = `Your code for ${fromName}'s confidential email`;
+    const m = codeEmail({ brand: companyBrand(workspaceId), title: `Your code for ${fromName}'s email`, lead: 'Enter this code on the page you asked from to read the confidential email.', preheader: `Your code is ${code}`, code, minutes: CODE_MINUTES, footer: ["It works only on the page you asked from. If you didn't ask for it, you can ignore this email."] });
+    return { subject, ...m };
+  });
 }

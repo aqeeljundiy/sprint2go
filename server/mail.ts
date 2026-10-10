@@ -76,8 +76,3 @@ export async function sesIdentity(domain: string): Promise<{ tokens: string[]; v
   }
 }
 
-/** A plain, branded email body: a greeting, a few lines, one link. */
-export function simpleHtml(brand: string, lines: string[], link?: { text: string; url: string }) {
-  const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  return `<div style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;font-size:15px;line-height:1.5;color:#16161d;max-width:560px">${lines.map((l) => `<p>${esc(l)}</p>`).join('')}${link ? `<p><a href="${esc(link.url)}" style="display:inline-block;padding:10px 16px;border-radius:10px;background:#2448ff;color:#fff;text-decoration:none">${esc(link.text)}</a></p><p style="color:#6b6f7b;font-size:13px">${esc(link.url)}</p>` : ''}<p style="color:#6b6f7b;font-size:13px">${esc(brand)}</p></div>`;
-}

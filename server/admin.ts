@@ -23,6 +23,7 @@ import { isZone } from '../src/jobTimes.ts';
 import { mark, msg, phrase, t, textOf, tx } from '../src/i18n/index.ts';
 import { fmtDayLong, fmtMonth } from '../src/i18n/format.ts';
 import * as lang from './lang.ts';
+import { renderEmail, type Block } from './emailLayout.ts';
 
 export interface AdminCtx {
   req: IncomingMessage;
@@ -279,7 +280,7 @@ export async function checkAlerts(ctx: AdminCtx) {
     for (const [l, to] of byLang) {
       const mail = lang.inLang(l, () => {
         const said = textOf(w.text);
-        return { fromName: t('sprint2go alerts'), subject: t('sprint2go: {alert}', { alert: said.slice(0, 90) }), text: `${said}\n\n${t('Open the backend: {link}', { link: `${ctx.publicUrl}${w.to ?? '/admin'}` })}` };
+        return alertMail(said, `${ctx.publicUrl}${w.to ?? '/admin'}`, w.level);
       });
       void mailer.sendSystemMail({ ...mail, to }).catch(() => {});
     }
@@ -305,7 +306,7 @@ export function tellOperators(kind: string, text: lang.Said, to: string, notifyU
   for (const [l, mails] of byLang) {
     const mail = lang.inLang(l, () => {
       const said = textOf(text);
-      return { fromName: t('sprint2go alerts'), subject: t('sprint2go: {alert}', { alert: said.slice(0, 90) }), text: `${said}\n\n${t('Open the backend: {link}', { link: `${base}${to}` })}` };
+      return alertMail(said, `${base}${to}`, 'high');
     });
     void mailer.sendSystemMail({ ...mail, to: mails }).catch(() => {});
   }
@@ -326,26 +327,69 @@ const invoiceNote = (period: string) => msg('Active people are those on your tea
 const creditsNote = (n: string | number) => msg('The {n} emails are added to Boosted sending as soon as this invoice is paid.', { n });
 /** The email an invoice goes out with, in the company's language. `credits`: an invoice for Boosted credits. */
 export function invoiceMail(inv: platform.Invoice, payee: string, l: lang.Lang, credits?: number) {
-  return lang.inLang(l, () => ({
-    subject: t('Invoice {number} from {payee}: {total}', { number: inv.number, payee, total: rp(inv.total) }),
-    text: [
-      t('Hello,'),
-      credits
-        ? t('Your invoice {number} for {n} Boosted sending emails is attached: {total}, due {date}. The emails are added as soon as it’s paid.', { number: inv.number, n: credits.toLocaleString('id-ID'), total: rp(inv.total), date: fmtDayLong(inv.dueAt.slice(0, 10)) })
-        : t('Your invoice {number} for {total} is attached, due {date}.', { number: inv.number, total: rp(inv.total), date: fmtDayLong(inv.dueAt.slice(0, 10)) }),
-      t('Thank you.'),
-    ].join('\n\n'),
-  }));
+  return lang.inLang(l, () => {
+    const due = fmtDayLong(inv.dueAt.slice(0, 10));
+    const lead = credits
+      ? t('Your invoice {number} for {n} Boosted sending emails is attached: {total}, due {date}. The emails are added as soon as it’s paid.', { number: inv.number, n: credits.toLocaleString('id-ID'), total: rp(inv.total), date: due })
+      : t('Your invoice {number} for {total} is attached, due {date}.', { number: inv.number, total: rp(inv.total), date: due });
+    const bank = platform.settings().billing.bank;
+    const amount = (n: number) => (n < 0 ? `−${rp(-n)}` : rp(n));
+    // The same summary as the attached page: each line, then the sums and the total (server/emailLayout.ts).
+    const rows: [string, string][] = [...inv.lines.map((x) => [x.tr ? textOf(x) : t(x.text), amount(x.amount)] as [string, string]), [t('Subtotal'), rp(inv.subtotal)], ...(inv.discount ? [[t('Discount'), `−${rp(inv.discount)}`] as [string, string]] : []), [t('PPN 11%'), rp(inv.tax)]];
+    const blocks: Block[] = [
+      { p: t('Hello,') },
+      { p: lead },
+      { rows, total: [t('Total'), rp(inv.total)] },
+      ...(bank && inv.status !== 'paid' ? [{ p: t('Pay by bank transfer to {bank}, with {number} as the reference.', { bank, number: inv.number }) }] : []),
+      { button: { text: t('See billing'), url: `${(process.env.PUBLIC_URL ?? '').replace(/\/$/, '')}/settings/billing` } },
+      { p: t('Thank you.') },
+    ];
+    const m = renderEmail({ preheader: lead, title: t('Invoice {number}', { number: inv.number }), blocks, footer: [t('You get this because you pay for {company} on sprint2go.', { company: inv.billTo?.company || payee })], lang: l });
+    return { subject: t('Invoice {number} from {payee}: {total}', { number: inv.number, payee, total: rp(inv.total) }), text: m.text, html: m.html };
+  });
+}
+/** An operator alert, in the language it's built in: the alert with its dot, and the backend button. */
+export function alertMail(said: string, link: string, level: 'high' | 'normal' = 'high') {
+  const m = renderEmail({
+    preheader: said,
+    title: t('Something needs you'),
+    blocks: [{ list: [{ text: said, color: level === 'high' ? '#dc2626' : '#d97706' }] }, { button: { text: t('Open the backend'), url: link } }],
+    footer: [t('You get this because you have alerts on in the sprint2go backend.')],
+  });
+  return { fromName: t('sprint2go alerts'), subject: t('sprint2go: {alert}', { alert: said.slice(0, 90) }), text: m.text, html: m.html };
+}
+/** An owner broadcast: the operator's words as written (title = subject), the line under them in `l`. */
+export function broadcastMail(subject: string, body: string, l: lang.Lang) {
+  return lang.inLang(l, () => {
+    const paras = body.split(/\n{2,}/).map((p) => p.trim()).filter(Boolean);
+    const m = renderEmail({ preheader: paras[0]?.slice(0, 140) ?? subject, title: subject, blocks: paras.map((p) => ({ p })), footer: [t('You get this because you own a company on sprint2go.')], lang: l });
+    return { subject, text: m.text, html: m.html };
+  });
+}
+/** When support reset someone's two-step sign-in (they asked us to), in the language it's built in. */
+export function supportResetMail(name: string) {
+  const subject = t('Your two-step sign-in was reset');
+  const hi = t('Hi {name},', { name: name.split(' ')[0] });
+  const said = t('We reset two-step sign-in on your sprint2go account, as you asked, so it no longer asks for a code from your authenticator app. You can turn it on again in Settings, Account (your company may ask you to straight away).');
+  const m = renderEmail({ preheader: said, title: subject, blocks: [{ p: hi }, { p: said }, { notice: t('If you didn’t ask for this, reply to this email now.') }], footer: [t('You get this because your sign-in settings changed.')] });
+  return { subject, text: m.text, html: m.html };
 }
 /** A support reply by email: the operator's words, their name (or the team's) and the last messages quoted, in `l`. */
-function supportReplyText(text: string, by: string | undefined, thread: { at: string; authorName?: string | null; author: string; body: string }[], l: lang.Lang) {
+export function supportReplyText(text: string, by: string | undefined, thread: { at: string; authorName?: string | null; author: string; body: string }[], l: lang.Lang) {
   return lang.inLang(l, () => {
-    const quoted = thread
-      .slice(-3)
-      .reverse()
-      .map((m) => `${t('On {date}, {name} wrote:', { date: m.at.slice(0, 16).replace('T', ' '), name: m.authorName ?? m.author })}\n${m.body.split('\n').map((line) => `> ${line}`).join('\n')}`)
-      .join('\n\n');
-    return `${text}\n\n${by ?? t('sprint2go Support')}\n\n${quoted}`;
+    const last = thread.slice(-3).reverse();
+    const wrote = (m: (typeof thread)[number]) => t('On {date}, {name} wrote:', { date: m.at.slice(0, 16).replace('T', ' '), name: m.authorName ?? m.author });
+    const quoted = last.map((m) => `${wrote(m)}\n${m.body.split('\n').map((line) => `> ${line}`).join('\n')}`).join('\n\n');
+    const sign = by ?? t('sprint2go Support');
+    // Plain text exactly as before (mail apps quote it); the HTML in the shared layout with the thread as quote blocks.
+    const { html } = renderEmail({
+      preheader: text.slice(0, 140),
+      title: t('A reply from {name}', { name: platform.settings().supportName }),
+      blocks: [...text.split(/\n{2,}/).map((p) => ({ p })), { p: sign, muted: true }, ...(last.length ? [{ heading: t('Earlier in this conversation') }] : []), ...last.map((m) => ({ quote: m.body.slice(0, 1200), by: wrote(m).replace(/:$/, '') }))],
+      footer: [t('Reply to this email to answer.')],
+      lang: l,
+    });
+    return { text: `${text}\n\n${sign}\n\n${quoted}`, html };
   });
 }
 /** A role in words, translated where it's read. */
@@ -409,14 +453,18 @@ function invoicePage(inv: platform.Invoice, wsName: string, l: lang.Lang) {
   const row = (x: { text: string; amount: number; tr?: any }) => `<tr><td>${esc(x.tr ? textOf(x) : t(x.text))}${x.amount < 0 ? ` <span class="muted">${esc(t('(credit)'))}</span>` : ''}</td><td class="r">${x.amount < 0 ? `−${rp(-x.amount)}` : rp(x.amount)}</td></tr>`;
   const st = inv.status === 'paid' ? `<span class="paid">${esc(t('Paid {date}', { date: inv.paidAt ? fmtDayLong(inv.paidAt.slice(0, 10)) : '' }))}</span>` : inv.status === 'void' ? `<span class="void">${esc(tx('invoice', 'Void'))}</span>` : esc(t('Due {date}', { date: fmtDayLong(inv.dueAt.slice(0, 10)) }));
   return `<!doctype html><html lang="${l}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(inv.number)}</title><style>
-body{font-family:-apple-system,Segoe UI,Roboto,sans-serif;color:#16161d;background:#f5f6f8;margin:0;padding:24px}
-.page{max-width:720px;margin:0 auto;background:#fff;border-radius:16px;padding:40px;box-shadow:0 2px 20px rgba(0,0,0,.06)}
-h1{font-size:22px;margin:0 0 4px}.muted{color:#6b6f7b;font-size:13px;line-height:1.5}.row{display:flex;justify-content:space-between;gap:24px;flex-wrap:wrap;margin:24px 0}
-table{width:100%;border-collapse:collapse;margin-top:16px}td{padding:10px 0;border-bottom:1px solid #eceef2;font-size:14px}.r{text-align:right;white-space:nowrap}
-.tot td{border:0;padding:4px 0}.grand td{font-weight:700;font-size:16px;padding-top:10px}.paid{color:#15803d;font-weight:700}.void{color:#b91c1c;font-weight:700}
-.print{display:inline-block;margin-top:24px;padding:10px 16px;border-radius:10px;background:#2448ff;color:#fff;text-decoration:none;font-size:14px;border:0;cursor:pointer}
-@media print{body{background:#fff;padding:0}.page{box-shadow:none}.print{display:none}}
-</style></head><body><div class="page">
+body{font-family:'Plus Jakarta Sans',-apple-system,'Segoe UI',Roboto,sans-serif;color:#0b0c10;background:#f5f6f8;margin:0;padding:32px 16px;-webkit-font-smoothing:antialiased}
+.brand{max-width:720px;margin:0 auto 18px;display:flex;align-items:center;gap:10px;font-weight:800;font-size:23px;letter-spacing:-.045em}.brand b{color:#2448ff;font-weight:800}
+.page{max-width:720px;margin:0 auto;background:#fff;border:1px solid #e2e3e9;border-radius:18px;padding:40px;box-sizing:border-box}
+h1{font-size:26px;font-weight:800;letter-spacing:-.02em;margin:0 0 6px}.muted{color:#777a88;font-size:13.5px;line-height:1.55}.row{display:flex;justify-content:space-between;gap:24px;flex-wrap:wrap;margin:28px 0}
+table{width:100%;border-collapse:collapse;margin-top:20px}td{padding:12px 0;border-bottom:1px solid #eceef2;font-size:14.5px;color:#2e3038}.r{text-align:right;white-space:nowrap;padding-left:16px}
+.tot td{border:0;padding:5px 0}.grand td{font-weight:800;font-size:18px;color:#0b0c10;padding-top:12px;border-top:1px solid #e2e3e9}.paid{color:#059669;font-weight:700}.void{color:#b91c1c;font-weight:700}
+.print{display:inline-block;margin-top:28px;padding:0 22px;height:44px;border-radius:9999px;background:#2448ff;color:#fff;font-weight:600;font-size:14.5px;line-height:44px;font-family:inherit;border:0;cursor:pointer}.print:hover{background:#1834d6}
+@media (max-width:560px){.page{padding:26px 22px}h1{font-size:22px}}
+@media print{body{background:#fff;padding:0}.page{border:0;padding:0}.print{display:none}}
+</style><link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet"></head><body>
+<div class="brand"><svg width="30" height="30" viewBox="0 0 32 32" aria-hidden="true"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#4d6bff"/><stop offset="1" stop-color="#2448ff"/></linearGradient></defs><rect width="32" height="32" rx="9" fill="url(#g)"/><path d="M9 10.5 14.5 16 9 21.5" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><path d="M17 10.5 22.5 16 17 21.5" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" opacity=".6"/></svg><span>sprint<b>2</b>go</span></div>
+<div class="page">
 <div class="row" style="margin-top:0"><div><h1>${esc(t('Invoice {number}', { number: inv.number }))}</h1><div class="muted">${esc(fmtMonth(inv.period + '-15'))} · ${st}</div></div>
 <div class="muted" style="text-align:right"><strong style="color:#16161d">${esc(b.name)}</strong><br>${esc(b.address).replace(/\n/g, '<br>')}${b.npwp ? `<br>NPWP ${esc(b.npwp)}` : ''}${b.email ? `<br>${esc(b.email)}` : ''}</div></div>
 <div class="muted">${esc(t('Bill to'))}</div><div><strong>${esc(inv.billTo?.company || wsName)}</strong></div><div class="muted">${esc(inv.billTo?.address ?? '').replace(/\n/g, '<br>')}${inv.billTo?.npwp ? `<br>NPWP ${esc(inv.billTo.npwp)}` : ''}</div>
@@ -971,10 +1019,7 @@ export async function handleAdmin(p: string, ctx: AdminCtx): Promise<boolean> {
         .sendSystemMail({
           fromName: platform.settings().supportName,
           to: [emailOf(u)],
-          ...lang.forUser(u.id, null, () => ({
-            subject: t('Your two-step sign-in was reset'),
-            text: [t('Hi {name},', { name: String(u.name ?? '').split(' ')[0] }), t('We reset two-step sign-in on your sprint2go account, as you asked, so it no longer asks for a code from your authenticator app. You can turn it on again in Settings, Account (your company may ask you to straight away).'), t('If you didn’t ask for this, reply to this email now.')].join('\n\n'),
-          })),
+          ...lang.forUser(u.id, null, () => supportResetMail(String(u.name ?? ''))),
         })
         .catch(() => {});
     return (json(res, 200, { ok: true }), true);
@@ -1088,7 +1133,7 @@ export async function handleAdmin(p: string, ctx: AdminCtx): Promise<boolean> {
         // The quoted lines and the signature in the customer's language (their account's, else English).
         const mailText = supportReplyText(text, meDoc?.name, thread, lang.langOfEmail(t.requester.email, t.workspaceId));
         mid = await mailer
-          .sendSystemMail({ fromName: platform.settings().supportName, to: [t.requester.email], subject: `Re: ${t.subject} [#${t.number}]`, text: mailText, inReplyTo: t.lastMid ?? undefined, references: refs })
+          .sendSystemMail({ fromName: platform.settings().supportName, to: [t.requester.email], subject: `Re: ${t.subject} [#${t.number}]`, ...mailText, inReplyTo: t.lastMid ?? undefined, references: refs })
           .catch(() => null);
       }
       if (user) ctx.notifyUsers([user.id], msg('Support replied to “{subject}”', { subject: t.subject.slice(0, 60) }), '/settings/help');
@@ -1442,7 +1487,7 @@ export async function handleAdmin(p: string, ctx: AdminCtx): Promise<boolean> {
     const text = String(b.body ?? '').trim();
     if (!subject || !text) return (json(res, 400, { error: mark('A subject and a message, please.') }), true);
     // The operator's own words as they wrote them; the line under them in each owner's language.
-    for (const addr of to) await mailer.sendSystemMail({ fromName: platform.settings().supportName, to: [addr], subject, text: `${text}\n\n${lang.inLang(lang.langOfEmail(addr), () => t('You get this because you own a company on sprint2go.'))}` }).catch(() => null);
+    for (const addr of to) await mailer.sendSystemMail({ fromName: platform.settings().supportName, to: [addr], ...broadcastMail(subject, text, lang.langOfEmail(addr)) }).catch(() => null);
     const s = platform.settings();
     platform.setSetting('broadcasts', [{ id: 'bc-' + randomBytes(4).toString('hex'), subject, audience, sent: to.length, at: now(), by: email }, ...s.broadcasts].slice(0, 100));
     log('broadcast.send', null, `${subject} to ${to.length} owners (${audience})`);

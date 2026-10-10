@@ -7,7 +7,7 @@ import { randomBytes } from 'node:crypto';
 import * as db from './db.ts';
 import * as mailer from './mailer.ts';
 import { mayUse } from './domains.ts';
-import { simpleHtml } from './mail.ts';
+import { companyBrand, publicBase, renderEmail } from './emailLayout.ts';
 import { msg, phrase, t, textOf } from '../src/i18n/index.ts';
 import { inLang, langOf } from './lang.ts';
 
@@ -53,6 +53,24 @@ export function probeDomain(ws: Ws): { domain: string } | { why: string } {
   return { domain };
 }
 
+/** The test message itself (English: nobody reads it), in the shared layout so it looks like ours wherever it lands. */
+export function routingProbeMail(ws: Ws, brand: string, domain: string) {
+  const subject = `${brand} routing check for ${domain}`;
+  const said = `An automatic test that ${PROVIDER[ws.emailProvider || 'google'] ?? 'your mail provider'} still passes mail for ${domain} on to ${brand}. It never shows up in anyone's inbox.`;
+  return { subject, ...renderEmail({ brand: companyBrand(ws, brand), preheader: said, title: subject, blocks: [{ p: said }], lang: 'en' }) };
+}
+/** The admins' alert after two failed checks in a row, in the language it's built in. */
+export function routingAlertMail(ws: Ws, brand: string, domain: string, text: string, last: string) {
+  const m = renderEmail({
+    brand: companyBrand(ws, brand),
+    preheader: text,
+    title: t('Mail routing for {domain} stopped working', { domain }),
+    blocks: [{ list: [{ text, color: '#dc2626' }] }, ...(last ? [{ notice: last, tone: 'info' as const }] : []), { button: { text: t('Check email delivery'), url: `${publicBase()}/settings/email` } }],
+    footer: [t('You get this because you’re an admin of {company}.', { company: brand })],
+  });
+  return { subject: t('{brand}: mail routing for {domain} stopped working', { brand, domain }), text: m.text, html: m.html };
+}
+
 /** Sends one test. Throws with the reason when the company's routing can't be checked. */
 export async function sendProbe(wsId: string, kind: 'daily' | 'manual') {
   const ws = wsOf(wsId);
@@ -67,8 +85,7 @@ export async function sendProbe(wsId: string, kind: 'daily' | 'manual') {
     fromName: brand,
     from: mailer.NOREPLY,
     to: [address],
-    subject: `${brand} routing check for ${d.domain}`,
-    text: `An automatic test that ${PROVIDER[ws.emailProvider || 'google'] ?? 'your mail provider'} still passes mail for ${d.domain} on to ${brand}. It never shows up in anyone's inbox.`,
+    ...routingProbeMail(ws, brand, d.domain),
   });
   db.db.prepare('UPDATE routing_probes SET outbox_id = ? WHERE token = ?').run(ids[0] ?? null, token);
   return { token, address };
@@ -109,7 +126,7 @@ function alertIfStreak(ws: Ws, p: Probe) {
     const m = inLang(langOf(id, ws.id), () => {
       const text = textOf(said);
       const last = streak[0]?.why ? t('Last answer: {why}', { why: streak[0].why }) : '';
-      return { subject: t('{brand}: mail routing for {domain} stopped working', { brand, domain: p.domain }), text: last ? `${text} ${last}` : text, html: simpleHtml(brand, [text, ...(last ? [last] : [])]) };
+      return routingAlertMail(ws, brand, p.domain, text, last);
     });
     void mailer.sendNote(to, m.subject, m.text, m.html, brand).catch(() => false);
   }

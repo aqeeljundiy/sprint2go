@@ -11,6 +11,7 @@ import * as db from './db.ts';
 import { mark, msg, t } from '../src/i18n/index.ts';
 import { datePhrase, forUser, requestLang, sayIn, type Lang, type Said } from './lang.ts';
 import { companyTz } from '../src/jobTimes.ts';
+import { companyBrand, renderEmail } from './emailLayout.ts';
 
 db.db.exec(`CREATE TABLE IF NOT EXISTS two_step (user_id TEXT PRIMARY KEY, secret TEXT, pending TEXT, on_at TEXT, last_step INTEGER NOT NULL DEFAULT 0, backup TEXT NOT NULL DEFAULT '[]')`);
 db.db.exec('CREATE TABLE IF NOT EXISTS trusted_devices (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, name TEXT NOT NULL, created_at TEXT NOT NULL, used_at TEXT NOT NULL, expires_at TEXT NOT NULL)');
@@ -258,7 +259,7 @@ export interface Ctx {
   event: (type: string, workspaceId: string, userId: string | null, detail?: string) => void;
   eventsOf: (workspaceId: string) => { at: string; type: string; userId: string | null; detail: string | null }[];
   notify: (userIds: string[], text: Said, url?: string, workspaceId?: string) => void; // msg(): each reader's language
-  mail: (to: string, subject: string, lines: string[]) => Promise<unknown>;
+  mail: (to: string, subject: string, body: { html: string; text: string }) => Promise<unknown>; // body: server/emailLayout.ts
 }
 
 /** Handles /api/2fa* (everyone, their own account) and /api/security* (company admins). True when it answered. */
@@ -423,7 +424,7 @@ export async function handle(p: string, ctx: Ctx): Promise<boolean> {
       if (them?.email)
         void (() => {
           const m = resetMail(target, ws, user?.name);
-          return ctx.mail(them.email!, m.subject, m.lines);
+          return ctx.mail(them.email!, m.subject, m);
         })().catch(() => {});
       return send(200, { ok: true });
     }
@@ -459,15 +460,15 @@ export function startClocks() {
 }
 
 /** The email to someone whose two-step sign-in an admin reset: in their language (theirs, else the company's). */
-function resetMail(userId: string, ws: { id: string; name?: string; security?: { twoStep?: boolean } }, by: string | undefined) {
-  return forUser(userId, ws.id, () => ({
-    subject: t('Your two-step sign-in was reset'),
-    lines: [
-      by ? t('{name} at {company} reset two-step sign-in on your account, so it no longer asks for a code from your authenticator app.', { name: by, company: ws.name ?? '' }) : t('An admin at {company} reset two-step sign-in on your account, so it no longer asks for a code from your authenticator app.', { company: ws.name ?? '' }),
-      ws.security?.twoStep ? t('{company} requires it, so you’ll set it up again the next time you sign in.', { company: ws.name ?? '' }) : t('You can turn it on again in Settings, Account.'),
-      t('If you didn’t ask for this, tell your admin straight away.'),
-    ],
-  }));
+export function resetMail(userId: string, ws: { id: string; name?: string; security?: { twoStep?: boolean } }, by: string | undefined) {
+  return forUser(userId, ws.id, () => {
+    const subject = t('Your two-step sign-in was reset');
+    const first = by ? t('{name} at {company} reset two-step sign-in on your account, so it no longer asks for a code from your authenticator app.', { name: by, company: ws.name ?? '' }) : t('An admin at {company} reset two-step sign-in on your account, so it no longer asks for a code from your authenticator app.', { company: ws.name ?? '' });
+    const next = ws.security?.twoStep ? t('{company} requires it, so you’ll set it up again the next time you sign in.', { company: ws.name ?? '' }) : t('You can turn it on again in Settings, Account.');
+    // The shared layout (server/emailLayout.ts) in the company's colours; the warning in a notice box.
+    const body = renderEmail({ brand: companyBrand(ws), preheader: first, title: subject, blocks: [{ p: first }, { p: next }, { notice: t('If you didn’t ask for this, tell your admin straight away.') }], footer: [t('You get this because your sign-in settings changed.')] });
+    return { subject, ...body };
+  });
 }
 
 /** Security log lines with names or numbers in them, as the server writes them in English, and their words. */

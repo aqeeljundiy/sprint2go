@@ -23,6 +23,8 @@ import { Transform } from 'node:stream';
 import { crc32, createDeflateRaw } from 'node:zlib';
 import { simpleParser, type ParsedMail } from 'mailparser';
 import * as db from './db.ts';
+import { codeEmail, companyBrand } from './emailLayout.ts';
+import { inLang } from './lang.ts';
 import { readZip, openEntry } from './zip.ts';
 import { preview as makePreview } from './officePreview.ts';
 import { BLOCKED_EXTS, extOf, fileIdOf, fileKind, filenameMatches, fitsInEmail, isBlockedName, mailFiles, type FileFilter, type FileKind } from '../src/mailAttachments.ts';
@@ -367,7 +369,7 @@ export interface Deps {
   storageRoom: (wsId: string, userId: string) => { left: number; total: number; unlimited: boolean };
   readOnly: (ws: Doc) => string | null | undefined;
   /** Sends the code that opens a "recipients only" link; false when there's no way to send mail here (it's logged then). */
-  sendCode: (to: string, subject: string, text: string) => Promise<boolean>;
+  sendCode: (to: string, subject: string, text: string, html?: string) => Promise<boolean>; // html: server/emailLayout.ts
   /** Who's signed in on this request (their sign-in email), for links: none for people outside. */
   whoIs: (req: IncomingMessage) => { userId: string; email: string } | null;
   tooMany: (key: string, max: number, windowMs: number) => boolean;
@@ -577,7 +579,8 @@ export async function handlePublic(req: IncomingMessage, res: ServerResponse, ur
     if (recipients.includes(email)) {
       const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
       codes.set(`${row.token}\n${email}`, { code, until: Date.now() + 15 * 60_000, tries: 0 });
-      const sent = await deps.sendCode(email, `Your code to open ${row.name}`, `Your code to open ${row.name}${ws?.name ? `, sent to you from ${ws.name}` : ''}: ${code}\n\nIt works for 15 minutes. If you didn't ask for it, you can ignore this email.`).catch(() => false);
+      const mail = fileCodeMail(row.name, code, ws as any);
+      const sent = await deps.sendCode(email, mail.subject, mail.text, mail.html).catch(() => false);
       if (!sent) console.log(`[mail links] Code for ${email} to open ${row.name}: ${code}`);
     }
     return (linkPage(res, 200, row.name, `${head}<p>If ${escH(email)} is one of the addresses this file was sent to, a 6-digit code is on its way there. Enter it here.</p><form method="post" action="/f/${row.token}/open"><input type="hidden" name="email" value="${escH(email)}"><input name="code" inputmode="numeric" autocomplete="one-time-code" placeholder="6-digit code" required maxlength="6"><button type="submit">Open the file</button></form>`), true);
@@ -605,3 +608,13 @@ export async function handlePublic(req: IncomingMessage, res: ServerResponse, ur
 
 /** For tests and the docs: the refused types. */
 export { BLOCKED_EXTS };
+
+/** The code email for a shared file link (English, as before), in the sending company's colours. */
+export function fileCodeMail(fileName: string, code: string, ws?: { id: string; name?: string } | null) {
+  return inLang('en', () => {
+    const subject = `Your code to open ${fileName}`;
+    const lead = `Your code to open ${fileName}${ws?.name ? `, sent to you from ${ws.name}` : ''}.`;
+    const m = codeEmail({ brand: ws ? companyBrand(ws) : undefined, title: 'Your code to open the file', lead, preheader: `${lead.slice(0, -1)}: ${code}`, code, footer: ["If you didn't ask for it, you can ignore this email."] });
+    return { subject, ...m };
+  });
+}

@@ -1,0 +1,35 @@
+// Bahasa Indonesia: the words of the shared email layout and the system emails built with it (server/emailLayout.ts).
+// A part of the server area, kept apart so other builders don't edit server.ts at the same time.
+const id: Record<string, string> = {
+  'A reply from {name}': 'Balasan dari {name}',
+  'Check email delivery': 'Periksa pengiriman email',
+  'Didn’t ask for this? You can ignore it.': 'Tidak merasa meminta ini? Abaikan saja.',
+  'Earlier in this conversation': 'Sebelumnya di percakapan ini',
+  'Enter this code where you asked for it to set a new password.': 'Masukkan kode ini di tempat Anda memintanya untuk membuat kata sandi baru.',
+  'Enter this code where you signed up to finish creating your sprint2go account.': 'Masukkan kode ini di tempat Anda mendaftar untuk menyelesaikan pembuatan akun sprint2go Anda.',
+  'Finish signing up': 'Selesaikan pendaftaran',
+  'If this wasn’t you, ignore this email.': 'Jika ini bukan Anda, abaikan email ini.',
+  'Mail routing for {domain} stopped working': 'Perutean email untuk {domain} berhenti berfungsi',
+  'News from {company}': 'Kabar dari {company}',
+  'Open the backend': 'Buka backend',
+  'Open {brand}': 'Buka {brand}',
+  'Reply to this email to answer.': 'Balas email ini untuk menjawab.',
+  'See billing': 'Lihat tagihan',
+  'Sent by sprint2go, the team app for mail, chat and tasks.': 'Dikirim oleh sprint2go, aplikasi tim untuk email, chat, dan tugas.',
+  'Sent by {company} through sprint2go.': 'Dikirim oleh {company} melalui sprint2go.',
+  'Sent by {company}.': 'Dikirim oleh {company}.',
+  'Set a new password': 'Buat kata sandi baru',
+  'Something needs you': 'Ada yang perlu Anda tangani',
+  'Ticket #{number}': 'Tiket #{number}',
+  'We have your message': 'Pesan Anda sudah kami terima',
+  'Works for {n} minutes': 'Berlaku {n} menit',
+  'You get this because you have alerts on in the sprint2go backend.': 'Anda menerima ini karena peringatan Anda aktif di backend sprint2go.',
+  'You get this because you pay for {company} on sprint2go.': 'Anda menerima ini karena Anda membayar {company} di sprint2go.',
+  'You get this because you wrote to {name}.': 'Anda menerima ini karena Anda menulis ke {name}.',
+  'You get this because your sign-in settings changed.': 'Anda menerima ini karena pengaturan masuk Anda berubah.',
+  'You get this because you’re an admin of {company}.': 'Anda menerima ini karena Anda admin di {company}.',
+  'You get this because {company} shares a space with you.': 'Anda menerima ini karena {company} berbagi ruang dengan Anda.',
+  'You get this email when you haven’t opened {brand} for a while.': 'Anda menerima email ini saat sudah lama tidak membuka {brand}.',
+};
+
+export default id;

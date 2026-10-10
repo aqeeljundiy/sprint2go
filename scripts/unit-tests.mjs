@@ -2041,6 +2041,31 @@ await test('Language: an email comes out in Indonesian for an Indonesian reader 
   assert.equal(en.subject, '1 thing waiting for you in Plain Co');
   assert.match(en.text, /Mo messaged you: “lunch\?”/);
 });
+await test('Email layout: every system email renders through the shared layout, with a text version, in both languages', async () => {
+  // scripts/email-samples.ts renders each one with sample data (the same list scripts/email-previews.mjs shows).
+  const { seed, allEmails } = await import('./email-samples.ts');
+  seed();
+  for (const l of ['en', 'id']) {
+    const all = await allEmails(l);
+    assert.ok(all.length >= 18, 'every kind is in the list');
+    for (const m of all.filter((x) => !x.page)) {
+      assert.match(m.html, /^<!doctype html>/, `${m.id}: a full document`);
+      assert.match(m.html, /class="em-card em-pad"/, `${m.id}: the shared card`);
+      assert.match(m.html, /name="color-scheme" content="light dark"/, `${m.id}: dark mode`);
+      assert.match(m.html, /max-width:600px/, `${m.id}: 600 wide`);
+      assert.match(m.html, /Sent by|Dikirim oleh/, `${m.id}: who it's from`);
+      assert.ok(m.subject, `${m.id}: a subject`);
+      assert.ok(m.text.trim().length > 20 && !/<[a-z][^>]*>/i.test(m.text), `${m.id}: a plain-text version`);
+      assert.doesNotMatch(m.html + m.text, /—/, `${m.id}: no em dashes`);
+    }
+    const code = all.find((x) => x.id === 'signup-code');
+    assert.match(code.html, />482913</, 'the code in one copyable run');
+    assert.match(code.text, /482913/);
+    if (l === 'id') assert.match(code.html, /Berlaku 15 menit/);
+    const btn = all.find((x) => x.id === 'guest-notice').html;
+    assert.match(btn, /v:roundrect/, 'a button Outlook draws too');
+  }
+});
 
 
 /* ---------- Calendar month: events over several days as one bar (src/components/calendar/monthLayout.ts) ---------- */

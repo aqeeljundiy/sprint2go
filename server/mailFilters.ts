@@ -14,7 +14,24 @@ import { randomBytes } from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { ParsedMail } from 'mailparser';
 import * as db from './db.ts';
-import type { Words } from './lang.ts';
+import { inLang, type Words } from './lang.ts';
+import { companyBrand, renderEmail } from './emailLayout.ts';
+
+/** The email that asks an outside address to allow forwarding (English, as before; the plain text unchanged). */
+export function forwardingConfirmMail(from: string, ws: any, address: string, link: string) {
+  return inLang('en', () => {
+    const said = `${from} at ${ws?.name ?? 'sprint2go'} asked to forward email to ${address}.`;
+    const text = `${said}\n\nTo allow it, open this link:\n${link}\n\nIf you didn't expect this, ignore this email and nothing will be forwarded.`;
+    const { html } = renderEmail({
+      brand: ws ? companyBrand(ws) : undefined,
+      preheader: said,
+      title: 'Allow forwarding to this address?',
+      blocks: [{ p: said }, { button: { text: 'Allow forwarding', url: link } }],
+      footer: ["If you didn't expect this, ignore this email and nothing will be forwarded."],
+    });
+    return { subject: `Confirm forwarding from ${from}`, text, html };
+  });
+}
 import { mark, msg } from '../src/i18n/index.ts';
 import { skipReason } from './away.ts';
 import { addDays, companyTz, localParts, zonedTime } from '../src/jobTimes.ts';
@@ -626,8 +643,8 @@ export async function handleApi(p: string, x: Api): Promise<boolean> {
       .run(hit.account.id, address, token, me, now(), inside ? now() : null);
     if (inside) return (json(res, 200, { address, verified: true }), true);
     const link = `${deps?.publicUrl() ?? ''}/api/mail/forwarding/confirm?token=${token}`;
-    const text = `${hit.account.email} at ${hit.ws.name ?? 'sprint2go'} asked to forward email to ${address}.\n\nTo allow it, open this link:\n${link}\n\nIf you didn't expect this, ignore this email and nothing will be forwarded.`;
-    const sent = await (deps?.sendNote(address, `Confirm forwarding from ${hit.account.email}`, text) ?? Promise.resolve(false)).catch(() => false);
+    const note = forwardingConfirmMail(hit.account.email, hit.ws, address, link);
+    const sent = await (deps?.sendNote(address, note.subject, note.text, note.html) ?? Promise.resolve(false)).catch(() => false);
     // No system mail here (a local server): the link goes to this log, like sign-up codes.
     deps?.log(sent ? `[filters] forwarding confirmation for ${hit.account.email} sent to ${address}` : `[filters] forwarding confirmation for ${hit.account.email} to ${address} (no system mail here): ${link}`);
     json(res, 200, { address, verified: false, sent });

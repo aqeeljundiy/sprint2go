@@ -8,6 +8,9 @@ import { DIGEST_HOUR, companyTz, isZone, localParts, type DigestEvery } from '..
 import { wants, type PushKind } from './notifyPush.ts';
 import { mark, msg, t, textOf, tn, type Msg } from '../src/i18n/index.ts';
 import { inLang, langOf, type Lang } from './lang.ts';
+import { companyBrand, renderEmail, sprint2goBrand } from './emailLayout.ts';
+/** Each group's dot in the email. */
+const DOT: Record<string, string> = { messages: '#2448ff', tasks: '#059669', replies: '#7c3aed', guests: '#d97706', mail: '#0891b2' };
 
 db.db.exec(`
   CREATE TABLE IF NOT EXISTS digest_state (user_id TEXT PRIMARY KEY, last_at TEXT, last_day TEXT);
@@ -92,10 +95,9 @@ export function itemsFor(userId: string, since: string, publicUrl: string): Dige
 }
 
 const emailed = (key: string) => !!db.db.prepare('SELECT 1 FROM digest_items WHERE key = ?').get(key);
-const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
 /** The email: grouped, one line and one link per item, plain text and simple HTML. In `l`, the person's language. */
-export function compose(name: string, brand: string, items: DigestItem[], publicUrl: string, l: Lang = 'en') {
+export function compose(name: string, brand: string, items: DigestItem[], publicUrl: string, l: Lang = 'en', ws?: any) {
   return inLang(l, () => {
     const shown = items.slice(0, MAX_LINES);
     const more = items.length - shown.length;
@@ -108,10 +110,21 @@ export function compose(name: string, brand: string, items: DigestItem[], public
     const footer = t('You get this email when you haven’t opened {brand} for a while. Change how often in Settings, Notifications: {link}', { brand, link: settings });
     const moreText = t('And {n} more in {brand}', { n: more, brand });
     const text = [hello, '', ...groups.flatMap(([g, list]) => [t(GROUP_NAME[g]), ...list.map((i) => `- ${line(i)}\n  ${i.url}`), '']), ...(more ? [`${moreText}: ${publicUrl}`, ''] : []), footer].join('\n');
-    // Its own white card, so dark mail apps (and dark Mail here) never put dark text on a dark page.
-    const html = `<div style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;font-size:15px;line-height:1.5;color:#16161d;background:#ffffff;max-width:560px;padding:20px 24px;border-radius:12px"><p style="margin-top:0">${esc(hello)}</p>${groups
-      .map(([g, list]) => `<p style="margin:20px 0 6px;font-weight:600">${esc(t(GROUP_NAME[g]))}</p>${list.map((i) => `<p style="margin:0 0 8px"><a href="${esc(i.url)}" style="color:#2448ff;text-decoration:none">${esc(line(i))}</a></p>`).join('')}`)
-      .join('')}${more ? `<p style="margin-top:16px"><a href="${esc(publicUrl)}" style="color:#2448ff">${esc(moreText)}</a></p>` : ''}<p style="margin-top:24px;color:#6b6f7b;font-size:13px">${t('You get this email when you haven’t opened {brand} for a while. {link}.', { brand: esc(brand), link: `<a href="${esc(settings)}" style="color:#6b6f7b">${esc(t('Change how often'))}</a>` })}</p></div>`;
+    // The shared layout (server/emailLayout.ts): each group a list with its own coloured dot, in the company's colours.
+    const { html } = renderEmail({
+      brand: ws ? companyBrand(ws, brand) : brand === 'sprint2go' ? sprint2goBrand() : companyBrand(null, brand),
+      preheader: shown[0] ? line(shown[0]) : hello,
+      title: subject,
+      blocks: [
+        { p: hello },
+        ...groups.map(([g, list]) => ({ heading: t(GROUP_NAME[g]), list: list.map((i) => ({ text: line(i), url: i.url, color: DOT[g] })) })),
+        ...(more ? [{ links: [{ text: moreText, url: publicUrl }] }] : []),
+        { button: { text: t('Open {brand}', { brand }), url: publicUrl } },
+      ],
+      footer: [t('You get this email when you haven’t opened {brand} for a while.', { brand })],
+      footerLink: { text: t('Change how often'), url: settings },
+      lang: l,
+    });
     return { subject, text, html };
   });
 }
@@ -145,7 +158,7 @@ export async function runDigests(deps: DigestDeps, now = Date.now()): Promise<{ 
       const from = new Set(items.map((i) => i.workspaceId));
       const one = from.size === 1 ? wss.find((w) => from.has(w.id)) : mine.length === 1 ? mine[0] : null;
       const brand = one?.name ? String(one.name) : 'sprint2go';
-      const mail = compose(String(u.name ?? ''), brand, items, deps.publicUrl, langOf(userId, one?.id));
+      const mail = compose(String(u.name ?? ''), brand, items, deps.publicUrl, langOf(userId, one?.id), one);
       const sent = await deps.send(String(u.email), mail.subject, mail.text, mail.html, brand).catch(() => false);
       if (sent) {
         const at = new Date(now).toISOString();

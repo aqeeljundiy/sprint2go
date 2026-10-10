@@ -21,7 +21,8 @@ import { TOP_UP } from '../src/data/pricing.ts';
 import { languageName, languagesText } from '../src/data/languages.ts';
 import { hasBranding } from '../src/data/pricing.ts';
 import * as tablesEngine from './tables.ts';
-import { mailConfigured, simpleHtml } from './mail.ts';
+import { mailConfigured } from './mail.ts';
+import { codeMail, guestNoticeMail, ticketReceipt } from './systemEmails.ts'; // the system emails (server/emailLayout.ts look)
 import * as admin from './admin.ts';
 import * as mailer from './mailer.ts';
 import * as readTracking from './readTracking.ts';
@@ -704,13 +705,6 @@ function kick(userId: string, keepToken?: string) {
  */
 const codes = new Map<string, { code: string; tries: number; until: number; data?: any }>();
 const newCode = () => String(randomInt(0, 1_000_000)).padStart(6, '0');
-/** The code email, in `l` (the language of the screen that asked for it): to finish signing up or to set a new password. */
-export function codeMail(what: 'signup' | 'reset', code: string, l: lang.Lang) {
-  return lang.inLang(l, () => {
-    const line = what === 'signup' ? t('{code} is your code to finish signing up.', { code }) : t('{code} is your code to set a new password.', { code });
-    return { subject: t('{code} is your sprint2go code', { code }), text: `${line} ${t('It works for 15 minutes.')}`, html: simpleHtml('sprint2go', [line, t('It works for 15 minutes. If this wasn’t you, ignore this email.')]) };
-  });
-}
 async function sendCode(to: string, what: 'signup' | 'reset', code: string, l: lang.Lang) {
   const m = codeMail(what, code, l);
   const sent = await mailer.sendNote(to, m.subject, m.text, m.html).catch((e) => (console.error('[mail]', e instanceof Error ? e.message : e), false));
@@ -718,19 +712,6 @@ async function sendCode(to: string, what: 'signup' | 'reset', code: string, l: l
   return sent;
 }
 
-/** A notice for a guest, by email (guests don't live in the app): in the guest's language (theirs, else the company's). */
-export function guestNoticeMail(n: { text: string; tr?: any; workspaceId: string }, to: string, brandName: string, origin: string) {
-  return lang.inLang(lang.langOfEmail(to, n.workspaceId), () => {
-    const said = textOf(n);
-    const open = t('Open your shared space');
-    return { subject: `${brandName}: ${said.slice(0, 80)}`, text: `${said}\n\n${t('Open your shared space: {link}', { link: origin })}`, html: simpleHtml(brandName, [said], { text: open, url: origin }) };
-  });
-}
-
-/** The receipt for a ticket that came by email: in the language of the person who wrote (their account's, else English). */
-function ticketReceipt(email: string, number: number) {
-  return lang.inLang(lang.langOfEmail(email), () => t('Thanks, we have your message (ticket #{number}) and will reply here. Reply to this email to add anything.', { number }));
-}
 /** A JSON answer; its error (and any msg() at its top level) in the asker's language (server/lang.ts). */
 const json = (res: ServerResponse, status: number, data: unknown) => {
   res.statusCode = status;
@@ -1237,6 +1218,16 @@ function serveStatic(req: IncomingMessage, res: ServerResponse, site = false) {
     res.setHeader('content-type', 'application/manifest+json');
     res.setHeader('vary', 'accept-language');
     return res.end(JSON.stringify({ ...m, lang: 'id', description: words.description, shortcuts: (m.shortcuts ?? []).map((s: any) => ({ ...s, name: words.names[s.name] ?? s.name })) }));
+  }
+  // A company's logo for its emails (server/emailLayout.ts companyBrand): mail apps can't show the data URL we keep.
+  const emailLogo = path.match(/^\/email\/brand\/([\w-]+)\.png$/);
+  if (emailLogo) {
+    const w = db.getDoc('workspaces', emailLogo[1]) as any;
+    const icon: string | undefined = (w?.whiteLabel?.enabled ? w.whiteLabel.logo : null) ?? w?.logo;
+    const m = icon?.match(/^data:(image\/(?:png|jpe?g|gif|webp));base64,(.+)$/);
+    if (!m) return (res.writeHead(404), res.end());
+    res.writeHead(200, { 'content-type': m[1], 'cache-control': 'public, max-age=604800' });
+    return res.end(Buffer.from(m[2], 'base64'));
   }
   if (path === '/brand-icon' && branded) {
     const icon: string | undefined = branded.whiteLabel.logo ?? branded.logo;
@@ -2109,7 +2100,7 @@ createServer(async (req, res) => {
         event: (type, wsId, userId, detail) => platform.event(type, wsId, userId, detail),
         eventsOf: (wsId) => platform.eventsOf(wsId, 300),
         notify: notifyUsers,
-        mail: (to, subject, lines) => mailer.sendNote(to, subject, lines.join('\n\n'), simpleHtml(brandNameAt(req), lines), brandNameAt(req)),
+        mail: (to, subject, body) => mailer.sendNote(to, subject, body.text, body.html, brandNameAt(req)), // body: built with server/emailLayout.ts
       });
       if (handled) return;
     }
@@ -3599,7 +3590,7 @@ createServer(async (req, res) => {
   // A company's tracked mail points at its own live address when it has one, so its clients never see ours.
   readTracking.initTracking({ broadcast: (c, u, d) => broadcast(c, u, d), origin: (wsId) => { const w = db.getDoc('workspaces', wsId) as any; return customDomains.isLive(w) ? `https://${w.whiteLabel.domain}` : PUBLIC_URL || `http://localhost:${PORT}`; } });
   // Confidential email: its links point where the company's tracked mail does; codes go out as the app's own notes.
-  confidential.initConfidential({ broadcast: (c, u, d) => broadcast(c, u, d), origin: (wsId) => { const w = db.getDoc('workspaces', wsId) as any; return customDomains.isLive(w) ? `https://${w.whiteLabel.domain}` : PUBLIC_URL || `http://localhost:${PORT}`; }, sendCode: (to, subject, text) => mailer.sendNote(to, subject, text), log: (line) => console.log(line) });
+  confidential.initConfidential({ broadcast: (c, u, d) => broadcast(c, u, d), origin: (wsId) => { const w = db.getDoc('workspaces', wsId) as any; return customDomains.isLive(w) ? `https://${w.whiteLabel.domain}` : PUBLIC_URL || `http://localhost:${PORT}`; }, sendCode: (to, subject, text, html) => mailer.sendNote(to, subject, text, html), log: (line) => console.log(line) });
   routing.startRouting({ notify: notifyPeople, broadcast, log: (line) => console.log(line) });
   customDomains.start({
     broadcast,
@@ -3749,7 +3740,7 @@ mailer.onSupportMail(async ({ to, parsed, mid, refs, spam, attachments }) => {
   supportNotify(t, msg('New ticket #{number} by email from {name}: {subject}', { number: t.number, name: from?.name || email, subject: t.subject.slice(0, 70) }));
   // A short receipt so they know it arrived (not for auto-replies).
   if (!parsed.headers.get('auto-submitted') && !/no-?reply|mailer-daemon/i.test(email))
-    void mailer.sendSystemMail({ fromName: platform.settings().supportName, to: [email], subject: `Re: ${t.subject} [#${t.number}]`, text: ticketReceipt(email, t.number), inReplyTo: mid, references: [mid] }).catch(() => {});
+    void mailer.sendSystemMail({ fromName: platform.settings().supportName, to: [email], subject: `Re: ${t.subject} [#${t.number}]`, ...ticketReceipt(email, t.number, text), inReplyTo: mid, references: [mid] }).catch(() => {});
 });
 
 /** A notice in these people's bell, of a kind (the push rules and Settings, Notifications go by it), opening `link`. */
@@ -3966,7 +3957,7 @@ mailFiles.init({
     const w = billing.readOnlyWords(ws as any);
     return w ? lang.sayIn('en', w) : null;
   },
-  sendCode: (to, subject, text) => mailer.sendNote(to, subject, text),
+  sendCode: (to, subject, text, html) => mailer.sendNote(to, subject, text, html),
   whoIs: (req) => {
     const s = db.sessionInfo(cookie(req, 's2g'));
     const u = s ? (personOf(s.userId) as any) : null;
