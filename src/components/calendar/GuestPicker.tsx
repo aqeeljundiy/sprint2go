@@ -20,6 +20,7 @@ export function GuestPicker({
   contacts = [],
   me,
   label = t('Guests'),
+  rows,
 }: {
   value: Person[];
   onChange: (p: Person[]) => void;
@@ -27,6 +28,7 @@ export function GuestPicker({
   contacts?: Person[]; // the projects' guests and earlier guests
   me: string; // the organiser: not a guest of their own event
   label?: string;
+  rows?: boolean; // the phone editor: "Add guests" as the row's text, each guest a row under it
 }) {
   const btn = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
@@ -57,6 +59,35 @@ export function GuestPicker({
     const u = people.find((x) => x.id === id);
     if (u) onChange([...value, { name: u.name, email: u.email }]);
   };
+  const picker = (
+    <Popover anchor={btn} open={open} onClose={() => setOpen(false)} width={320} title={label}>
+      <PeopleList
+        users={people}
+        selected={chosen}
+        onPick={toggle}
+        placeholder={t('Name, team or any email')}
+        typed={(q) => (isEmail(q) && !people.some((u) => u.id === key(q)) ? { value: `new:${q}`, label: t('Add {email}', { email: q }), hint: t('Someone who isn’t in the list yet'), icon: <Mail size={16} /> } : null)}
+      />
+    </Popover>
+  );
+  if (rows)
+    return (
+      <div className="guest-rows">
+        <button ref={btn} type="button" className="er-line er-value er-empty" onClick={() => setOpen((o) => !o)} aria-haspopup="dialog">
+          <span>{t('Add guests')}</span>
+        </button>
+        {value.map((p) => (
+          <div key={p.email} className="guest-row" title={p.email}>
+            <Avatar person={people.find((u) => u.id === key(p.email)) ?? p} size={28} />
+            <span className="guest-row-name">{p.name}</span>
+            <button type="button" className="icon-btn" onClick={() => onChange(value.filter((x) => x !== p))} aria-label={t('Remove {name}', { name: p.name })}>
+              <X size={18} />
+            </button>
+          </div>
+        ))}
+        {picker}
+      </div>
+    );
   return (
     <div className="guest-field">
       {value.map((p) => (

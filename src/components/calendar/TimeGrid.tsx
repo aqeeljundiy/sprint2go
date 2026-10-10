@@ -1,9 +1,10 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Check, Mic, Repeat } from 'lucide-react';
+import { meetingLinkOf } from '../../meetingLinks';
 import type { CalEvent } from '../../types';
 import { eventsOn, fmtTime, fmtTimeRange, hourLabel, layoutDay, minutesIntoDay, sameDay, startOfDay } from '../../calendarUtils';
 import { haptic, useLongPress } from '../ui/useLongPress';
-import { isMaybe, isPending } from './calTools';
+import { isMaybe, isPending, joinable, onColor } from './calTools';
 import { swipeLock, useSwipeNav } from './useSwipeNav';
 import { t } from '../../i18n';
 import { fmtDate, fmtWeekdayLong } from '../../i18n/format';
@@ -22,7 +23,7 @@ export interface GridProps {
   onSelect: (id: string) => void;
   onSlot: (start: Date, touch: boolean) => void; // an empty slot tapped or clicked
   onDay: (d: Date) => void; // a day's heading: that day on its own
-  onMenu: (e: CalEvent, x: number, y: number) => void;
+  onMenu?: (e: CalEvent, x: number, y: number) => void; // desktop: right-click; phones have no menu (Google's)
   onSchedule?: (taskId: string, start: Date) => void; // a task dropped on the grid (desktop)
   taskOf?: (e: CalEvent) => { title: string; done: boolean } | null;
   onTaskDone?: (e: CalEvent) => void;
@@ -102,7 +103,7 @@ export function TimeGrid(p: GridProps) {
     if (d.moved && (d.curStart.getTime() !== d.start.getTime() || d.curEnd.getTime() !== d.end.getTime())) p.onMove?.(d.id, d.curStart, d.curEnd, { x, y });
     else if (d.touch && !d.moved) {
       const ev = events.find((e) => e.id === d.id);
-      if (ev) p.onMenu(ev, x, y);
+      if (ev) p.onMenu?.(ev, x, y);
     } else if (!d.touch) p.onSelect(d.id);
   };
 
@@ -189,8 +190,37 @@ export function TimeGrid(p: GridProps) {
   const perDay = p.phone ? 1 : 2;
   const today = days.findIndex((d) => sameDay(d, now));
 
+  // Phones, Day: Google's band: the weekday and date in the gutter, the all-day events beside them.
+  const dayBand = p.phone && days.length === 1;
+  const chip = (e: CalEvent) => (
+    <button
+      key={e.id}
+      className={`pill-event ${p.selectedId === e.id ? 'picked' : ''} ${isPending(e) ? 'pending' : ''}`}
+      style={{ ['--c' as string]: color(e.calendarId), ['--on' as string]: onColor(color(e.calendarId)) }}
+      onClick={() => p.onSelect(e.id)}
+    >
+      {e.rrule && <Repeat size={11} className="pe-repeat" aria-label={t('Repeats')} />}
+      {e.title}
+    </button>
+  );
   return (
-    <div className="tg" ref={rootRef} style={{ ['--cols' as string]: days.length, ['--hour' as string]: `${hour}px` }}>
+    <div className={`tg${p.phone ? ' tg-phone' : ''}${days.length === 7 ? ' tg-week' : ''}`} ref={rootRef} style={{ ['--cols' as string]: days.length, ['--hour' as string]: `${hour}px` }}>
+      {dayBand ? (
+        <div className="tg-band">
+          <button className={`tg-day ${sameDay(days[0], now) ? 'today' : ''}`} onClick={() => p.onDay(days[0])} aria-label={fmtWeekdayLong(days[0])}>
+            <span className="tg-dow">{fmtDate(days[0], { weekday: 'short' })}</span>
+            <span className="tg-num">{days[0].getDate()}</span>
+          </button>
+          <div className="tg-band-chips">
+            {allDay[0].slice(0, 2).map(chip)}
+            {allDay[0].length > 2 && (
+              <button className="tg-allday-more" onClick={() => p.onAllDay(days[0])} aria-label={t('{n} more all-day events', { n: allDay[0].length - 2 })}>
+                +{allDay[0].length - 2}
+              </button>
+            )}
+          </div>
+        </div>
+      ) : (
       <div className="tg-head">
         <div className="tg-gutter" />
         {days.map((d) => (
@@ -200,18 +230,14 @@ export function TimeGrid(p: GridProps) {
           </button>
         ))}
       </div>
+      )}
 
-      {hasAllDay && (
+      {hasAllDay && !dayBand && (
         <div className="tg-allday">
-          <div className="tg-gutter">{t('all day')}</div>
+          <div className="tg-gutter">{p.phone ? '' : t('all day')}</div>
           {allDay.map((list, i) => (
             <div key={i} className="tg-allday-cell">
-              {list.slice(0, perDay).map((e) => (
-                <button key={e.id} className={`pill-event ${p.selectedId === e.id ? 'picked' : ''} ${isPending(e) ? 'pending' : ''}`} style={{ ['--c' as string]: color(e.calendarId) }} onClick={() => p.onSelect(e.id)}>
-                  {e.rrule && <Repeat size={11} className="pe-repeat" aria-label={t('Repeats')} />}
-                  {e.title}
-                </button>
-              ))}
+              {list.slice(0, perDay).map(chip)}
               {list.length > perDay && (
                 <button className="tg-allday-more" onClick={() => p.onAllDay(days[i])} aria-label={t('{n} more all-day events', { n: list.length - perDay })}>
                   +{list.length - perDay}
@@ -230,7 +256,7 @@ export function TimeGrid(p: GridProps) {
                 {h > 0 ? hourLabel(h) : ''}
               </span>
             ))}
-            {today >= 0 && (
+            {today >= 0 && !p.phone && (
               <span className="now-label" style={{ top: (minutesIntoDay(now) / 60) * hour }}>
                 {fmtTime(now).replace(/\s?[AP]M$/i, '')}
               </span>
@@ -268,7 +294,8 @@ export function TimeGrid(p: GridProps) {
                     bot={!!p.botWillJoin?.(ev)}
                     onTaskDone={() => p.onTaskDone?.(ev)}
                     onSelect={() => p.onSelect(ev.id)}
-                    onMenu={(x, y) => p.onMenu(ev, x, y)}
+                    onMenu={p.onMenu ? (x, y) => p.onMenu?.(ev, x, y) : undefined}
+                    phone={p.phone}
                     onMouseDrag={(mode, x, y) => {
                       const orig = events.find((x2) => x2.id === ev.id)!;
                       const st = new Date(orig.start);
@@ -320,7 +347,8 @@ function Block(b: {
   bot: boolean;
   onTaskDone: () => void;
   onSelect: () => void;
-  onMenu: (x: number, y: number) => void;
+  onMenu?: (x: number, y: number) => void;
+  phone: boolean;
   onMouseDrag: (mode: 'move' | 'resize', x: number, y: number) => void;
   onLift: (x: number, y: number) => void;
   onTouchMove: (x: number, y: number) => void;
@@ -331,15 +359,16 @@ function Block(b: {
   const press = useLongPress(
     (pt) => {
       if (b.editable) b.onLift(pt.x, pt.y);
-      else b.onMenu(pt.x, pt.y);
+      else b.onMenu?.(pt.x, pt.y);
     },
-    b.editable ? { onDrag: (d) => b.onTouchMove(d.x, d.y), onDragEnd: (d) => b.onTouchEnd(d.x, d.y) } : {},
+    b.editable ? { onDrag: (d) => b.onTouchMove(d.x, d.y), onDragEnd: (d) => b.onTouchEnd(d.x, d.y) } : { disabled: !b.onMenu },
   );
   const s = new Date(ev.start);
   const e = new Date(ev.end);
   const top = (minutesIntoDay(s) / 60) * hour;
   const height = Math.max(((e.getTime() - s.getTime()) / 3_600_000) * hour - 2, 20);
   const short = height < 40;
+  const joinLink = meetingLinkOf(ev)?.url;
   const cls = [
     'block-event',
     'lp',
@@ -370,12 +399,14 @@ function Block(b: {
       }}
       onContextMenu={(m) => {
         press.onContextMenu(m);
+        if (!b.onMenu) return;
         m.preventDefault();
         b.onMenu(m.clientX, m.clientY);
       }}
       onKeyDown={(k) => (k.key === 'Enter' || k.key === ' ') && (k.preventDefault(), b.onSelect())}
       style={{
         ['--c' as string]: b.color,
+        ['--on' as string]: onColor(b.color),
         top,
         height,
         left: `calc(${(b.col / b.cols) * 100}% + 2px)`,
@@ -404,6 +435,11 @@ function Block(b: {
         {ev.rrule && <Repeat size={11} className="be-repeat" aria-label={t('Repeats')} />}
         {!short || b.dragging ? fmtTimeRange(s, e) : fmtTime(s)}
       </span>
+      {b.phone && !short && !ev.allDay && joinLink && joinable(ev, b.now.getTime()) && (
+        <a className="ev-join-pill sm" href={joinLink} target="_blank" rel="noopener noreferrer" onClick={(x) => x.stopPropagation()} onPointerDown={(x) => x.stopPropagation()}>
+          {t('Join')}
+        </a>
+      )}
       {b.editable && <span className="be-resize" aria-hidden />}
     </div>
   );

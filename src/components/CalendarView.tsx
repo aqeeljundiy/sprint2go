@@ -1,11 +1,17 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { cloneElement, isValidElement, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactElement, type ReactNode } from 'react';
 import { flushSync } from 'react-dom';
-import { CalendarDays, CalendarPlus, Check, ChevronDown, ChevronLeft, ChevronRight, Copy, CopyPlus, Layers, Link2, Mail, Pencil, Plus, SkipForward, Trash2, Video, X } from 'lucide-react';
-import type { CalEvent, CalendarDef, Person, RsvpStatus, User } from '../types';
+import { CalendarDays, CalendarPlus, CalendarX, Check, ChevronDown, ChevronLeft, ChevronRight, CircleCheck, Copy, CopyPlus, Link2, Mail, Menu, Pencil, Plus, SkipForward, Trash2, Video, X } from 'lucide-react';
+import type { CalEvent, CalendarDef, Person, RsvpStatus, User, Workspace } from '../types';
 import { addDays, eventsOn, monthGrid, sameDay, startOfDay } from '../calendarUtils';
 import { expandEvents, findEvent, type Scope } from '../repeat';
 import { askScope, type ScopeAt } from './calendar/RepeatScope';
-import { useCreateAction, useTitleMenu } from '../mobile/chrome';
+import { useCreateAction } from '../mobile/chrome';
+import { TopBar, TopBarButton } from '../mobile/TopBar';
+import { useEdgeSwipe } from './ui/SideDrawer';
+import type { CalDrawer } from './CalendarSidebar';
+import { CreateMenu } from './calendar/CreateMenu';
+import { EventEditor, type EditorKind } from './EventEditor';
+import type { Draft } from './calendar/EventForm';
 import { usePhone } from '../mobile/media';
 import { meetingLinkOf, MEETING_NAME } from '../meetingLinks';
 import { toast } from '../toast';
@@ -80,6 +86,10 @@ interface Props {
   dialogOpen?: boolean;
   /** Shown instead of what happened to an emailed invite (the demo: nothing is emailed). */
   inviteNote?: string;
+  /** Phones: the company at the top of the drawer (its company sheet opens from there). */
+  company?: Pick<Workspace, 'name' | 'logo' | 'color'>;
+  /** Phones: Calendar's settings pages, at the bottom of the drawer. */
+  appSettings?: CalDrawer['settings'];
 }
 
 /** The next half hour from now if `day` is today, otherwise 9:00 on that day. */
@@ -116,7 +126,8 @@ export function CalendarView(props: Props) {
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
-  const canWeek = !phone && paneW >= WEEK_MIN;
+  // Phones show Week too (Google's seven narrow columns); a tablet pane beside a panel needs the room for it.
+  const canWeek = phone || paneW >= WEEK_MIN;
   const narrow = !phone && paneW < 720; // a tablet beside the panel: the views go in a dropdown
   const view = shownView(props.view, canWeek);
   const views: CalView[] = canWeek ? ['schedule', 'day', '3day', 'week', 'month'] : ['schedule', 'day', '3day', 'month'];
@@ -155,22 +166,30 @@ export function CalendarView(props: Props) {
     if (!quick) titleRef.current?.focus();
   };
   const create = (start: Date) => (phone ? startQuick(start) : props.onCreate(start));
-  useCreateAction('calendar', { label: t('New event'), icon: CalendarPlus, run: () => create(nextSlot(cursor)) });
 
-  /* ---------- the title's switcher: views, then the calendars ---------- */
-  const [calsOpen, setCalsOpen] = useState(false);
+  /* ---------- phones: the + menu (Event, Task, Out of office) and the full-screen editor ---------- */
+  const [createOpen, setCreateOpen] = useState(false);
+  const closeCreate = useCallback(() => setCreateOpen(false), []);
+  const [editor, setEditor] = useState<{ start: Date; end?: Date; kind: EditorKind; seed?: Partial<Draft> } | null>(null);
+  const newOf = (kind: EditorKind) => {
+    setQuick(null);
+    props.onSelect(null);
+    if (kind === 'ooo') return setEditor({ start: startOfDay(sameDay(cursor, new Date()) || cursor < new Date() ? new Date() : cursor), kind });
+    setEditor({ start: nextSlot(cursor), kind });
+  };
+  useCreateAction(
+    'calendar',
+    phone
+      ? { label: t('Create'), icon: Plus, run: () => setCreateOpen((o) => !o) }
+      : { label: t('New event'), icon: CalendarPlus, run: () => create(nextSlot(cursor)) },
+  );
+
+  /* ---------- phones: the drawer (views, calendars, settings) from ☰ or the left edge ---------- */
+  const [drawer, setDrawer] = useState(false);
   useEffect(() => {
-    if (props.dialogOpen) setCalsOpen(false);
+    if (props.dialogOpen) setDrawer(false);
   }, [props.dialogOpen]);
-  useTitleMenu('calendar', {
-    label: t('Calendar'),
-    value: view,
-    options: [
-      ...views.map((v) => ({ value: v, label: viewLabel(v), group: tx('cal', 'View') })),
-      ...(props.calendarsPanel ? [{ value: 'calendars', label: t('Calendars'), hint: t('Show or hide, teammates, holidays, tasks to plan'), group: t('Calendars'), icon: <Layers size={18} /> }] : []),
-    ],
-    onChange: (v) => (v === 'calendars' ? setCalsOpen(true) : props.onView(v as CalView)),
-  });
+  useEdgeSwipe(() => setDrawer(true), phone && !selected && !quick && !editor);
 
   /* ---------- the month title folds a mini month down ---------- */
   const [drop, setDrop] = useState(false);
@@ -265,6 +284,28 @@ export function CalendarView(props: Props) {
     ];
   };
 
+  /** Phones: the details page's ⋮ (Google's): everything but Join and Edit, which have their own places there. */
+  const detailMore = (e: CalEvent): SheetAction[] => {
+    if (isPending(e)) return [];
+    const link = meetingLinkOf(e);
+    const copy = (text: string, done: string) =>
+      navigator.clipboard?.writeText(text).then(
+        () => toast({ text: done }),
+        () => toast({ text: t('Couldn’t copy it here. Open the event and copy from there.') }),
+      );
+    return [
+      ...(editable(e)
+        ? [
+            { label: t('Duplicate'), icon: CopyPlus, run: () => props.onDuplicate(e.id) },
+            { label: t('Move to tomorrow'), icon: SkipForward, run: () => void moveTo(e.id, addDays(new Date(e.start), 1), addDays(new Date(e.end), 1)) },
+          ]
+        : []),
+      { label: t('Copy link'), icon: Link2, group: 'copy', run: () => void copy(eventLink(e.id), t('Link copied')) },
+      ...(link ? [{ label: t('Copy call link'), icon: Copy, group: 'copy', run: () => void copy(link.url, t('Call link copied')) }] : []),
+      ...(editable(e) ? [{ label: t('Delete'), icon: Trash2, danger: true, group: 'end', run: () => props.onDelete(e.id) }] : []),
+    ];
+  };
+
   const select = (id: string | null) => {
     setQuick(null);
     setDrop(false);
@@ -274,7 +315,9 @@ export function CalendarView(props: Props) {
     color,
     selectedId: selected?.id,
     onSelect: (id) => select(id),
-    onMenu: (e, x, y) => setMenu({ e, x, y }),
+    // Phones have no long-press menu (Google's): the actions are in the event's details.
+    onMenu: phone ? undefined : (e, x, y) => setMenu({ e, x, y }),
+    phone,
     taskOf: props.taskOf,
     onTaskDone: props.onTaskDone,
     botWillJoin: props.botWillJoin,
@@ -284,29 +327,48 @@ export function CalendarView(props: Props) {
   const [allDayOf, setAllDayOf] = useState<Date | null>(null);
 
   const today = new Date();
-  const todayShown = view === 'month' ? cursor.getMonth() === today.getMonth() && cursor.getFullYear() === today.getFullYear() : view === 'schedule' ? sameDay(cursor, today) : days.some((d) => sameDay(d, today));
   const title = titleOf(view, cursor, days, phone || narrow);
   const toToday = () => {
     setDrop(false);
     props.onCursor(new Date());
   };
 
+  // The drawer is the side panel's data in Google Calendar's drawer shape (CalendarSidebar's `drawer`).
+  const drawerBits: CalDrawer = { open: drawer, onClose: () => setDrawer(false), view, views, onView: props.onView, company: props.company, settings: props.appSettings ?? [] };
+  const panel = phone && isValidElement(props.calendarsPanel) ? cloneElement(props.calendarsPanel as ReactElement<{ drawer?: CalDrawer }>, { drawer: drawerBits }) : null;
+  // The month on the bar follows the mini month while it's open.
+  const [browsed, setBrowsed] = useState<Date | null>(null);
+  const barTitle = drop && browsed ? fmtDate(browsed, { month: 'long', year: browsed.getFullYear() === today.getFullYear() ? undefined : 'numeric' }) : title;
+
   return (
     <section className={`cal-pane view-${view}${phone ? ' is-phone' : ''}`} ref={pane}>
+      {phone && (
+        <TopBar
+          app="calendar"
+          lead={<TopBarButton icon={Menu} label={t('Menu')} onClick={() => setDrawer(true)} />}
+          title={
+            <button type="button" className={`cal-title mt-cal-title${drop ? ' open' : ''}`} onClick={() => setDrop((o) => !o)} aria-expanded={drop} aria-label={t('{title}. Pick a date', { title: barTitle })}>
+              <span className="mt-cal-text">{barTitle}</span>
+              <ChevronDown size={16} className="cal-title-chev" />
+            </button>
+          }
+          actions={
+            <button type="button" className="cal-today mt-cal-today" onClick={toToday} aria-label={t('Today, {date}', { date: fmtWeekdayLong(today) })}>
+              <span>{today.getDate()}</span>
+            </button>
+          }
+        />
+      )}
+      {!phone && (
       <header className="cal-header">
         <button type="button" className={`cal-title${drop ? ' open' : ''}`} onClick={() => setDrop((o) => !o)} aria-expanded={drop} aria-label={t('{title}. Pick a date', { title })}>
           <h1>{title}</h1>
           <ChevronDown size={18} className="cal-title-chev" />
         </button>
-        {phone ? (
-          <button type="button" className={`cal-today${todayShown ? '' : ' away'}`} onClick={toToday} aria-label={t('Today, {date}', { date: fmtWeekdayLong(today) })} title={t('Today (T)')}>
-            <span>{today.getDate()}</span>
-          </button>
-        ) : (
           <>
             <div className="cal-nav">
               {narrow ? (
-                <button type="button" className={`cal-today${todayShown ? '' : ' away'}`} onClick={toToday} aria-label={t('Today')} title={t('Today (T)')}>
+                <button type="button" className="cal-today" onClick={toToday} aria-label={t('Today')} title={t('Today (T)')}>
                   <span>{today.getDate()}</span>
                 </button>
               ) : (
@@ -336,19 +398,22 @@ export function CalendarView(props: Props) {
               <Plus size={15} /> <span>{t('New event')}</span>
             </button>
           </>
-        )}
       </header>
+      )}
       <MonthDrop
         open={drop}
         cursor={cursor}
         busyOf={busyOf}
-        months={view === 'month'}
+        months={view === 'month' && !phone}
+        bare={phone}
+        onMonth={setBrowsed}
         onPick={(d) => {
           setDrop(false);
           props.onCursor(d);
         }}
       />
-      <UpNext events={events} color={color} onOpen={(id) => select(id)} botWill={props.botWillJoin} />
+      {/* Phones: no strip; Join sits on the event itself when it's about to start (Google's way). */}
+      {!phone && <UpNext events={events} color={color} onOpen={(id) => select(id)} botWill={props.botWillJoin} />}
 
       {view === 'schedule' ? (
         <ScheduleView events={events} cursor={cursor} kit={kit} dueTasks={props.dueTasks} onToggleTask={props.onToggleTask} onOpenTask={props.onOpenTask} onEmptyDay={(d) => create(nextSlot(d))} />
@@ -368,7 +433,7 @@ export function CalendarView(props: Props) {
           days={days}
           events={onScreen}
           phone={phone}
-          hour={phone ? 60 : 52}
+          hour={52}
           color={color}
           selectedId={selected?.id ?? null}
           canEdit={editable}
@@ -376,7 +441,7 @@ export function CalendarView(props: Props) {
           onSelect={(id) => select(id)}
           onSlot={(start) => create(start)}
           onDay={(d) => (props.onCursor(d), props.onView('day'))}
-          onMenu={(e, x, y) => setMenu({ e, x, y })}
+          onMenu={phone ? undefined : (e, x, y) => setMenu({ e, x, y })}
           onSchedule={props.onSchedule}
           taskOf={props.taskOf}
           onTaskDone={props.onTaskDone}
@@ -410,13 +475,13 @@ export function CalendarView(props: Props) {
           onRsvp={props.onRsvp ? (s, at) => props.onRsvp!(selected, s, at) : undefined}
           answers={props.answersOf?.(selected)}
           inviteNote={props.inviteNote}
+          more={phone ? detailMore(selected) : undefined}
         />
       )}
 
       {quick && phone && (
         <QuickCreate
           quick={quick}
-          onTimes={(start, end) => setQuick({ start, end })}
           calendars={props.addTo}
           team={props.team}
           contacts={props.contacts}
@@ -426,19 +491,43 @@ export function CalendarView(props: Props) {
             setQuick(null);
             props.onSave(e, kind);
           }}
+          onMore={(seed) => {
+            setEditor({ start: quick.start, end: quick.end, kind: 'event', seed });
+            setQuick(null);
+          }}
           onClose={() => setQuick(null)}
         />
       )}
 
       <ActionSheet open={!!menu} onClose={() => setMenu(null)} title={menu?.e.title} actions={menu ? actionsFor(menu.e) : []} at={menu && !phone ? { x: menu.x, y: menu.y } : null} className="cal-menu-sheet" />
 
-      {calsOpen && props.calendarsPanel && (
-        <Sheet title={t('Calendars')} onClose={() => setCalsOpen(false)} size="tall" className="cal-sheet">
-          {/* Picking a task to plan hands over to its Schedule sheet: one sheet at a time. */}
-          <div className="cal-sheet-in" onClickCapture={(e) => (e.target as Element).closest('.plan-task') && setTimeout(() => setCalsOpen(false))}>
-            {props.calendarsPanel}
-          </div>
-        </Sheet>
+      {panel}
+      {createOpen && (
+        <CreateMenu
+          onClose={closeCreate}
+          choices={[
+            { id: 'event', label: t('Event'), icon: CalendarDays, run: () => newOf('event') },
+            { id: 'task', label: t('Task'), icon: CircleCheck, run: () => newOf('task') },
+            { id: 'ooo', label: t('Out of office'), icon: CalendarX, run: () => newOf('ooo') },
+          ]}
+        />
+      )}
+      {editor && (
+        <EventEditor
+          start={editor.start}
+          end={editor.end}
+          kind={editor.kind}
+          seed={editor.seed}
+          calendars={props.addTo}
+          team={props.team}
+          contacts={props.contacts}
+          me={props.me}
+          onSave={(e, kind) => {
+            setEditor(null);
+            props.onSave(e, kind);
+          }}
+          onClose={() => setEditor(null)}
+        />
       )}
 
       {allDayOf && (

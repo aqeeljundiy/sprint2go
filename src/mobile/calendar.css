@@ -1,107 +1,853 @@
 /* ==========================================================================
-   Phone rules for Calendar. Owned by the Calendar builder (docs/mobile-kit.md says who owns what).
+   Phone rules for Calendar and Meet's drawer. Owned by the Calendar builder (docs/mobile-kit.md says who owns what).
    Loaded after src/system.css and src/mobile/shell.css, so a rule here wins over the old ones without
-   !important. As a screen is redone, move its old phone rules here and delete them where they were.
-   Phones: @media (max-width: 767px). Narrow: (max-width: 599px). Panes: @container on an inner element.
+   !important. Phones: @media (max-width: 767px). Narrow: (max-width: 599px). Panes: @container on an inner element.
+   The phone layout copies Google Calendar (research/mobile/fix/calendar/spec.md).
    ========================================================================== */
 
 @media (max-width: 767px) {
-  /* The calendar fills the screen under the top bar: no card around it. */
+  /* ---------- The frame: one top bar (☰, the month ▾, search, today), the calendar under it ---------- */
+
   .cal-pane {
     border-radius: 0;
     border: 0;
     box-shadow: none;
   }
-  /* One header row: the month (it opens the mini month) and today's date (back to today). */
-  .cal-header {
-    flex-wrap: nowrap;
+  .mt-cal-title {
+    min-height: var(--tap);
+    max-width: 58vw;
+    margin: 0;
+    padding: 0 6px 0 4px;
     gap: 4px;
-    min-height: 52px;
-    padding: 4px 6px 4px 16px;
+    border-radius: 12px;
   }
-  .cal-title h1 {
-    font-size: 20px;
+  .mt-cal-text {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 21px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
   }
-  .cal-today {
-    margin-left: auto;
+  .mt-cal-title .cal-title-chev {
+    color: var(--text-3);
   }
-  .md-day {
+  .mt-cal-title:active {
+    background: var(--hover);
+  }
+  /* Today sits after search, at the right edge, and never changes colour (Google's). */
+  .mobile-top .mt-cal-today {
+    order: 1;
     width: var(--tap);
     height: var(--tap);
-    font-size: 15px;
+    color: var(--text-2);
+  }
+  .mobile-top .mt-cal-today span {
+    width: 24px;
+    height: 24px;
+    border-radius: 6px;
+    border-width: 1.75px;
+    border-top-width: 4px;
+    font-size: 11px;
   }
 
-  /* Day and 3 Day */
-  .tg {
-    --gutter: 52px;
+  /* ---------- The drawer (Calendar's and Meet's): AppDrawer ---------- */
+
+  .app-drawer {
+    padding-top: calc(env(safe-area-inset-top) + 4px);
   }
-  .tg-day {
-    gap: 6px;
-    padding: 6px 2px;
-    min-height: var(--tap);
-  }
-  .tg-dow {
-    font-size: 12px;
-  }
-  .tg-num {
-    min-width: 28px;
-    height: 28px;
-    font-size: 15px;
-  }
-  .tg-gutter,
-  .tg-hours span {
-    font-size: 12px;
-  }
-  .tg-allday > .tg-gutter {
-    padding: 6px 6px 0 0;
-  }
-  .block-event {
-    padding: 3px 6px;
-    font-size: 12px;
-  }
-  .block-event.is-task {
-    padding-left: 25px;
-  }
-  .pill-event,
-  .tg-allday-more {
-    min-height: 26px;
-    font-size: 12px;
-  }
-  .pill-event {
+  .ad-company {
     display: flex;
     align-items: center;
+    gap: 12px;
+    min-height: 56px;
+    margin: 0 12px 4px 0;
+    padding: 0 12px 0 16px;
+    border-radius: 0 28px 28px 0;
+    text-align: left;
+    color: var(--text);
+    transition: background 0.15s;
   }
-  .now-label {
+  .ad-company:active {
+    background: var(--hover);
+  }
+  .ad-company-name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 17px;
+    font-weight: 650;
+  }
+  .ad-company-chev {
+    flex: none;
+    color: var(--text-3);
+  }
+  .ad-row {
+    position: relative;
+    display: flex;
+    align-items: center;
+    min-height: 48px;
+  }
+  .ad-main {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    min-height: 48px;
+    margin-right: 12px;
+    padding: 4px 12px 4px 0;
+    border-radius: 0 24px 24px 0;
+    text-align: left;
+    color: var(--text);
+    transition:
+      background 0.15s,
+      color 0.15s;
+  }
+  .ad-row.has-end .ad-main {
+    margin-right: 0;
+  }
+  .ad-main:active {
+    background: var(--hover);
+  }
+  .ad-row.on .ad-main {
+    background: var(--accent-soft);
+    color: var(--accent-text, var(--accent));
+  }
+  .ad-icon {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 56px;
+    color: var(--text-2);
+  }
+  .ad-row.on .ad-icon {
+    color: inherit;
+  }
+  .ad-text {
+    flex: 1;
+    min-width: 0;
+    display: grid;
+    gap: 1px;
+  }
+  .ad-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 16px;
+    font-weight: 500;
+  }
+  .ad-sub {
+    font-size: 13px;
+    color: var(--text-3);
+  }
+  .ad-end {
+    flex: none;
+    width: var(--tap);
+    height: var(--tap);
+    margin-right: 4px;
+    color: var(--text-3);
+  }
+  .ad-check {
+    display: grid;
+    place-items: center;
+    width: 20px;
+    height: 20px;
+    border-radius: 5px;
+    border: 2px solid var(--c);
+    color: #fff;
+    transition: background 0.15s;
+  }
+  .ad-check.on {
+    background: var(--c);
+  }
+  .ad-heading {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 36px;
+    padding: 8px 16px 0 56px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-3);
+  }
+  .ad-heading svg {
+    flex: none;
+    margin-left: -24px;
+  }
+  .ad-divider {
+    flex: none;
+    height: 1px;
+    margin: 8px 0 8px 56px;
+    background: var(--border);
+  }
+  .ad-group {
+    display: flex;
+    flex-direction: column;
+  }
+  /* Calendar settings (from the drawer's Settings) */
+  .cal-settings-list {
+    padding: 8px 0;
+  }
+  .cal-settings-hol {
+    padding: 8px 0;
+  }
+  .cal-settings-hol .ad-heading {
+    padding-left: 16px;
+  }
+  .cal-settings-hol .hol-countries {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    width: 100%;
+    min-height: 56px;
+    padding: 0 16px;
+    font-size: 16px;
+    color: var(--text);
+  }
+  .cal-settings-hol .hol-countries svg {
+    width: 20px;
+    height: 20px;
+    color: var(--text-3);
+  }
+  .cal-settings-hol .hol-countries .sb-label {
+    display: grid;
+    gap: 2px;
+    font-size: 16px;
+    text-align: left;
+  }
+  .cal-settings-hol .hol-countries small {
+    font-size: 13px;
+    color: var(--text-3);
+  }
+
+  /* ---------- The + menu: Event, Task, Out of office as pills above the button ---------- */
+
+  .cal-create-menu {
+    position: fixed;
+    inset: 0;
+    z-index: var(--z-panel);
+    background: color-mix(in srgb, var(--surface) 86%, transparent);
+    animation: fade-in 0.18s ease-out backwards;
+  }
+  .ccm-list {
+    position: absolute;
+    right: 16px;
+    bottom: calc(var(--bar-space) + 16px + 56px + 12px);
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 8px;
+  }
+  .ccm-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 56px;
+    padding: 0 20px 0 16px;
+    border-radius: 28px;
+    background: color-mix(in srgb, var(--accent) 16%, var(--surface));
+    color: var(--accent-text, var(--accent));
+    box-shadow: 0 4px 14px -6px rgb(0 0 0 / 0.25);
+    font-size: 16px;
+    font-weight: 600;
+    animation: ccm-rise 0.18s cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
+    animation-delay: calc(var(--i) * 30ms);
+    transition: transform 0.12s;
+  }
+  .ccm-pill:active {
+    transform: scale(0.97);
+  }
+  /* The + turns into an X on a deeper fill, above the whitened page. */
+  .fab svg {
+    transition: transform 0.2s var(--ease, ease-out);
+  }
+  .cal-create-open .fab.on {
+    z-index: calc(var(--z-panel) + 1);
+    background: color-mix(in srgb, var(--accent) 82%, #000);
+  }
+  .cal-create-open .fab.on svg {
+    transform: rotate(45deg);
+  }
+
+  /* ---------- The mini month under the bar (month ▾): no heading, month chips under it ---------- */
+
+  .month-drop.bare {
+    grid-template-columns: minmax(0, 1fr);
+    background: var(--bg);
+  }
+  .month-drop.bare .fold-in,
+  .month-drop.bare .md-wrap {
+    min-width: 0;
+  }
+  .month-drop.bare .md-wrap {
+    width: 100%;
+    max-width: 420px;
+    padding: 0 8px 8px;
+  }
+  .md-swipe {
+    overflow: hidden;
+    touch-action: pan-y;
+  }
+  .month-drop.bare .md-grid {
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 0;
+    grid-auto-rows: 40px;
+    grid-template-rows: 24px;
+  }
+  .month-drop.bare .md-grid.slide-next {
+    animation: md-next 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  .month-drop.bare .md-grid.slide-prev {
+    animation: md-prev 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  .month-drop.bare .md-dow {
+    display: grid;
+    place-items: center;
+    padding: 0;
     font-size: 12px;
+    font-weight: 600;
+    color: var(--text-3);
+  }
+  .month-drop.bare .md-day {
+    display: grid;
+    place-items: center;
+    width: 100%;
+    height: 40px;
+    border-radius: 0;
+    background: none;
+    font-size: 15px;
+    font-weight: 500;
+  }
+  .month-drop.bare .md-day > span {
+    display: grid;
+    place-items: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    transition:
+      background 0.15s,
+      color 0.15s;
+  }
+  .month-drop.bare .md-day:active > span {
+    background: var(--hover);
+  }
+  .month-drop.bare .md-day.today {
+    color: var(--accent-text, var(--accent));
+    font-weight: 600;
+  }
+  .month-drop.bare .md-day.today > span {
+    background: var(--accent-soft);
+  }
+  .month-drop.bare .md-day.picked {
+    color: #fff;
+    background: none;
+  }
+  .month-drop.bare .md-day.picked > span {
+    background: var(--accent);
+  }
+  .month-drop.bare .md-day.busy::after {
+    bottom: 1px;
+  }
+  .month-drop.bare .md-day.picked.busy::after {
+    background: var(--text-3);
+  }
+  .md-chips {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 48px;
+    margin: 0 -8px;
+    padding: 0 16px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .md-chips::-webkit-scrollbar {
+    display: none;
+  }
+  .md-chip {
+    flex: none;
+    display: grid;
+    place-items: center;
+    height: 32px;
+    padding: 0 14px;
+    border-radius: 16px;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-2);
+    transition:
+      background 0.15s,
+      color 0.15s;
+  }
+  .md-chip.on {
+    background: var(--accent-soft);
+    color: var(--accent-text, var(--accent));
+  }
+  .md-chip.year {
+    padding: 0 4px;
+    font-weight: 600;
+    color: var(--text-3);
   }
 
-  /* Lists keep room under the floating create button on tiny phones. */
-  .sch,
-  .mg-list {
-    padding-bottom: calc(24px + var(--fab-space, 0px));
-  }
-  .sch-month {
-    padding-left: 18px;
-  }
+  /* ---------- Full-screen pages (the editor, event details): the whole screen, X at the top ---------- */
 
-  /* Event details as a sheet: Yes / Maybe / No pinned at the bottom. */
-  .ev-sheet .sheet-foot {
-    padding: 10px 12px 12px;
+  .sheet.ev-page {
+    height: 100dvh;
+    max-height: 100dvh;
+    border-radius: 0;
+    padding-top: env(safe-area-inset-top);
   }
-  .ev-rsvp-btn {
-    min-height: var(--tap);
+  .kb-open .sheet.ev-page {
+    height: calc(100dvh - var(--kb, 0px));
+  }
+  .ev-page > .sheet-grab {
+    display: none;
+  }
+  .ev-page > .sheet-head {
+    min-height: 56px;
+    padding: 4px 12px 4px 4px;
+    gap: 4px;
+  }
+  .ev-page > .sheet-body {
+    padding: 0 0 calc(24px + env(safe-area-inset-bottom));
+  }
+  .ev-page-x {
+    width: var(--tap);
+    height: var(--tap);
+    color: var(--text-2);
+  }
+  .ev-page-save,
+  .qc-save {
+    min-height: 36px;
+    padding: 0 20px;
+    border-radius: 18px;
     font-size: 15px;
   }
-  .ev-sheet .ev-row {
-    min-height: 40px;
+
+  /* ---------- The editor's rows: one fixed list, an icon column of 56 px ---------- */
+
+  .ev-rows {
+    display: flex;
+    flex-direction: column;
   }
-  .ev-task-btns .ghost-btn,
-  .ev-task-btns .primary-btn,
-  .ev-thread {
-    min-height: var(--tap);
+  .er-row {
+    display: flex;
+    align-items: center;
+    min-height: 52px;
+    padding-right: 16px;
+  }
+  .er-row.top {
+    align-items: flex-start;
+  }
+  .er-icon {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 56px;
+    min-height: 52px;
+    color: var(--text-3);
+  }
+  .er-body {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    min-height: 52px;
+  }
+  .er-group {
+    border-top: 1px solid var(--border);
+    padding: 4px 0;
+  }
+  input.er-title {
+    width: 100%;
+    padding: 8px 0;
+    border: 0;
+    background: none;
+    color: var(--text);
+    font: inherit;
+    font-size: 24px !important; /* above the shell's 16 px floor for fields */
+    font-weight: 500;
+    outline: 0;
+  }
+  input.er-title::placeholder {
+    color: var(--text-3);
+  }
+  .er-title-row {
+    min-height: 64px;
+  }
+  .er-kinds-row {
+    min-height: 48px;
+    padding-bottom: 8px;
+  }
+  .er-kinds,
+  .er-cals {
+    display: flex;
+    gap: 8px;
+    min-width: 0;
+  }
+  .er-cals {
+    margin-right: -16px;
+    padding: 8px 16px 8px 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .er-cals::-webkit-scrollbar {
+    display: none;
+  }
+  .er-chip {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 36px;
+    padding: 0 14px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text);
+    transition:
+      background 0.15s,
+      border-color 0.15s,
+      color 0.15s;
+  }
+  .er-kinds .er-chip {
+    min-height: 32px;
+  }
+  .er-chip.on {
+    background: var(--accent-soft);
+    border-color: transparent;
+    color: var(--accent-text, var(--accent));
+  }
+  .er-chip .dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+  }
+  .er-line {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    width: 100%;
+    min-height: 52px;
+    text-align: left;
+    font-size: 16px;
+    color: var(--text);
+  }
+  .er-line:disabled {
+    opacity: 1;
+  }
+  .er-line:disabled .switch {
+    opacity: 0.6;
+  }
+  .er-value.er-empty {
+    color: var(--text-3);
+  }
+  .er-invite {
+    min-height: 48px;
+    font-size: 15px;
+    color: var(--text-2);
+  }
+  .er-when {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    min-height: 52px;
+  }
+  .sel.er-pick,
+  .sel.er-sel {
+    min-height: 44px;
+    padding: 0;
+    border: 0;
+    background: none;
+    box-shadow: none;
+    font-size: 16px;
+    color: var(--text);
+  }
+  .sel.er-pick > svg,
+  .sel.er-sel > .sel-chev {
+    display: none;
+  }
+  .sel.er-sel {
+    width: 100%;
+    justify-content: flex-start;
+  }
+  .sel.er-sel.er-empty {
+    color: var(--text-3);
+  }
+  .sel.er-time {
+    font-variant-numeric: tabular-nums;
+  }
+  .er-date-text {
+    font-size: 16px;
+    color: var(--text-3);
+  }
+  .er-row.bad .sel.er-time,
+  .er-error {
+    color: var(--danger);
+  }
+  .er-error {
+    margin-top: -8px;
+    padding-bottom: 8px;
+    font-size: 13px;
+  }
+  .er-field {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .er-input {
+    flex: 1;
+    width: 100%;
+    min-width: 0;
+    min-height: 44px;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--text);
+    font: inherit;
+    font-size: 16px;
+    outline: 0;
+  }
+  .er-input::placeholder {
+    color: var(--text-3);
+  }
+  textarea.er-notes {
+    min-height: 52px;
+    padding: 14px 0;
+    resize: none;
+    line-height: 1.45;
+    overflow: hidden;
+  }
+  .er-clear {
+    flex: none;
+    width: var(--tap);
+    height: var(--tap);
+    margin-right: -12px;
+    color: var(--text-3);
+  }
+  .guest-rows {
+    display: flex;
+    flex-direction: column;
+  }
+  .guest-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-height: 48px;
+    animation: fade 0.18s ease-out backwards;
+  }
+  .guest-row-name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 16px;
+  }
+  .guest-row .icon-btn {
+    width: var(--tap);
+    height: var(--tap);
+    margin-right: -12px;
+    color: var(--text-3);
   }
 
-  /* An event's menu and which dates a change is for: the last toast steps aside so it never covers a choice. */
+  /* ---------- Quick create (a tap on an empty slot): X and Save, the title, when, guests ---------- */
+
+  .quick-sheet {
+    max-height: 46dvh;
+  }
+  .kb-open .quick-sheet {
+    max-height: calc(100dvh - var(--kb, 0px) - 160px);
+  }
+  .quick-sheet > .sheet-head {
+    min-height: 52px;
+    padding: 0 12px 0 4px;
+  }
+  .qc-x {
+    width: var(--tap);
+    height: var(--tap);
+    color: var(--text-2);
+  }
+  .quick-body {
+    padding: 0 0 8px;
+  }
+  input.qc-title {
+    width: 100%;
+    padding: 4px 16px;
+    border: 0;
+    background: none;
+    color: var(--text);
+    font: inherit;
+    font-size: 22px !important; /* above the shell's 16 px floor for fields */
+    font-weight: 500;
+    outline: 0;
+  }
+  input.qc-title::placeholder {
+    color: var(--text-3);
+  }
+  .qc-when {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    min-height: 40px;
+    padding: 0 16px;
+    text-align: left;
+    font-size: 15px;
+    color: var(--text-2);
+  }
+  .qc-guests {
+    min-height: 48px;
+  }
+  .qc-guests .er-icon,
+  .qc-guests .er-body,
+  .qc-guests .er-line {
+    min-height: 48px;
+  }
+
+  /* ---------- Repeat: radio rows in a sheet; Custom on its own screen ---------- */
+
+  .rp-list {
+    display: flex;
+    flex-direction: column;
+    padding: 0 0 8px;
+  }
+  .rp-opt {
+    display: flex;
+    align-items: center;
+    min-height: 52px;
+    padding-right: 16px;
+    text-align: left;
+    font-size: 16px;
+    color: var(--text);
+  }
+  .rp-opt:active {
+    background: var(--hover);
+  }
+  .rp-radio {
+    flex: none;
+    position: relative;
+    width: 20px;
+    height: 20px;
+    margin: 0 16px 0 20px;
+    border-radius: 50%;
+    border: 2px solid var(--text-3);
+    transition: border-color 0.15s;
+  }
+  .rp-radio::after {
+    content: '';
+    position: absolute;
+    inset: 3px;
+    border-radius: 50%;
+    background: var(--accent);
+    transform: scale(0);
+    transition: transform 0.15s var(--ease, ease-out);
+  }
+  .rp-opt.on .rp-radio {
+    border-color: var(--accent);
+  }
+  .rp-opt.on .rp-radio::after {
+    transform: scale(1);
+  }
+  .rp-opt-text {
+    display: grid;
+    gap: 2px;
+  }
+  .rp-opt-text small {
+    font-size: 13px;
+    color: var(--text-3);
+  }
+  .rp-custom-page {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 8px 0 24px;
+  }
+  .rp-c-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 56px;
+    padding: 0 16px;
+  }
+  .rp-c-label,
+  .rp-c-head {
+    font-size: 16px;
+    color: var(--text);
+  }
+  .rp-c-head {
+    padding: 8px 16px 4px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-3);
+  }
+  .rp-c-block {
+    border-top: 1px solid var(--border);
+    padding: 4px 0;
+  }
+  .rp-c-block > .sel {
+    margin: 8px 16px;
+  }
+  .rp-custom-page .rp-days {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 2px;
+    padding: 4px 12px 8px;
+  }
+  .rp-custom-page .rp-day {
+    justify-self: center;
+    width: min(100%, 40px);
+    height: auto;
+    aspect-ratio: 1;
+    font-size: 14px;
+  }
+  .rp-end {
+    flex-wrap: wrap;
+    padding: 0;
+  }
+  .rp-end-pick {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    min-height: 52px;
+    text-align: left;
+    font-size: 16px;
+    color: var(--text);
+  }
+  .rp-end > .sel,
+  .rp-end > .rp-count {
+    margin: 0 16px 8px 56px;
+  }
+  .rp-count {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .rp-step .icon-btn {
+    width: var(--tap);
+    height: var(--tap);
+  }
+  .rp-step input {
+    width: 48px;
+    min-height: 40px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--surface-2);
+    color: var(--text);
+    text-align: center;
+    font: inherit;
+  }
+  .rp-custom-sheet .sheet-title {
+    flex: none;
+    font-size: 18px;
+  }
+
+  /* A question over an event (Discard?, which dates): the last toast steps aside so it never covers a choice. */
   html:has(.scope-sheet:not(.is-leaving)) .toast,
   html:has(.cal-menu-sheet:not(.is-leaving)) .toast {
     opacity: 0;
@@ -109,102 +855,838 @@
     transition: opacity 0.15s ease-in;
   }
 
-  /* The editor and quick create: fields the size of a thumb. */
-  .field-row > .date-sel,
-  .ev-times {
-    flex: 1 1 100%;
-  }
-  .ev-times > .time-sel {
-    flex: 1;
-    min-height: var(--tap);
-  }
-  .ev-form input.ev-form-title {
-    font-size: 18px;
-  }
-  .ev-kind > button,
-  .ev-token,
-  .sel.ev-token,
-  .guest-add {
-    min-height: 40px;
-  }
-  .ev-invite {
-    min-height: var(--tap);
-    font-size: 15px;
-  }
-  /* Repeat: weekday chips and the steppers at thumb size; the days share the row. */
-  .rp-more {
-    padding-left: 0;
-  }
-  .rp-days {
-    display: grid;
-    grid-template-columns: repeat(7, minmax(0, 1fr));
-    gap: 2px;
-    max-width: 336px;
-  }
-  /* Thumb-sized circles; on the narrowest phones they share the width (still one row). */
-  .rp-day {
-    justify-self: center;
-    width: min(100%, var(--tap));
-    height: auto;
-    aspect-ratio: 1;
-    font-size: 14px;
-  }
-  .rp-step .icon-btn {
-    width: var(--tap);
-    height: var(--tap);
-  }
-  .rp-label {
-    font-size: 14px;
-  }
-  .guest-chip {
-    min-height: 36px;
-  }
-  .guest-chip button {
-    width: 32px;
-    height: 32px;
-  }
-  .guest-chip button::after {
-    content: '';
-    position: absolute;
-    inset: -6px;
-  }
-  .quick-sheet .sheet-foot .primary-btn,
-  .quick-sheet .sheet-foot .ghost-btn {
-    min-height: var(--tap);
-    min-width: 96px;
-    justify-content: center;
-  }
+  /* Schedule a task (from Tasks): chips the size of a thumb. */
   .cal-chip {
     min-height: var(--tap);
     padding: 0 16px;
     font-size: 15px;
   }
-
-  /* The calendars' panel in its sheet: rows like the rest of the phone's lists. */
-  .cal-sheet .nav-item,
-  .cal-sheet .plan-task {
-    min-height: 48px;
-    font-size: 15px;
-  }
-  .cal-sheet .nav-more,
-  .cal-sheet .pt-add {
-    min-width: var(--tap);
-    min-height: var(--tap);
-    opacity: 1;
-  }
-  .cal-sheet .nav-heading {
-    padding-left: 12px;
-    font-size: 12px;
-  }
-
 }
 
-/* Narrow phones: the 3-day columns give the gutter a little less room. */
-@media (max-width: 359px) {
-  .tg {
-    --gutter: 44px;
+@keyframes ccm-rise {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
   }
-  .cal-header {
-    padding-left: 12px;
+}
+@keyframes md-next {
+  from {
+    opacity: 0.4;
+    transform: translateX(24px);
+  }
+}
+@keyframes md-prev {
+  from {
+    opacity: 0.4;
+    transform: translateX(-24px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ccm-pill,
+  .guest-row,
+  .month-drop.bare .md-grid.slide-next,
+  .month-drop.bare .md-grid.slide-prev {
+    animation: none;
+  }
+  .fab svg,
+  .rp-radio::after {
+    transition: none;
+  }
+}
+
+/* ---------- Schedule (Google's): a 56 px date column, solid cards with white text ---------- */
+
+@media (max-width: 767px) {
+  .is-phone .sch {
+    padding-bottom: calc(24px + var(--fab-space, 0px));
+  }
+  .is-phone .sch-month {
+    display: flex;
+    align-items: center;
+    min-height: 56px;
+    padding: 8px 16px 0;
+    font-size: 22px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    background: var(--bg);
+  }
+  .is-phone .sch-week {
+    display: flex;
+    align-items: center;
+    min-height: 28px;
+    padding: 0 16px 0 60px;
+    font-size: 13px;
+    color: var(--text-3);
+  }
+  .is-phone .sch-day {
+    grid-template-columns: 56px minmax(0, 1fr);
+    gap: 4px;
+    padding: 4px 12px 16px 0;
+  }
+  .is-phone .sch-date {
+    gap: 0;
+    padding-top: 2px;
+  }
+  .is-phone .sch-dow {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-3);
+  }
+  .is-phone .sch-num {
+    width: 36px;
+    height: 36px;
+    font-size: 20px;
+    font-weight: 500;
+    color: var(--text);
+  }
+  .is-phone .sch-day.today .sch-dow {
+    color: var(--accent-text, var(--accent));
+  }
+  .is-phone .sch-day.today .sch-num {
+    background: var(--accent);
+    color: #fff;
+  }
+  .is-phone .sch-items {
+    gap: 6px;
+  }
+  .is-phone .sch-free {
+    min-height: 36px;
+    padding: 0 4px;
+    font-size: 14px;
+  }
+  .is-phone .sch-now {
+    margin: 1px 0 1px -4px;
+    background: var(--danger);
+  }
+  .is-phone .sch-now span {
+    left: -4px;
+    top: -3px;
+    width: 8px;
+    height: 8px;
+    background: var(--danger);
+  }
+  .is-phone .sch-end {
+    padding-left: 60px;
+  }
+  /* A task due that day: a card in the task colour with its check circle. */
+  .is-phone .sch-task {
+    gap: 0;
+    min-height: 32px;
+    padding: 0 4px 0 0;
+    border-radius: 8px;
+    background: var(--accent);
+    color: #fff;
+  }
+  .is-phone .sch-task .ev-check {
+    width: 40px;
+    height: 32px;
+    border: 0;
+    border-radius: 8px 0 0 8px;
+    background: none;
+    color: #fff;
+  }
+  .is-phone .sch-task .ev-check::after {
+    inset: -6px 0;
+  }
+  .is-phone .sch-task-title {
+    min-height: 32px;
+    padding: 0 8px 0 0;
+    font-size: 14px;
+    font-weight: 600;
+    color: #fff;
+  }
+  .is-phone .sch-task.done {
+    opacity: 0.5;
+  }
+  .is-phone .sch-task.done .sch-task-title {
+    color: #fff;
+  }
+
+  /* The card: the calendar's colour, solid, white text (dark text on light colours). */
+  .ev-card.solid {
+    gap: 8px;
+    min-height: 48px;
+    padding: 6px 12px;
+    border-radius: 8px;
+    background: var(--c);
+    box-shadow: none;
+    color: var(--on, #fff);
+  }
+  .ev-card.solid.three {
+    min-height: 64px;
+  }
+  .ev-card.solid:active {
+    filter: brightness(0.94);
+  }
+  .ev-card.solid .ev-card-text {
+    gap: 0;
+  }
+  .ev-card.solid .ev-card-title {
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 18px;
+    -webkit-line-clamp: 1;
+  }
+  .ev-card.solid .ev-card-meta,
+  .ev-card.solid .ev-card-place {
+    font-size: 13px;
+    line-height: 18px;
+    color: inherit;
+    opacity: 0.9;
+  }
+  .ev-card-place {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .ev-card.solid .ev-card-bot {
+    color: inherit;
+  }
+  .ev-card.solid .ev-repeat {
+    margin-left: 6px;
+  }
+  .ev-card.solid.past {
+    opacity: 0.6;
+  }
+  .ev-card.solid.picked {
+    box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--c);
+  }
+  /* Not answered yet: an outline in the colour on the page, the words in the colour (Google's unanswered invite). */
+  .ev-card.solid.pending {
+    background: var(--surface);
+    outline: 0;
+    box-shadow: inset 0 0 0 2px var(--c);
+    color: color-mix(in srgb, var(--c) 80%, var(--text));
+  }
+  .ev-card.solid.maybe {
+    background: repeating-linear-gradient(135deg, var(--c) 0 7px, color-mix(in srgb, var(--c) 78%, var(--surface)) 7px 14px);
+  }
+  .ev-card.solid .ev-check {
+    width: 18px;
+    height: 18px;
+    border-color: currentColor;
+  }
+  .ev-done-mark {
+    display: grid;
+    flex: none;
+  }
+  /* Join, on the event about to start (replaces the Up next strip). */
+  .ev-join-pill {
+    flex: none;
+    display: inline-grid;
+    place-items: center;
+    height: 28px;
+    padding: 0 14px;
+    border-radius: 14px;
+    background: var(--surface);
+    color: var(--c);
+    font-size: 13px;
+    font-weight: 700;
+    text-decoration: none;
+  }
+  .ev-join-pill.sm {
+    position: absolute;
+    right: 4px;
+    top: 4px;
+    height: 24px;
+    padding: 0 10px;
+    font-size: 12px;
+  }
+  .allday-list {
+    padding: 0 16px 8px;
+  }
+
+  /* ---------- Day, 3 days, Week (Google's grid): 52 px hours, solid blocks, no tint on today ---------- */
+
+  .tg-phone {
+    --gutter: 56px;
+  }
+  .tg-phone .tg-head,
+  .tg-phone .tg-allday {
+    border-bottom-color: var(--border);
+  }
+  .tg-phone .tg-day {
+    flex-direction: column;
+    gap: 2px;
+    min-height: 52px;
+    padding: 4px 0;
+  }
+  .tg-phone .tg-dow {
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    color: var(--text-3);
+  }
+  .tg-phone .tg-num {
+    min-width: 32px;
+    height: 32px;
+    font-size: 20px;
+    font-weight: 500;
+  }
+  .tg-phone .tg-day.today .tg-dow {
+    color: var(--accent-text, var(--accent));
+  }
+  .tg-week .tg-dow {
+    font-size: 0;
+  }
+  .tg-week .tg-dow::first-letter {
+    font-size: 12px;
+  }
+  .tg-week .tg-num {
+    min-width: 28px;
+    height: 28px;
+    font-size: 16px;
+  }
+  /* Day: the date in the gutter, the all-day events beside it. */
+  .tg-band {
+    display: flex;
+    align-items: stretch;
+    min-height: 56px;
+    border-bottom: 1px solid var(--border);
+  }
+  .tg-band .tg-day {
+    flex: none;
+    width: var(--gutter);
+  }
+  .tg-band-chips {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 2px;
+    padding: 4px 8px 4px 0;
+  }
+  .tg-phone .pill-event {
+    display: flex;
+    align-items: center;
+    min-height: 24px;
+    padding: 0 8px;
+    border-radius: 4px;
+    background: var(--c);
+    color: var(--on, #fff);
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .tg-phone .pill-event.pending {
+    background: var(--surface);
+    outline: 0;
+    box-shadow: inset 0 0 0 2px var(--c);
+    color: color-mix(in srgb, var(--c) 80%, var(--text));
+  }
+  .tg-phone .tg-allday-more {
+    min-height: 24px;
+    font-size: 13px;
+  }
+  .tg-phone .tg-allday-cell {
+    padding: 2px 1px;
+  }
+  .tg-phone .tg-gutter,
+  .tg-phone .tg-hours span {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-3);
+  }
+  .tg-phone .tg-hours span {
+    right: 8px;
+  }
+  .tg-phone .tg-hours span.near-now {
+    opacity: 1;
+  }
+  .tg-phone .tg-col.today {
+    background-color: transparent;
+  }
+  .tg-phone .block-event {
+    padding: 3px 6px;
+    border-radius: 4px;
+    border-left: 0;
+    background: var(--c);
+    color: var(--on, #fff);
+    box-shadow: 0 0 0 1px var(--surface);
+    font-size: 12px;
+  }
+  .tg-phone .block-event .be-title {
+    font-weight: 600;
+  }
+  .tg-phone .block-event .be-time {
+    color: inherit;
+    opacity: 0.9;
+  }
+  .tg-phone .block-event.past {
+    opacity: 0.6;
+  }
+  .tg-phone .block-event.picked {
+    box-shadow: 0 0 0 1px var(--surface), 0 0 0 3px var(--c);
+  }
+  .tg-phone .block-event.pending {
+    background: var(--surface);
+    border: 2px solid var(--c);
+    color: color-mix(in srgb, var(--c) 80%, var(--text));
+  }
+  .tg-phone .block-event.maybe {
+    background: repeating-linear-gradient(135deg, var(--c) 0 7px, color-mix(in srgb, var(--c) 78%, var(--surface)) 7px 14px);
+  }
+  .tg-phone .block-event.is-task {
+    padding-left: 24px;
+  }
+  .tg-phone .block-event .ev-check.sm {
+    border-color: currentColor;
+  }
+  .tg-phone .block-event .ev-check.on {
+    background: var(--surface);
+    color: var(--c);
+  }
+  .tg-week .block-event {
+    padding: 2px 3px;
+    font-size: 11px;
+  }
+  .tg-week .block-event .be-title {
+    text-overflow: clip;
+  }
+  .tg-week .block-event .be-time {
+    display: none;
+  }
+  .tg-phone .now-line {
+    background: var(--danger);
+  }
+  .tg-phone .now-line span {
+    background: var(--danger);
+  }
+  /* The new event's block: handles at the top left and the bottom right (Google's). */
+  .tg-phone .ghost-block {
+    left: 1px;
+    right: 1px;
+    border-radius: 4px;
+    background: color-mix(in srgb, var(--accent) 10%, transparent);
+    box-shadow: none;
+  }
+  .tg-phone .gh-handle {
+    width: 24px;
+    height: 24px;
+  }
+  .tg-phone .gh-handle::after {
+    width: 10px;
+    height: 10px;
+    margin: -5px 0 0 -5px;
+  }
+  .tg-phone .gh-handle.top {
+    top: -12px;
+    right: auto;
+    left: 4px;
+  }
+  .tg-phone .gh-handle.bottom {
+    bottom: -12px;
+    left: auto;
+    right: 4px;
+  }
+
+  /* ---------- Month (Google's): six weeks fill the screen, the events as small solid chips ---------- */
+
+  .mg-chips {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+  }
+  .mg-chips .mg-head {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    flex: none;
+    height: 24px;
+    border-bottom: 1px solid var(--border);
+  }
+  .mg-chips .mg-head span {
+    display: grid;
+    place-items: center;
+    padding: 0;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-3);
+  }
+  .mg-chips .mg-body {
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    grid-template-rows: repeat(6, minmax(0, 1fr));
+    padding: 0;
+    overflow: hidden;
+    touch-action: pan-y;
+    animation: fade 0.18s ease-out;
+  }
+  .mg-chips .mg-cell {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
+    gap: 1px;
+    min-width: 0;
+    min-height: 0;
+    padding: 4px 0 0;
+    overflow: hidden;
+    border: 0;
+    border-bottom: 1px solid var(--border);
+    border-left: 1px solid var(--border);
+    background: none;
+    cursor: pointer;
+    text-align: center;
+  }
+  .mg-chips .mg-cell:nth-child(7n + 1) {
+    border-left: 0;
+  }
+  .mg-chips .mg-cell.out {
+    background: var(--surface-2);
+  }
+  .mg-chips .mg-cell:active {
+    background: var(--hover);
+  }
+  .mg-chips .mg-num {
+    display: grid;
+    place-items: center;
+    align-self: center;
+    width: 22px;
+    min-width: 0;
+    height: 22px;
+    margin-bottom: 2px;
+    padding: 0;
+    border-radius: 50%;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text);
+  }
+  .mg-chips .mg-cell.out .mg-num {
+    color: var(--text-3);
+  }
+  .mg-chips .mg-cell.today .mg-num {
+    background: var(--accent);
+    color: #fff;
+  }
+  .mg-chip {
+    flex: none;
+    display: block;
+    height: 16px;
+    margin: 0 2px;
+    padding: 0 3px;
+    border-radius: 3px;
+    background: var(--c);
+    color: var(--on, #fff);
+    font-size: 10.5px;
+    font-weight: 600;
+    line-height: 16px;
+    text-align: left;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: clip;
+  }
+  .mg-chip.pending {
+    background: var(--surface);
+    box-shadow: inset 0 0 0 1.5px var(--c);
+    color: color-mix(in srgb, var(--c) 80%, var(--text));
+  }
+  .mg-more-n {
+    flex: none;
+    padding: 0 4px;
+    font-size: 10.5px;
+    font-weight: 600;
+    line-height: 16px;
+    color: var(--text-2);
+    text-align: left;
+  }
+}
+
+/* Dark: the colours a little deeper behind white text, so it stays readable (Google's dark cards). */
+@media (max-width: 767px) {
+  :root[data-theme='dark'] .ev-card.solid:not(.pending):not(.maybe),
+  :root[data-theme='dark'] .tg-phone .block-event:not(.pending):not(.maybe),
+  :root[data-theme='dark'] .tg-phone .pill-event:not(.pending),
+  :root[data-theme='dark'] .mg-chip:not(.pending) {
+    background-color: color-mix(in srgb, var(--c) 80%, #000);
+  }
+}
+@media (max-width: 359px) {
+  .tg-phone {
+    --gutter: 48px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mg-chips .mg-body {
+    animation: none;
+  }
+}
+
+/* ---------- Event details (Google's page): X, pencil and ⋮; rows with a 56 px icon column ---------- */
+
+@media (max-width: 767px) {
+  .ev-page-act {
+    width: var(--tap);
+    height: var(--tap);
+    color: var(--text-2);
+  }
+  .ev-dp {
+    display: flex;
+    flex-direction: column;
+    padding-bottom: 16px;
+  }
+  .ev-dp-title {
+    display: flex;
+    align-items: flex-start;
+    padding: 8px 16px 12px 0;
+  }
+  .ev-dp-swatch {
+    flex: none;
+    width: 16px;
+    height: 16px;
+    margin: 8px 20px 0 20px;
+    border-radius: 4px;
+    background: var(--c, var(--accent));
+  }
+  .ev-dp-title > div {
+    min-width: 0;
+  }
+  .ev-dp-title h2 {
+    margin: 0 0 4px;
+    font-size: 22px;
+    font-weight: 500;
+    line-height: 1.3;
+    overflow-wrap: anywhere;
+  }
+  .ev-dp-title p {
+    margin: 0;
+    font-size: 15px;
+    line-height: 22px;
+    color: var(--text-2);
+  }
+  .dr-row {
+    display: flex;
+    align-items: center;
+    min-height: 48px;
+  }
+  .dr-row.top {
+    align-items: flex-start;
+  }
+  .dr-main {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    min-height: 48px;
+    padding: 4px 16px 4px 0;
+    text-align: left;
+    color: var(--text);
+    text-decoration: none;
+    font-size: 16px;
+    transition: background 0.15s;
+  }
+  .dr-row.top .dr-main {
+    align-items: flex-start;
+  }
+  button.dr-main:active,
+  a.dr-main:active {
+    background: var(--hover);
+  }
+  .dr-icon {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 56px;
+    min-height: 40px;
+    color: var(--text-3);
+  }
+  .dr-text {
+    flex: 1;
+    min-width: 0;
+    display: grid;
+    gap: 2px;
+    line-height: 1.35;
+  }
+  .dr-row.top .dr-text {
+    padding-top: 9px;
+  }
+  .dr-text small {
+    font-size: 13px;
+    color: var(--text-3);
+  }
+  .dr-join .dr-icon {
+    color: var(--accent-text, var(--accent));
+  }
+  .dr-join strong {
+    font-weight: 600;
+    color: var(--accent-text, var(--accent));
+  }
+  .dr-join small {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .dr-end {
+    flex: none;
+    width: var(--tap);
+    height: var(--tap);
+    margin-right: 8px;
+    color: var(--text-3);
+  }
+  .dr-switch {
+    flex: none;
+    margin-right: 16px;
+  }
+  .dr-row:has(.dr-switch) .dr-main {
+    padding-right: 0;
+  }
+  .dr-guests {
+    display: flex;
+    flex-direction: column;
+  }
+  .dr-guest {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-height: 52px;
+    padding: 0 16px 0 56px;
+  }
+  .dr-guest-av {
+    position: relative;
+    display: grid;
+  }
+  .dr-badge {
+    position: absolute;
+    right: -3px;
+    bottom: -3px;
+    display: grid;
+    place-items: center;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    box-shadow: 0 0 0 2px var(--surface);
+    color: #fff;
+    background: var(--text-3);
+  }
+  .dr-badge.yes {
+    background: var(--ok);
+  }
+  .dr-badge.no {
+    background: var(--danger);
+  }
+  .dr-guest-text {
+    min-width: 0;
+    display: grid;
+    font-size: 16px;
+  }
+  .dr-guest-text span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .dr-guest-text small {
+    font-size: 13px;
+    color: var(--text-3);
+  }
+  .dr-notes {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+  .dr-muted {
+    font-size: 15px;
+    color: var(--text-2);
+  }
+  .dr-cal-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+  }
+  .dr-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 0 16px 8px 56px;
+  }
+  .dr-chip {
+    min-height: 36px;
+    padding: 0 14px;
+    border-radius: 18px;
+    background: var(--accent-soft);
+    color: var(--accent-text, var(--accent));
+    font-size: 14px;
+    font-weight: 600;
+  }
+
+  /* An invite: Yes, No, Maybe as pills in a bar at the bottom (Google's). */
+  .ev-detail-page > .sheet-foot {
+    min-height: 60px;
+    padding: 8px 16px calc(8px + env(safe-area-inset-bottom));
+    border-top: 1px solid var(--border);
+    background: var(--surface);
+  }
+  .ev-rsvp.phone {
+    gap: 8px;
+  }
+  .ev-rsvp.phone .ev-rsvp-q {
+    flex: 1;
+    margin: 0;
+    font-size: 15px;
+    font-weight: 500;
+    color: var(--text-2);
+  }
+  .ev-rsvp.phone .ev-rsvp-btn {
+    flex: none;
+    min-height: 36px;
+    padding: 0 16px;
+    border-radius: 18px;
+    font-size: 15px;
+    font-weight: 600;
+  }
+  .ev-rsvp.phone .ev-rsvp-btn.on {
+    border-color: transparent;
+  }
+
+  /* Which dates a change is for (Google's look): plain rows, a radio at the right, Cancel at the top. */
+  .scope-sheet .sheet-title {
+    flex: 1;
+    font-size: 18px;
+    font-weight: 600;
+  }
+  .scope-cancel {
+    min-height: var(--tap);
+    padding: 0 4px;
+    font-size: 16px;
+  }
+  .scope-list {
+    display: flex;
+    flex-direction: column;
+    padding-bottom: 8px;
+  }
+  .scope-opt {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-height: 56px;
+    padding: 4px 4px 4px 20px;
+    text-align: left;
+  }
+  .scope-opt:active {
+    background: var(--hover);
+  }
+  .scope-text {
+    flex: 1;
+    min-width: 0;
+    display: grid;
+    gap: 2px;
+    font-size: 16px;
+    color: var(--text);
+  }
+  .scope-text small {
+    font-size: 13px;
+    color: var(--text-3);
+  }
+  .scope-opt.on .rp-radio {
+    border-color: var(--accent);
+  }
+  .scope-opt.on .rp-radio::after {
+    transform: scale(1);
+  }
+}
+
+@media (max-width: 767px) {
+  .scope-opt .rp-radio {
+    margin: 0 16px 0 0;
   }
 }

@@ -1,16 +1,17 @@
-import { useRef } from 'react';
-import { Plus, Repeat } from 'lucide-react';
+import { useLayoutEffect, useRef, useState, type RefObject } from 'react';
+import { Repeat } from 'lucide-react';
 import type { CalEvent } from '../../types';
 import { eventsOn, fmtTime, monthGrid, sameDay, startOfDay } from '../../calendarUtils';
-import { EventCard, type CardKit } from './EventCard';
-import { isPending } from './calTools';
+import type { CardKit } from './EventCard';
+import { isPending, onColor } from './calTools';
 import { useSwipeNav } from './useSwipeNav';
 import { t, tn } from '../../i18n';
 import { fmtDate, fmtMonth, fmtWeekdayLong } from '../../i18n/format';
 
 /**
- * Month. On a wide screen: the grid with each day's first events. On a phone: a compact grid with a dot per event
- * (up to three) and the tapped day's events listed under it; swipe the grid for other months.
+ * Month. On a wide screen: the grid with each day's first events. On a phone: Google Calendar's grid, six weeks filling
+ * the screen with each day's events as small solid chips with their titles ("+N" when they don't fit); tap a day for
+ * that day, swipe for other months.
  */
 export function MonthView({
   cursor,
@@ -42,59 +43,7 @@ export function MonthView({
     return s;
   };
 
-  if (phone) {
-    const list = sorted(cursor);
-    const now = Date.now();
-    return (
-      <div className="mg mg-phone">
-        <div className="mg-top" ref={grid}>
-          <div className="mg-head" aria-hidden>
-            {cells.slice(0, 7).map((d) => (
-              <span key={d.getDay()}>{fmtDate(d, { weekday: 'narrow' })}</span>
-            ))}
-          </div>
-          <div className="mg-body" role="grid" aria-label={fmtMonth(cursor)}>
-            {cells.map((d) => {
-              const evs = sorted(d);
-              return (
-                <button
-                  key={d.toISOString()}
-                  type="button"
-                  className={`mg-cell ${d.getMonth() !== cursor.getMonth() ? 'out' : ''} ${sameDay(d, today) ? 'today' : ''} ${sameDay(d, cursor) ? 'picked' : ''}`}
-                  onClick={() => onCursor(d)}
-                  aria-label={evs.length ? tn(evs.length, '{day}, {n} event', '{day}, {n} events', { day: fmtWeekdayLong(d) }) : fmtWeekdayLong(d)}
-                  aria-pressed={sameDay(d, cursor)}
-                >
-                  <span className="mg-num">{d.getDate()}</span>
-                  <span className="mg-dots" aria-hidden>
-                    {evs.slice(0, 3).map((e) => (
-                      <i key={e.id} className={isPending(e) ? 'pending' : ''} style={{ ['--c' as string]: kit.color(e.calendarId) }} />
-                    ))}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-        <div className="mg-list" key={cursor.toDateString()}>
-          <div className="mg-list-head">
-            <h2>{fmtWeekdayLong(cursor)}</h2>
-            <button type="button" className="ghost-btn sm" onClick={() => onDay(cursor)}>
-              {t('Open day')}
-            </button>
-          </div>
-          {list.map((e) => (
-            <EventCard key={e.id} e={e} kit={kit} now={now} />
-          ))}
-          {!list.length && (
-            <button type="button" className="sch-free" onClick={() => onCreate(nine(cursor))}>
-              <Plus size={15} /> {t('Nothing planned. Add an event')}
-            </button>
-          )}
-        </div>
-      </div>
-    );
-  }
+  if (phone) return <PhoneMonth cursor={cursor} cells={cells} sorted={sorted} kit={kit} onDay={onDay} grid={grid} />;
 
   return (
     <div className="mg">
@@ -127,7 +76,7 @@ export function MonthView({
                     evt.stopPropagation();
                     kit.onSelect(e.id);
                   }}
-                  onContextMenu={(m) => (m.preventDefault(), m.stopPropagation(), kit.onMenu(e, m.clientX, m.clientY))}
+                  onContextMenu={(m) => kit.onMenu && (m.preventDefault(), m.stopPropagation(), kit.onMenu(e, m.clientX, m.clientY))}
                 >
                   {!e.allDay && <i />}
                   {!e.allDay && <span className="de-time">{fmtTime(e.start)}</span>}
@@ -147,6 +96,62 @@ export function MonthView({
                 </button>
               )}
             </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+const CHIP = 17; // a chip and its gap (px)
+
+/** Phones: the month as Google draws it. */
+function PhoneMonth({ cursor, cells, sorted, kit, onDay, grid }: { cursor: Date; cells: Date[]; sorted: (d: Date) => CalEvent[]; kit: CardKit; onDay: (d: Date) => void; grid: RefObject<HTMLDivElement | null> }) {
+  // How many chips fit in a day: the rows share the height between the bar and the tab bar.
+  const [fit, setFit] = useState(4);
+  useLayoutEffect(() => {
+    const el = grid.current;
+    if (!el) return;
+    const measure = () => setFit(Math.max(1, Math.floor((el.clientHeight / 6 - 22) / CHIP)));
+    measure();
+    if (typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [grid]);
+  const today = new Date();
+  return (
+    <div className="mg mg-chips">
+      <div className="mg-head" aria-hidden>
+        {cells.slice(0, 7).map((d) => (
+          <span key={d.getDay()}>{fmtDate(d, { weekday: 'narrow' })}</span>
+        ))}
+      </div>
+      <div className="mg-body" ref={grid} role="grid" aria-label={fmtMonth(cursor)} key={`${cursor.getFullYear()}-${cursor.getMonth()}`}>
+        {cells.map((d) => {
+          const evs = sorted(d);
+          // The last line says how many more when they don't all fit.
+          const shown = evs.length > fit ? evs.slice(0, fit - 1) : evs;
+          const more = evs.length - shown.length;
+          return (
+            <button
+              key={d.toISOString()}
+              type="button"
+              className={`mg-cell ${d.getMonth() !== cursor.getMonth() ? 'out' : ''} ${sameDay(d, today) ? 'today' : ''}`}
+              onClick={() => onDay(d)}
+              aria-label={evs.length ? tn(evs.length, '{day}, {n} event', '{day}, {n} events', { day: fmtWeekdayLong(d) }) : fmtWeekdayLong(d)}
+            >
+              <span className="mg-num">{d.getDate()}</span>
+              {shown.map((e) => {
+                const c = kit.color(e.calendarId);
+                return (
+                  <span key={e.id} className={`mg-chip${isPending(e) ? ' pending' : ''}`} style={{ ['--c' as string]: c, ['--on' as string]: onColor(c) }}>
+                    {e.title}
+                  </span>
+                );
+              })}
+              {more > 0 && <span className="mg-more-n">+{more}</span>}
+            </button>
           );
         })}
       </div>

@@ -1039,7 +1039,7 @@ a.ghost-btn {
   }
 }
 
-/* Today: a little calendar page with today's number; in the accent colour when today isn't on screen. */
+/* Today: a little calendar page with today's number (one colour always, as Google's). */
 .cal-today {
   flex: none;
   display: grid;
@@ -1067,9 +1067,6 @@ a.ghost-btn {
   line-height: 1;
   font-variant-numeric: tabular-nums;
   transition: border-color 0.2s;
-}
-.cal-today.away {
-  color: var(--accent);
 }
 
 /* The mini month under the title */
@@ -1605,102 +1602,6 @@ a.ghost-btn {
   left: 12px;
 }
 
-/* Month on a phone: dots, and the tapped day's list under the grid */
-.mg-phone .mg-top {
-  flex: none;
-  border-bottom: 1px solid var(--border);
-}
-.mg-phone .mg-head {
-  grid-template-columns: repeat(7, minmax(0, 1fr));
-  border-bottom: 0;
-}
-.mg-phone .mg-head span {
-  padding: 6px 0 2px;
-  font-size: 12px;
-  text-align: center;
-  text-transform: none;
-}
-.mg-phone .mg-body {
-  flex: none;
-  grid-auto-rows: 48px;
-  overflow: visible;
-  padding: 0 4px 6px;
-  touch-action: pan-y;
-}
-.mg-phone .mg-cell {
-  align-items: center;
-  justify-content: flex-start;
-  gap: 3px;
-  padding: 5px 0 0;
-  border: 0;
-  cursor: pointer;
-  background: none;
-}
-.mg-phone .mg-cell.out {
-  background: none;
-}
-.mg-phone .mg-num {
-  display: grid;
-  place-items: center;
-  align-self: center;
-  width: 30px;
-  min-width: 0;
-  height: 30px;
-  padding: 0;
-  border-radius: 50%;
-  font-size: 15px;
-  font-weight: 500;
-  transition: background 0.15s, color 0.15s;
-}
-.mg-phone .mg-cell.today .mg-num {
-  background: none;
-  color: var(--accent);
-  font-weight: 700;
-}
-.mg-phone .mg-cell.picked .mg-num {
-  background: var(--accent);
-  color: #fff;
-  font-weight: 600;
-}
-.mg-dots {
-  display: flex;
-  gap: 3px;
-  height: 5px;
-}
-.mg-dots i {
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: var(--c);
-}
-.mg-dots i.pending {
-  background: none;
-  box-shadow: inset 0 0 0 1px var(--c);
-}
-.mg-list {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  align-content: start;
-  gap: 6px;
-  padding: 4px 12px 24px;
-  animation: fade 0.18s ease-out;
-}
-.mg-list-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  min-height: 44px;
-}
-.mg-list-head h2 {
-  margin: 0;
-  font-size: 15px;
-  font-weight: 700;
-}
-
 /* Event details: Join first, answers, Yes / Maybe / No */
 .ev-detail .ev-actions {
   top: 8px;
@@ -1709,21 +1610,8 @@ a.ghost-btn {
 .ev-detail .ev-title {
   padding-right: 120px;
 }
-.ev-sheet .sheet-head {
-  justify-content: flex-end;
-  min-height: 36px;
-}
-.ev-sheet .ev-actions {
-  position: static;
-}
 .ev-body {
   padding: 0 0 4px;
-}
-.ev-sheet .ev-body {
-  padding: 0 8px 8px;
-}
-.ev-sheet .ev-title h3 {
-  font-size: 20px;
 }
 .ev-soon {
   margin-left: 8px;
@@ -1954,12 +1842,6 @@ a.ghost-btn {
   background: var(--accent-soft);
   color: var(--accent-text, var(--accent));
 }
-.ev-more {
-  justify-self: start;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
 
 /* Repeat: the quiet word is a dropdown that looks like the other words; opened, the repeat with its days and Custom. */
 .sel.ev-token {
@@ -2181,25 +2063,6 @@ a.ghost-btn {
   margin-top: 14px;
 }
 
-/* The calendars' panel as a sheet (phones) */
-/* Calendars first, the tasks to plan after them. */
-.cal-sheet-in {
-  display: flex;
-  flex-direction: column;
-}
-.cal-sheet .nav-heading:has(+ .plan-hint),
-.cal-sheet .plan-list {
-  order: 10;
-}
-.cal-sheet .plan-task {
-  cursor: pointer;
-}
-.cal-sheet .compose-btn,
-.cal-sheet .mini,
-.cal-sheet .plan-hint,
-.cal-sheet .pt-grip {
-  display: none;
-}
 .allday-list {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -2214,8 +2077,7 @@ a.ghost-btn {
   .ev-extra,
   .rp-more,
   .ev-invite,
-  .sched-own,
-  .mg-list {
+  .sched-own {
     animation: none;
   }
   .block-event.dragging {

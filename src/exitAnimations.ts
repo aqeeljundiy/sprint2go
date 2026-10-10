@@ -38,6 +38,7 @@ const LEAVING = [
   '.demo-bar',
   '.task-bulk',
   '.mail-bulk',
+  '.cal-create-menu',
   '.gm-dialog-scrim',
 ].join(',');
 

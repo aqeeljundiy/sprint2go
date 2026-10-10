@@ -38,7 +38,7 @@ const AREAS = [
   ['calendar', /^src\/components\/calendar\/|^src\/(repeat|recurrence)\.ts$|^src\/components\/(CalendarView|CalendarSidebar|EventEditor|ConnectCalendar|HolidayCountries)\.tsx$|^src\/(calendarUtils|calendarLink|holidayDays|holidayRegions)\.ts$|^src\/data\/(calendar|holidays)\.ts$/],
   ['notes', /^src\/components\/notes\/|^src\/components\/(NotesApp|RichEditor)\.tsx$|^src\/data\/notes\.ts$/],
   ['chat', /^src\/components\/(ChatApp|ChannelDialog|ChannelMaterials|ChatDraft|Huddle)\.tsx$|^src\/components\/chat\/|^src\/ice\.ts$/],
-  ['meet', /^src\/components\/MeetApp\.tsx$|^src\/(meetingLinks)\.ts$|^src\/data\/languages\.ts$/],
+  ['meet', /^src\/components\/(MeetApp|MeetPhone)\.tsx$|^src\/(meetingLinks)\.ts$|^src\/data\/languages\.ts$/],
   ['drive', /^src\/components\/(DriveView|DriveSidebar|DrivePreview|BigFileDialog|FileIcon)\.tsx$|^src\/data\/drive\.ts$/],
   ['tasks', /^src\/components\/(TasksView|TaskDrawer|TasksSidebar|BrainDump|TemplateDialog)\.tsx$|^src\/components\/tasks\/|^src\/(quickAdd|taskDates|stages)\.ts$|^src\/data\/templates\.ts$/],
   ['projects', /^src\/components\/(ProjectsHome|ProjectsSidebar|ProjectPhone|ProjectPeople|ProjectPicker|ProjectBadge|PastClients|EndClientDialog|Quotes)\.tsx$/],

@@ -1,22 +1,22 @@
-import { useState, type RefObject } from 'react';
-import { AlarmClock, CalendarCheck, CalendarDays, Check, ChevronDown, Globe, MapPin, Repeat, StickyNote, Sun, Video } from 'lucide-react';
+import { useLayoutEffect, useRef, useState, type RefObject } from 'react';
+import { AlarmClock, Bell, CalendarCheck, CalendarDays, Check, Clock, Globe, MapPin, Repeat, StickyNote, Sun, TextAlignStart, Users, Video, X } from 'lucide-react';
 import type { CalEvent, CalendarDef, Person, User } from '../../types';
 import { deviceTz, isZone } from '../../jobTimes';
 import { addDays } from '../../calendarUtils';
 import { clockOf, dateFacts, repeatWords, ruleToSpec, specToRule } from '../../repeat';
 import { zoneOptions } from '../ui/zones';
 import { fromWall, wallIn } from './calTools';
-import { DatePicker, TimePicker } from '../ui/DatePicker';
+import { DatePicker, shortDate, TimePicker } from '../ui/DatePicker';
 import { Select } from '../ui/Select';
 import { SmoothHeight } from '../ui/Smooth';
 import { GuestPicker } from './GuestPicker';
-import { RepeatField, RepeatToken, type RepeatDraft } from './RepeatField';
+import { RepeatField, RepeatRow, RepeatToken, type RepeatDraft } from './RepeatField';
 import { t, tn, tx } from '../../i18n';
 import { calLabel } from '../../data/calendar';
 
 /** What the event editor and the phone's quick create hold while someone types. */
 export interface Draft {
-  kind: 'event' | 'task';
+  kind: 'event' | 'task' | 'ooo'; // ooo: out of office (an all-day event of its own kind on phones)
   title: string;
   date: string; // YYYY-MM-DD
   from: string; // HH:MM
@@ -127,7 +127,7 @@ type Extra = 'location' | 'meet' | 'notes' | 'remind' | 'calendar' | 'tz' | 'rep
 /**
  * The fields of an event: title, Event or Task, when, guests; then the optional ones as quiet words (All day, Video
  * call, Location, Reminder, Notes, Calendar) that open into a field when tapped. A field that has something stays open.
- * `compact` (the phone's quick create) keeps the quiet words behind "More options" until asked.
+ * Desktop's dialog; phones use EventRows (below).
  */
 export function EventForm({
   draft,
@@ -137,8 +137,6 @@ export function EventForm({
   contacts,
   me,
   kindSwitch,
-  compact,
-  onMore,
   titleRef,
   autoFocus,
   onSubmit,
@@ -150,8 +148,6 @@ export function EventForm({
   contacts: Person[];
   me: string;
   kindSwitch?: boolean; // new ones: Event or Task
-  compact?: boolean;
-  onMore?: () => void;
   titleRef?: RefObject<HTMLInputElement | null>;
   autoFocus?: boolean;
   onSubmit: () => void;
@@ -321,12 +317,7 @@ export function EventForm({
           </div>
         )}
       </SmoothHeight>
-      {compact ? (
-        <button type="button" className="link-btn ev-more" onClick={() => onMore?.()}>
-          {t('More options')} <ChevronDown size={14} />
-        </button>
-      ) : (
-        tokens.length > 0 && (
+      {tokens.length > 0 && (
           <div className="ev-quiet" aria-label={t('More details')}>
             {tokens.map((q) =>
               q.id === 'repeat' ? (
@@ -353,8 +344,225 @@ export function EventForm({
               ),
             )}
           </div>
-        )
       )}
+    </div>
+  );
+}
+
+/** A row of the phone editor: the icon in the 56 px column, then what it holds. */
+function ERow({ icon, children, className = '', top }: { icon?: React.ReactNode; children: React.ReactNode; className?: string; top?: boolean }) {
+  return (
+    <div className={`er-row${top ? ' top' : ''} ${className}`}>
+      <span className="er-icon">{icon}</span>
+      <div className="er-body">{children}</div>
+    </div>
+  );
+}
+
+/** A text box that grows with what's typed (notes). */
+function GrowText({ value, onChange, placeholder, label }: { value: string; onChange: (v: string) => void; placeholder: string; label: string }) {
+  const ref = useRef<HTMLTextAreaElement>(null);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${el.scrollHeight}px`;
+  }, [value]);
+  return <textarea ref={ref} className="er-input er-notes" rows={1} value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} aria-label={label} />;
+}
+
+/**
+ * The phone editor's fields (Google Calendar's): the title, the kind (new ones), then one fixed list of rows in the
+ * same order every time: calendar, all day, start, end, time zone, repeat, guests, video call, location, reminder,
+ * notes. A filled row shows its value instead of its placeholder; nothing moves as rows fill.
+ */
+export function EventRows({
+  draft,
+  set,
+  calendars,
+  team,
+  contacts,
+  me,
+  kinds,
+  titleRef,
+  autoFocus,
+  onSubmit,
+}: {
+  draft: Draft;
+  set: (patch: Partial<Draft>) => void;
+  calendars: CalendarDef[];
+  team: User[];
+  contacts: Person[];
+  me: string;
+  kinds?: boolean; // new ones: Event, Task or Out of office
+  titleRef?: RefObject<HTMLInputElement | null>;
+  autoFocus?: boolean;
+  onSubmit: () => void;
+}) {
+  const task = draft.kind === 'task';
+  const ooo = draft.kind === 'ooo';
+  const wall = draftWall(draft);
+  const { ok } = draftTimes(draft);
+  const moveDate = (date: string) => {
+    const r = draft.repeat;
+    const was = dateFacts(wall).wd;
+    const now = dateFacts(draftWall({ ...draft, date })).wd;
+    const follow = r.spec?.freq === 'WEEKLY' && r.spec.days?.length === 1 && r.spec.days[0] === was && now !== was;
+    set({ date, ...(follow ? { repeat: { ...r, spec: { ...r.spec!, days: [now] } } } : {}) });
+  };
+  const moveStart = (v: string) => {
+    const len = Math.max(15, toMin(draft.to) - toMin(draft.from));
+    set({ from: v, to: hhmm(Math.min(23 * 60 + 45, toMin(v) + len)) });
+  };
+  const pickKind = (k: Draft['kind']) => {
+    if (k === draft.kind) return;
+    const was = draft.kind === 'ooo' && draft.title === t('Out of office');
+    set({ kind: k, ...(k === 'ooo' ? { allDay: true, title: draft.title.trim() ? draft.title : t('Out of office') } : was ? { title: '', allDay: false } : {}) });
+  };
+  const zone = draft.tz ?? deviceTz();
+  const zoneLabel = zoneOptions(zone).find((o) => o.value === zone)?.label ?? zone;
+  return (
+    <div className="ev-rows">
+      <ERow className="er-title-row">
+        <input
+          ref={titleRef}
+          autoFocus={autoFocus}
+          className="er-title"
+          value={draft.title}
+          onChange={(e) => set({ title: e.target.value })}
+          onKeyDown={(e) => e.key === 'Enter' && !e.nativeEvent.isComposing && (e.stopPropagation(), e.preventDefault(), onSubmit())}
+          placeholder={task ? t('What needs doing') : t('Add title')}
+          aria-label={tx('event', 'Title')}
+          enterKeyHint="done"
+        />
+      </ERow>
+      {kinds && (
+        <ERow className="er-kinds-row">
+          <div className="er-kinds" role="radiogroup" aria-label={t('Event, task or out of office')}>
+            {(
+              [
+                ['event', t('Event')],
+                ['task', t('Task')],
+                ['ooo', t('Out of office')],
+              ] as const
+            ).map(([k, l]) => (
+              <button key={k} type="button" role="radio" aria-checked={draft.kind === k} className={`er-chip${draft.kind === k ? ' on' : ''}`} onClick={() => pickKind(k)}>
+                {l}
+              </button>
+            ))}
+          </div>
+        </ERow>
+      )}
+
+      {!task && calendars.length > 1 && (
+        <div className="er-group">
+          <ERow icon={<CalendarDays size={20} />} className="er-cal-row">
+            <div className="er-cals" role="radiogroup" aria-label={t('Calendar')}>
+              {calendars.map((c) => (
+                <button key={c.id} type="button" role="radio" aria-checked={draft.calendarId === c.id} className={`er-chip er-cal${draft.calendarId === c.id ? ' on' : ''}`} onClick={() => set({ calendarId: c.id })}>
+                  <span className="dot" style={{ background: c.color }} />
+                  {calName(c, calendars)}
+                </button>
+              ))}
+            </div>
+          </ERow>
+        </div>
+      )}
+
+      <div className="er-group">
+        <ERow icon={<Clock size={20} />}>
+          <button type="button" className="er-line" role="switch" aria-checked={draft.allDay} disabled={ooo} onClick={() => set({ allDay: !draft.allDay })}>
+            <span>{t('All day')}</span>
+            <span className={`switch ${draft.allDay ? 'on' : ''}`} aria-hidden>
+              <span />
+            </span>
+          </button>
+        </ERow>
+        <ERow>
+          <div className="er-when">
+            <DatePicker value={draft.date} onChange={(v) => v && moveDate(v)} clearable={false} label={t('Starts')} className="er-pick" />
+            {!draft.allDay && <TimePicker value={draft.from} onChange={moveStart} label={t('Starts')} className="er-pick er-time" />}
+          </div>
+        </ERow>
+        {!draft.allDay && (
+          <ERow className={ok ? '' : 'bad'}>
+            <div className="er-when">
+              <span className="er-date-text">{shortDate(draft.date)}</span>
+              <TimePicker value={draft.to} onChange={(v) => set({ to: v })} label={tx('time', 'Ends')} className="er-pick er-time" />
+            </div>
+            {!ok && <small className="er-error">{t('Ends before it starts')}</small>}
+          </ERow>
+        )}
+        {!draft.allDay && (
+          <ERow icon={<Globe size={20} />}>
+            <Select<string>
+              value={zone}
+              onChange={(v) => set({ tz: v === deviceTz() ? null : v })}
+              options={zoneOptions(zone)}
+              label={t('Time zone')}
+              title={t('The times are in')}
+              searchable
+              className="er-sel"
+              renderValue={() => <span className="sel-text">{zoneLabel}</span>}
+            />
+          </ERow>
+        )}
+        {!task && (
+          <ERow icon={<Repeat size={20} />}>
+            <RepeatRow value={draft.repeat} startWall={wall} startDay={draft.date} onChange={(repeat) => set({ repeat })} />
+          </ERow>
+        )}
+      </div>
+
+      {!task && (
+        <div className="er-group">
+          <ERow icon={<Users size={20} />} top>
+            <GuestPicker value={draft.guests} onChange={(guests) => set({ guests })} team={team} contacts={contacts} me={me} rows />
+            {draft.guests.length > 0 && draft.sendInvites !== null && (
+              <button type="button" className="er-line er-invite" role="switch" aria-checked={draft.sendInvites} onClick={() => set({ sendInvites: !draft.sendInvites })}>
+                <span>{t('Email the invite to guests')}</span>
+                <span className={`switch ${draft.sendInvites ? 'on' : ''}`} aria-hidden>
+                  <span />
+                </span>
+              </button>
+            )}
+          </ERow>
+        </div>
+      )}
+
+      {!task && !ooo && (
+        <div className="er-group">
+          <ERow icon={<Video size={20} />}>
+            <span className="er-field">
+              <input className="er-input" value={draft.meetUrl} onChange={(e) => set({ meetUrl: e.target.value })} placeholder={t('Add video call')} inputMode="url" aria-label={t('Video call link')} />
+              {draft.meetUrl && (
+                <button type="button" className="icon-btn er-clear" onClick={() => set({ meetUrl: '' })} aria-label={t('Remove the video call')}>
+                  <X size={18} />
+                </button>
+              )}
+            </span>
+          </ERow>
+          <ERow icon={<MapPin size={20} />}>
+            <input className="er-input" value={draft.location} onChange={(e) => set({ location: e.target.value })} placeholder={t('Add location')} aria-label={t('Location')} />
+          </ERow>
+        </div>
+      )}
+
+      <div className="er-group">
+        <ERow icon={<Bell size={20} />}>
+          <Select<string>
+            value={draft.remind === null ? 'none' : String(draft.remind)}
+            onChange={(v) => set({ remind: v === 'none' ? null : Number(v) })}
+            options={[{ value: 'none', label: tx('remind', 'No reminder') }, ...remindOptions()]}
+            label={t('Reminder')}
+            title={t('Remind me')}
+            className={`er-sel${draft.remind === null ? ' er-empty' : ''}`}
+          />
+        </ERow>
+        <ERow icon={<TextAlignStart size={20} />} top>
+          <GrowText value={draft.notes} onChange={(notes) => set({ notes })} placeholder={t('Add notes')} label={t('Notes')} />
+        </ERow>
+      </div>
     </div>
   );
 }

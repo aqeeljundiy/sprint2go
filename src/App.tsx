@@ -111,7 +111,7 @@ import { Huddle } from './components/Huddle';
 import { usePushBridge } from './pushBridge';
 import { routeBase } from './tryOut';
 import { useAppLanguage, useLang } from './i18n/useLang';
-import { mark, msg, phrase, t, textOf, tn, tx, type Msg } from './i18n';
+import { mark, msg, phrase, t, textOf, tn, type Msg } from './i18n';
 import { fmtDay, fmtList, fmtWeekday } from './i18n/format';
 
 /** For words saved in a msg(): "today", "tomorrow", "overdue" lower-case mid-sentence (each reader's language), a date as "Thu 8 Oct". */
@@ -3595,19 +3595,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   /** The phone's title switcher for each app (Mail registers its own above). */
   const mobileSwitcher = (() => {
     // Tasks registers its own switcher (TasksView, useTitleMenu).
-    if (mode === 'meet')
-      return {
-        label: t('Meet'),
-        value: meetPage.kind === 'folder' ? `folder:${meetPage.clientId}` : meetPage.kind === 'meeting' ? 'list' : meetPage.kind,
-        options: [
-          { value: 'list', label: tx('meet', 'Meetings'), group: t('Meet') },
-          { value: 'upcoming', label: t('Upcoming'), group: t('Meet') },
-          { value: 'tasks', label: t('Tasks from meetings'), group: t('Meet') },
-          { value: 'unfiled', label: t('Unfiled'), group: t('Meet') },
-          ...wsClients.map((c) => ({ value: `folder:${c.id}`, label: c.name, group: `${term.Many}` })),
-        ],
-        onChange: (v: string) => setMeetPage(v.startsWith('folder:') ? { kind: 'folder', clientId: v.slice(7) } : ({ kind: v } as MeetPage)),
-      };
+    // Meet has its own drawer on phones (MeetView, Google Meet's).
     // Projects: the open project's name, and a quick way to another one (the sidebar isn't there on phones).
     if (mode === 'projects')
       return {
@@ -4637,6 +4625,14 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             canSendBot={botOn}
             onMenu={() => setSidebarOpen(true)}
             toast={(text) => showToast({ text })}
+            company={ws}
+            appSettings={settingsRows}
+            onOpenEvent={(id) => {
+              const e = findEvent(calEvents, id);
+              go('calendar');
+              if (e) setCalCursor(new Date(e.start));
+              setSelectedEventId(id);
+            }}
           />
         )}
 
@@ -4857,6 +4853,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             onOpenTask={openTask}
             calendarsPanel={calendarPanel}
             dialogOpen={!!connectCal}
+            company={ws}
+            appSettings={settingsRows}
             canEdit={(e) => !e.calendarId.startsWith('mate-') && !e.feed && !extCals.find((c) => c.id === e.calendarId)?.readOnly && events.some((x) => x.id === (e.seriesId ?? e.id))}
             onNotetaker={botOn ? sendNotetakerTo : undefined}
             botWillJoin={autoJoin === 'live' ? (e) => !sentFor[e.id] && botWillJoin(e) : undefined}
@@ -5499,6 +5497,9 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
           workspaceId={ws.id}
           isOwner={ws.members.some((m) => m.userId === user.id && m.role === 'owner')}
           seed={sendBotSeed ?? undefined}
+          upcoming={myNear}
+          demo={demoOk}
+          onSendEvent={(e) => (setSendBotOpen(false), sendNotetakerTo(e))}
           onSend={(d) => sendBot({ ...d, ...(sendBotSeed ? { fromEvent: sendBotSeed.fromEvent, attendees: sendBotSeed.attendees } : {}) })}
           onClose={() => setSendBotOpen(false)}
         />

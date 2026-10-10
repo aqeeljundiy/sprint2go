@@ -286,6 +286,27 @@ const id: Record<string, string> = {
   'Overview updated': 'Ringkasan diperbarui',
   'Link ready': 'Link siap',
   'Link turned off': 'Link dimatikan',
+  // Phones, as Google Meet (home, drawer, Take notes, the meeting as a details page)
+  'Bot name, for this meeting': 'Nama bot, untuk rapat ini',
+  'Couldn’t read what you copied. Paste it into the field instead.': 'Tidak bisa membaca yang Anda salin. Tempelkan langsung ke kolomnya.',
+  'Filed automatically': 'Diarsipkan otomatis',
+  'Google Meet or Zoom link': 'Tautan Google Meet atau Zoom',
+  'Or paste a link': 'Atau tempel tautan',
+  Paste: 'Tempel',
+  'Take notes': 'Catat rapat',
+  'What the notetaker did, step by step': 'Yang dilakukan notulis, langkah demi langkah',
+  'Your next calls': 'Panggilan Anda berikutnya',
+  'Coming up': 'Akan datang',
+  'Meet settings': 'Pengaturan Meet',
+  'No meetings here yet. Tap “{send}” to send the notetaker to one.': 'Belum ada rapat di sini. Ketuk “{send}” untuk mengirim notulis ke salah satunya.',
+  'Not filed': 'Belum diarsipkan',
+  'Past meetings': 'Rapat sebelumnya',
+  'Search meetings': 'Cari rapat',
+  'Search meetings, notes and transcripts': 'Cari rapat, catatan, dan transkrip',
+  'See all': 'Lihat semua',
+  'The notetaker will join. Tap so it doesn’t': 'Notulis akan bergabung. Ketuk agar tidak',
+  'The notetaker won’t join. Tap so it does': 'Notulis tidak akan bergabung. Ketuk agar bergabung',
+  '{n} to file': '{n} perlu diarsipkan',
 };
 
 export default id;

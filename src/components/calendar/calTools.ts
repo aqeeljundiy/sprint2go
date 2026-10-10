@@ -130,3 +130,23 @@ export function fromWall(date: string, time: string, tz: string | null) {
 }
 /** "Singapore" from "Asia/Singapore". */
 export const zoneCity = (tz: string) => tz.split('/').pop()!.replace(/_/g, ' ');
+
+/** White text on a calendar's colour, or near-black on a light one (yellow): Google's solid event colours. */
+export function onColor(c: string) {
+  const m = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(c.trim());
+  if (!m) return '#fff';
+  const h = m[1].length === 3 ? m[1].replace(/./g, (x) => x + x) : m[1];
+  const [r, g, b] = [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16) / 255).map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.6 ? '#111318' : '#fff';
+}
+
+/** The event's place when it's a place (a room, an address), not the call app's name or the call link. */
+export function placeOf(e: Pick<CalEvent, 'location' | 'meetUrl'>, linkUrl?: string) {
+  const loc = e.location?.trim();
+  if (!loc || loc === linkUrl || loc === e.meetUrl) return '';
+  if (/^(google meet|meet|zoom|microsoft teams|teams|webex|whereby|jitsi)$/i.test(loc) || /^https?:\/\//i.test(loc)) return '';
+  return loc;
+}
+
+/** Join shows on an event with a call link from 10 minutes before it starts until it ends. */
+export const joinable = (e: CalEvent, now = Date.now()) => new Date(e.start).getTime() - now <= 10 * 60_000 && new Date(e.end).getTime() > now;
