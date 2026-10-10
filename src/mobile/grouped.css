@@ -1,0 +1,172 @@
+/* ==========================================================================
+   iOS's inset grouped list (src/components/ui/Grouped.tsx): Settings, a Vault login, Teams, a Drive file's details.
+   A page on the grouped grey (.g-page), cards with no border, rows divided from the label on, footers under cards.
+   ========================================================================== */
+
+.g-page {
+  background: var(--bg);
+}
+.g-group {
+  margin: 0 0 24px;
+}
+.g-head {
+  margin: 0 32px 8px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.g-card {
+  margin: 0 16px;
+  border-radius: 16px;
+  background: var(--surface);
+  overflow: hidden;
+}
+:root[data-theme='dark'] .g-card {
+  background: #1c1c1f;
+}
+.g-foot {
+  margin: 8px 32px 0;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--text-3);
+}
+.g-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  min-height: 48px;
+  padding: 6px 16px;
+  font: inherit;
+  font-size: 17px;
+  font-weight: 400;
+  line-height: 22px;
+  color: var(--text);
+  text-align: left;
+  background: none;
+  border: 0;
+  transition: background 0.15s;
+}
+.g-row.two {
+  min-height: 60px;
+}
+button.g-row {
+  cursor: pointer;
+}
+button.g-row:active {
+  background: var(--hover);
+}
+:root[data-theme='dark'] button.g-row:active {
+  background: rgb(255 255 255 / 0.07);
+}
+@media (hover: hover) {
+  button.g-row:hover {
+    background: var(--hover);
+  }
+}
+/* The line between rows starts at the label, not under the icon. */
+.g-row + .g-row::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 16px;
+  right: 0;
+  height: 0.5px;
+  background: var(--border);
+}
+.g-row.has-icon + .g-row.has-icon::before,
+.g-row + .g-row.has-icon::before {
+  left: 60px;
+}
+.g-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 7px;
+  color: #fff;
+  background: #8e8e93;
+}
+.g-blue { background: #0a84ff; }
+.g-green { background: #30b158; }
+.g-orange { background: #ff9500; }
+.g-red { background: #ff3b30; }
+.g-purple { background: #af52de; }
+.g-teal { background: #12a8c7; }
+.g-grey { background: #8e8e93; }
+.g-pink { background: #ff2d55; }
+.g-indigo { background: #5856d6; }
+.g-yellow { background: #f2b600; }
+.g-plain-icon {
+  flex: none;
+  color: var(--text-3);
+}
+.g-label {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.g-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.g-sub {
+  font-size: 15px;
+  line-height: 20px;
+  color: var(--text-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.g-val {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 55%;
+  color: var(--text-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.g-chev {
+  flex: none;
+  margin-right: -4px;
+  color: var(--text-3);
+  opacity: 0.7;
+}
+.g-row.action .g-text {
+  color: var(--accent);
+}
+.g-row.danger .g-text {
+  color: var(--danger);
+}
+.g-row.action,
+.g-row.danger {
+  justify-content: flex-start;
+}
+/* A small icon button at the end of a row (copy, show). */
+.g-btn {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  margin: -6px -10px -6px 0;
+  border-radius: 12px;
+  color: var(--accent);
+  transition: background 0.15s;
+}
+.g-btn:active {
+  background: var(--hover);
+}
+.g-btn + .g-btn {
+  margin-left: -8px;
+}

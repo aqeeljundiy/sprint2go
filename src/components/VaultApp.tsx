@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { ProjectPicker } from './ProjectPicker';
 import { SmoothHeight } from './ui/Smooth';
 import { term, brand as product } from '../terms';
-import { Copy, Eye, History, KeyRound, Lock, MoreHorizontal, Pencil, Plus, RefreshCw, ShieldCheck, Trash2, Users, X } from 'lucide-react';
+import { ChevronDown, Copy, Eye, EyeOff, Globe, History, NotebookText, KeyRound, Lock, MoreHorizontal, Pencil, Plus, RefreshCw, Search, ShieldCheck, Trash2, Users, X } from 'lucide-react';
 import type { Client, Team, User } from '../types';
 import { t, tn } from '../i18n';
 import { tj } from '../i18n/tj';
@@ -14,6 +14,15 @@ import { Popover } from './ui/Popover';
 import { PeoplePicker } from './ui/PeoplePicker';
 import { decryptSecret, encryptSecret, isEncrypted, makeVaultKeys, newItemKeys, rewrapVaultKey, setVaultUnlocked, totp as totpCode, unlockVaultKey, unwrapWith, vaultUnlocked, wrapFor, type VaultKeyRecord, type WrappedKey } from '../vaultCrypto';
 import { EmptyState } from './ui/EmptyState';
+import { PushScreen } from './ui/PushScreen';
+import { Sheet } from './ui/Sheet';
+import { SwipeRow } from './ui/SwipeRow';
+import { useActionMenu, type SheetAction } from './ui/ActionSheet';
+import { Group, GRow } from './ui/Grouped';
+import { useLeaving } from './ui/Smooth';
+import { useCreateAction, useTitleMenu } from '../mobile/chrome';
+import { usePhone } from '../mobile/media';
+import { Dot } from './ui/Select';
 
 /** What the browser knows about a login. The password, 2FA secret and notes stay on the server. */
 export interface VaultItem {
@@ -121,7 +130,9 @@ export function VaultView({
   vaultKey,
   onVaultKey,
   adminIds = [],
+  onFilter,
 }: {
+  onFilter?: (f: string) => void; // phones: the title switcher (All logins, Company logins, each project)
   vaultKey?: VaultKeyRecord; // this person's end-to-end keys (none yet: they set a passphrase first)
   onVaultKey: (r: VaultKeyRecord) => void;
   adminIds?: string[]; // admins can always open a login, so they get a key too
@@ -153,6 +164,30 @@ export function VaultView({
   useEffect(() => {
     if (code && code.left <= 0) void showCode(code.id);
   }, [code?.left]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Phones: Apple Passwords. Two-line rows, a login opens full screen, + adds one, the title switches the list.
+  const phone = usePhone();
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [confirmDel, setConfirmDel] = useState<VaultItem | null>(null);
+  const [q, setQ] = useState('');
+  const usable = server.on && !isSandboxId(workspaceId) && !!vaultUnlocked(me);
+  useCreateAction('vault', usable && { label: t('New login'), icon: Plus, run: () => setEditing('new') });
+  const projectsWith = clients.filter((c) => items.some((i) => i.meta.clientId === c.id));
+  useTitleMenu(
+    'vault',
+    phone &&
+      usable &&
+      !!onFilter && {
+        label: t('Which logins'),
+        value: filter,
+        options: [
+          { value: '', label: t('All logins'), icon: <KeyRound size={15} /> },
+          { value: 'company', label: t('Company logins'), icon: <Lock size={15} /> },
+          ...projectsWith.map((c) => ({ value: c.id, label: c.name, group: term.Many, icon: <Dot color={c.color} /> })),
+        ],
+        onChange: (v) => onFilter(v),
+      },
+  );
 
   // The demo company has made-up people: real passwords never go in it.
   if (isSandboxId(workspaceId))
@@ -240,6 +275,118 @@ export function VaultView({
     return it.createdBy === me ? t('Only you') : t('Only {name}', { name: who(it.createdBy) });
   };
   const current = items.find((i) => i.id === menu);
+  const remove = async (it: VaultItem) => {
+    try {
+      await api(`/api/vault/${it.id}`, { method: 'DELETE' });
+      if (openId === it.id) setOpenId(null);
+      reload();
+      toast(t('Login deleted'));
+    } catch (e) {
+      toast((e as Error).message);
+    }
+  };
+  /** Asks first: a sheet on phones, the browser's question on desktop. */
+  const askDelete = (it: VaultItem) => {
+    if (phone) return setConfirmDel(it);
+    if (confirm(t('Delete the login “{title}”? This can’t be undone.', { title: it.meta.title }))) void remove(it);
+  };
+  const openLog = async (it: VaultItem) => {
+    try {
+      const { log: rows } = await api<{ log: { userId: string; what: string; at: string }[] }>(`/api/vault/${it.id}/log`);
+      setLog({ item: it, rows });
+    } catch (e) {
+      toast((e as Error).message);
+    }
+  };
+  const copyUsername = (it: VaultItem) => void navigator.clipboard?.writeText(it.meta.username ?? '').then(() => toast(t('Username copied')));
+  const copyCode = async (it: VaultItem) => {
+    try {
+      const r = it.meta.keys ? await totpCode(await secretOf(it, 'totp')) : await api<{ code: string; secondsLeft: number }>(`/api/vault/${it.id}/code`, { method: 'POST' });
+      setCode({ id: it.id, code: r.code, left: r.secondsLeft });
+      await copySecret(r.code);
+      toast(t('Code copied'));
+    } catch (e) {
+      toast((e as Error).message);
+    }
+  };
+  const ops: VaultOps = { copyPassword, copyUsername, copyCode, showCode: (id) => void showCode(id), secretOf, askDelete, openLog, edit: (it) => setEditing(it), accessLabel, who, toast };
+
+  if (phone) {
+    const query = q.trim().toLowerCase();
+    const list = shown.filter((it) => !query || `${it.meta.title} ${it.meta.username ?? ''} ${it.meta.url ?? ''}`.toLowerCase().includes(query)).sort((a, b) => a.meta.title.localeCompare(b.meta.title));
+    const open = items.find((i) => i.id === openId);
+    return (
+      <section className="tasks-pane view-enter vault-phone">
+        <div className="vp-scroll">
+          {shown.length > 8 && (
+            <label className="vp-search">
+              <Search size={17} />
+              <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t('Search')} aria-label={t('Search logins')} enterKeyHint="search" />
+              {q && (
+                <button type="button" className="vp-clear" onClick={() => setQ('')} aria-label={t('Clear the search')}>
+                  <X size={15} />
+                </button>
+              )}
+            </label>
+          )}
+          {shown.length === 0 ? (
+            <EmptyState icon={<KeyRound size={22} />} title={t('No logins yet')} text={t('Tap + to add a client login. Paste its 2FA setup key and the team gets the codes here.')} />
+          ) : (
+            <VaultPhoneList items={list} clients={clients} me={me} ops={ops} onOpen={setOpenId} />
+          )}
+          {shown.length > 0 && list.length === 0 && <p className="vp-none">{t('No logins with “{query}”.', { query: q.trim() })}</p>}
+          {shown.length > 0 && <p className="vp-foot">{t('End-to-end encrypted. Copying a password is logged.')}</p>}
+        </div>
+        {open && <VaultItemScreen it={open} clients={clients} me={me} ops={ops} code={code?.id === open.id ? code : null} onBack={() => setOpenId(null)} />}
+        {confirmDel && (
+          <Sheet title={t('Delete “{title}”?', { title: confirmDel.meta.title })} onClose={() => setConfirmDel(null)} className="vp-confirm">
+            <p className="vp-confirm-text">{t('Everyone who uses it loses it too. This can’t be undone.')}</p>
+            <div className="as-list">
+              <button type="button" className="as-item danger" onClick={() => (setConfirmDel(null), void remove(confirmDel))}>
+                <Trash2 size={18} className="as-icon" />
+                <span className="as-label">{t('Delete login')}</span>
+              </button>
+              <button type="button" className="as-item" onClick={() => setConfirmDel(null)}>
+                <X size={18} className="as-icon" />
+                <span className="as-label">{t('Cancel')}</span>
+              </button>
+            </div>
+          </Sheet>
+        )}
+        {log && (
+          <PushScreen title={t('Activity')} backLabel={log.item.meta.title} onBack={() => setLog(null)} className="g-page">
+            <div className="vp-detail">
+              {log.rows.length === 0 ? (
+                <p className="vp-none">{t('Nobody has used it yet.')}</p>
+              ) : (
+                <Group>
+                  {log.rows.map((r, i) => (
+                    <GRow key={i} label={logLine(r.userId === me ? t('You') : who(r.userId), r.what)} value={fmtAgo(r.at)} />
+                  ))}
+                </Group>
+              )}
+            </div>
+          </PushScreen>
+        )}
+        {editing && (
+          <VaultEditor
+            priv={priv}
+            adminIds={adminIds}
+            item={editing === 'new' ? null : editing}
+            defaultClient={filter && filter !== 'company' ? filter : undefined}
+            workspaceId={workspaceId}
+            clients={clients}
+            users={users}
+            teams={teams}
+            me={me}
+            isAdmin={isAdmin}
+            onSaved={() => (setEditing(null), reload(), toast(t('Login saved')))}
+            onClose={() => setEditing(null)}
+          />
+        )}
+      </section>
+    );
+  }
 
   return (
     <section className="tasks-pane view-enter">
@@ -462,6 +609,217 @@ export function VaultView({
   );
 }
 
+/** What a phone row and a login's screen can do; the functions live in VaultView. */
+interface VaultOps {
+  copyPassword: (it: VaultItem) => Promise<void>;
+  copyUsername: (it: VaultItem) => void;
+  copyCode: (it: VaultItem) => Promise<void>;
+  showCode: (id: string) => void;
+  secretOf: (it: VaultItem, field: 'password' | 'totp' | 'notes') => Promise<string>;
+  askDelete: (it: VaultItem) => void;
+  openLog: (it: VaultItem) => Promise<void>;
+  edit: (it: VaultItem) => void;
+  accessLabel: (it: VaultItem) => string;
+  who: (id: string) => string;
+  toast: (t: string) => void;
+}
+
+/** The letter tile in a colour of its own, the same for a login every time (Apple's site icons stand in here). */
+const TILE = ['#0a84ff', '#30b158', '#ff9500', '#af52de', '#ff3b30', '#12a8c7', '#5856d6', '#ff2d55', '#a2845e'];
+function VaultTile({ title, size = 40 }: { title: string; size?: number }) {
+  let h = 0;
+  for (const ch of title) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return (
+    <span className="vp-tile" style={{ width: size, height: size, fontSize: size * 0.45, borderRadius: size / 4, background: TILE[h % TILE.length] }} aria-hidden>
+      {title.trim().charAt(0).toUpperCase() || '?'}
+    </span>
+  );
+}
+
+/** The phone's list: Apple Passwords' rows. Tap opens the login, hold for its menu, swipe left to copy or delete. */
+function VaultPhoneList({ items, clients, me, ops, onOpen }: { items: VaultItem[]; clients: Client[]; me: string; ops: VaultOps; onOpen: (id: string) => void }) {
+  const rows = useLeaving(items, (i) => i.id);
+  return (
+    <div className="vp-list">
+      {rows.map(({ item, leaving }) => (
+        <VaultPhoneRow key={item.id} it={item} leaving={leaving} clients={clients} me={me} ops={ops} onOpen={() => onOpen(item.id)} />
+      ))}
+    </div>
+  );
+}
+
+function rowActions(it: VaultItem, ops: VaultOps, onOpen?: () => void): SheetAction[] {
+  return [
+    ...(it.meta.username ? [{ label: t('Copy username'), icon: Copy, run: () => ops.copyUsername(it) }] : []),
+    ...(it.hasPassword ? [{ label: t('Copy password'), icon: KeyRound, run: () => void ops.copyPassword(it) }] : []),
+    ...(it.hasTotp ? [{ label: t('Copy 2FA code'), icon: ShieldCheck, run: () => void ops.copyCode(it) }] : []),
+    ...(it.meta.url ? [{ label: t('Open {site}', { site: host(it.meta.url) }), icon: Globe, group: 'more', run: () => void window.open(it.meta.url, '_blank', 'noreferrer') }] : []),
+    ...(onOpen ? [{ label: t('Who sees it'), icon: Users, hint: ops.accessLabel(it), group: 'more', run: onOpen }] : []),
+    ...(it.canEdit ? [{ label: t('Delete'), icon: Trash2, danger: true, group: 'end', run: () => ops.askDelete(it) }] : []),
+  ];
+}
+
+function VaultPhoneRow({ it, leaving, clients, me, ops, onOpen }: { it: VaultItem; leaving: boolean; clients: Client[]; me: string; ops: VaultOps; onOpen: () => void }) {
+  const menu = useActionMenu(() => rowActions(it, ops, onOpen), { title: it.meta.title });
+  const shared = it.meta.access.everyone || it.meta.access.userIds.some((id) => id !== me) || it.meta.access.teamIds.length > 0;
+  const project = clients.find((c) => c.id === it.meta.clientId);
+  return (
+    <>
+      <SwipeRow
+        leaving={leaving}
+        className="vp-swipe"
+        end={[
+          ...(it.hasPassword ? [{ id: 'copy', label: t('Copy password'), icon: Copy, tone: 'accent' as const, run: () => void ops.copyPassword(it) }] : []),
+          ...(it.canEdit ? [{ id: 'delete', label: t('Delete'), icon: Trash2, tone: 'danger' as const, run: () => ops.askDelete(it) }] : []),
+        ]}
+      >
+        <div className="vp-row lp" role="button" tabIndex={0} {...menu.bind} onClick={onOpen} onKeyDown={(e) => e.key === 'Enter' && onOpen()}>
+          <VaultTile title={it.meta.title} />
+          <span className="vp-text">
+            <span className="vp-title">{it.meta.title}</span>
+            <span className="vp-user">{it.meta.username || host(it.meta.url) || (project ? project.name : t('No username'))}</span>
+          </span>
+          {it.hasTotp && <ShieldCheck size={16} className="vp-mark" aria-label={t('Has a 2FA code')} />}
+          {shared && <Users size={16} className="vp-mark" aria-label={t('Shared')} />}
+        </div>
+      </SwipeRow>
+      {menu.menu}
+    </>
+  );
+}
+
+/** The countdown ring next to a 2FA code: a full circle at 30 seconds, empty when the code changes. */
+function CodeRing({ left }: { left: number }) {
+  const r = 8;
+  const c = 2 * Math.PI * r;
+  return (
+    <svg className="vp-ring" width="20" height="20" viewBox="0 0 20 20" aria-label={t('{n} seconds left', { n: left })}>
+      <circle cx="10" cy="10" r={r} className="vp-ring-track" />
+      <circle cx="10" cy="10" r={r} className="vp-ring-fill" strokeDasharray={c} strokeDashoffset={c * (1 - Math.max(0, Math.min(30, left)) / 30)} />
+    </svg>
+  );
+}
+
+/** One login, full screen on a phone (Apple Passwords' detail): copy each field, the 2FA code, who sees it. */
+function VaultItemScreen({ it, clients, me, ops, code, onBack }: { it: VaultItem; clients: Client[]; me: string; ops: VaultOps; code: { code: string; left: number } | null; onBack: () => void }) {
+  const [pw, setPw] = useState<string | null>(null);
+  const [notes, setNotes] = useState<string | null>(null);
+  const project = clients.find((c) => c.id === it.meta.clientId);
+  const by = it.createdBy === me ? t('you') : ops.who(it.createdBy);
+  const reveal = async (field: 'password' | 'notes') => {
+    try {
+      const v = await ops.secretOf(it, field);
+      if (field === 'password') setPw(v);
+      else setNotes(v);
+    } catch (e) {
+      ops.toast((e as Error).message);
+    }
+  };
+  return (
+    <PushScreen
+      title=""
+      backLabel={t('Vault')}
+      onBack={onBack}
+      className="g-page vp-screen"
+      actions={
+        it.canEdit ? (
+          <button type="button" className="vp-edit" onClick={() => ops.edit(it)}>
+            {t('Edit')}
+          </button>
+        ) : undefined
+      }
+    >
+      <div className="vp-detail">
+        <header className="vp-head">
+          <VaultTile title={it.meta.title} size={56} />
+          <h2>{it.meta.title}</h2>
+          <p>{t('Changed {when} by {name}', { when: fmtAgo(it.updatedAt), name: by })}</p>
+        </header>
+        <Group>
+          {it.meta.username && (
+            <GRow
+              className="vp-field"
+              label={<small className="vp-label">{t('Username')}</small>}
+              sub={<span className="vp-value">{it.meta.username}</span>}
+              accessory={
+                <button type="button" className="g-btn" onClick={() => ops.copyUsername(it)} aria-label={t('Copy username')}>
+                  <Copy size={19} />
+                </button>
+              }
+            />
+          )}
+          {it.hasPassword && (
+            <GRow
+              className="vp-field"
+              label={<small className="vp-label">{t('Password')}</small>}
+              sub={<span className={`vp-value${pw == null ? ' dots' : ' mono'}`}>{pw ?? '••••••••••••'}</span>}
+              accessory={
+                <>
+                  <button type="button" className="g-btn" onClick={() => (pw == null ? void reveal('password') : setPw(null))} aria-label={pw == null ? t('Show') : t('Hide')}>
+                    {pw == null ? <Eye size={19} /> : <EyeOff size={19} />}
+                  </button>
+                  <button type="button" className="g-btn" onClick={() => void ops.copyPassword(it)} aria-label={t('Copy password')}>
+                    <Copy size={19} />
+                  </button>
+                </>
+              }
+            />
+          )}
+          {it.hasTotp &&
+            (code ? (
+              <GRow
+                className="vp-field"
+                label={<small className="vp-label">{t('2FA code')}</small>}
+                sub={
+                  <span className="vp-code">
+                    {code.code.slice(0, 3)} {code.code.slice(3)}
+                  </span>
+                }
+                accessory={
+                  <>
+                    <CodeRing left={code.left} />
+                    <button type="button" className="g-btn" onClick={() => void copySecret(code.code).then(() => ops.toast(t('Code copied')))} aria-label={t('Copy the code')}>
+                      <Copy size={19} />
+                    </button>
+                  </>
+                }
+              />
+            ) : (
+              <GRow icon={ShieldCheck} plainIcon label={t('Show the 2FA code')} action onClick={() => ops.showCode(it.id)} />
+            ))}
+        </Group>
+        {(it.meta.url || it.hasNotes || project) && (
+          <Group>
+            {it.meta.url && <GRow icon={Globe} plainIcon label={t('Website')} value={host(it.meta.url)} onClick={() => void window.open(it.meta.url, '_blank', 'noreferrer')} />}
+            {project && <GRow icon={KeyRound} plainIcon label={term.One} value={project.name} />}
+            {it.hasNotes &&
+              (notes == null ? (
+                <GRow icon={NotebookText} plainIcon label={t('Notes')} value={t('Show')} onClick={() => void reveal('notes')} />
+              ) : (
+                <div className="g-row vp-notes">
+                  <span className="g-label">
+                    <small className="vp-label">{t('Notes')}</small>
+                    <span className="vp-notes-text">{notes}</span>
+                  </span>
+                </div>
+              ))}
+          </Group>
+        )}
+        <Group footer={it.hasNotes && notes != null ? t('Reading notes is logged, like copying a password.') : undefined}>
+          <GRow icon={Users} plainIcon label={t('Who sees it')} value={ops.accessLabel(it)} onClick={it.canEdit ? () => ops.edit(it) : undefined} />
+          {it.canEdit && <GRow icon={History} plainIcon label={t('Activity')} onClick={() => void ops.openLog(it)} />}
+        </Group>
+        {it.canEdit && (
+          <Group>
+            <GRow label={t('Delete login')} danger onClick={() => ops.askDelete(it)} />
+          </Group>
+        )}
+        <p className="vp-foot">{it.meta.keys ? t('End-to-end encrypted.') : t('Locked by the server. Edit and save to move it to end-to-end')}</p>
+      </div>
+    </PushScreen>
+  );
+}
+
 /** Pull the secret out of an otpauth:// link, or tidy a pasted setup key. */
 const parseTotp = (raw: string) => {
   const s = raw.trim();
@@ -568,19 +926,9 @@ function VaultEditor({
     }
     setBusy(false);
   };
-  return (
-    <div className="modal-scrim" onMouseDown={onClose}>
-      <div className="modal vault-modal" role="dialog" aria-label={item ? t('Edit login') : t('Add a login')} onMouseDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.key === 'Escape' && !document.querySelector('.pop') && onClose()}>
-        <header className="modal-head">
-          <span className="dump-title">
-            <KeyRound size={15} /> {item ? t('Edit “{name}”', { name: item.meta.title }) : t('Add a login')}
-          </span>
-          <button className="icon-btn sm" onClick={onClose} aria-label={t('Close')}>
-            <X size={15} />
-          </button>
-        </header>
-        <div className="modal-body vault-body">
-          <SmoothHeight>
+  const phone = usePhone();
+  const fields = (
+    <>
           <div className="vault-grid">
             <label className="field">
               <span>{t('Name')}</span>
@@ -644,7 +992,38 @@ function VaultEditor({
             </div>
           </div>
           {error && <p className="err">{error}</p>}
-          </SmoothHeight>
+    </>
+  );
+  // Phones: a full screen with Cancel and Save at the top (Apple Passwords' New Password), no dialog.
+  if (phone)
+    return (
+      <PushScreen
+        title={item ? t('Edit login') : t('New login')}
+        backLabel={t('Cancel')}
+        onBack={onClose}
+        className="g-page vault-edit"
+        actions={
+          <button type="button" className="vp-edit strong" disabled={!title.trim() || busy} onClick={() => void save()}>
+            {busy ? t('Saving…') : t('Save')}
+          </button>
+        }
+      >
+        <div className="vault-body vp-form">{fields}</div>
+      </PushScreen>
+    );
+  return (
+    <div className="modal-scrim" onMouseDown={onClose}>
+      <div className="modal vault-modal" role="dialog" aria-label={item ? t('Edit login') : t('Add a login')} onMouseDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.key === 'Escape' && !document.querySelector('.pop') && onClose()}>
+        <header className="modal-head">
+          <span className="dump-title">
+            <KeyRound size={15} /> {item ? t('Edit “{name}”', { name: item.meta.title }) : t('Add a login')}
+          </span>
+          <button className="icon-btn sm" onClick={onClose} aria-label={t('Close')}>
+            <X size={15} />
+          </button>
+        </header>
+        <div className="modal-body vault-body">
+          <SmoothHeight>{fields}</SmoothHeight>
         </div>
         <footer className="modal-foot">
           <span className="spacer" />
@@ -671,6 +1050,8 @@ function VaultGate({ record, me, onUnlocked }: { record?: VaultKeyRecord; me: st
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const fresh = !record;
+  const phone = usePhone();
+  const [how, setHow] = useState(false);
   const go = async () => {
     setBusy(true);
     setError('');
@@ -686,24 +1067,41 @@ function VaultGate({ record, me, onUnlocked }: { record?: VaultKeyRecord; me: st
     }
     setBusy(false);
   };
+  // Phones: no card, top-aligned so the keyboard never covers the field, and words for a phone (no "tab").
+  const phoneText = fresh ? t('Logins are encrypted with keys only you hold. This passphrase locks your key, and it can’t be reset.') : t('Your passphrase opens it on this device until you close {product}.', { product: product.name });
   return (
     <section className="tasks-pane view-enter">
       <div className="vault-gate">
         <div className="vault-gate-card">
-          <KeyRound size={22} />
-          <h2>{fresh ? t('Set your Vault passphrase') : t('Unlock the Vault')}</h2>
+          {phone ? <Lock size={44} /> : <KeyRound size={22} />}
+          <h2>{fresh ? t('Set your Vault passphrase') : phone ? t('Vault is locked') : t('Unlock the Vault')}</h2>
           <p className="muted">
-            {fresh
-              ? t('Logins are encrypted on your devices with keys only you hold; the server never sees a password. This passphrase locks your key. There is no reset: if it’s lost, teammates re-share logins with you.')
-              : t('Your key stays in this tab until you close it.')}
+            {phone
+              ? phoneText
+              : fresh
+                ? t('Logins are encrypted on your devices with keys only you hold; the server never sees a password. This passphrase locks your key. There is no reset: if it’s lost, teammates re-share logins with you.')
+                : t('Your key stays in this tab until you close it.')}
           </p>
+          {phone && fresh && (
+            <>
+              <button type="button" className="vg-how" aria-expanded={how} onClick={() => setHow((h) => !h)}>
+                {t('How it works')}
+                <ChevronDown size={16} className={`rot-chev${how ? ' open' : ''}`} />
+              </button>
+              <div className={`fold${how ? ' open' : ''}`} aria-hidden={!how}>
+                <div className="fold-in">
+                  <p className="muted vg-how-text">{t('The server never sees a password: logins are locked on your devices. If the passphrase is lost, teammates share the logins with you again.')}</p>
+                </div>
+              </div>
+            </>
+          )}
           <form
             onSubmit={(e) => {
               e.preventDefault();
               void go();
             }}
           >
-            <input type="password" autoFocus value={pass} onChange={(e) => setPass(e.target.value)} placeholder={t('Passphrase')} autoComplete={fresh ? 'new-password' : 'current-password'} />
+            <input type="password" autoFocus={!phone} value={pass} onChange={(e) => setPass(e.target.value)} placeholder={t('Passphrase')} autoComplete={fresh ? 'new-password' : 'current-password'} />
             {fresh && <input type="password" value={again} onChange={(e) => setAgain(e.target.value)} placeholder={t('Once more')} autoComplete="new-password" />}
             {error && <p className="err small">{error}</p>}
             <button className="primary-btn" disabled={busy || !pass}>

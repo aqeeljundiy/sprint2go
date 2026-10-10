@@ -340,3 +340,373 @@
     animation: none;
   }
 }
+
+/* ---------- Vault (VaultApp.tsx): Apple Passwords on phones ---------- */
+
+@media (max-width: 767px) {
+  /* Locked: no card, top-aligned so the keyboard leaves the field in view, everything centred. */
+  .vault-gate {
+    place-items: start center;
+    padding: 24px 16px;
+  }
+  .vault-gate-card {
+    width: 100%;
+    max-width: 420px;
+    justify-items: center;
+    gap: 8px;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+    text-align: center;
+  }
+  .vault-gate-card > svg {
+    margin-bottom: 4px;
+  }
+  .vault-gate-card h2 {
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+  }
+  .vault-gate-card > p {
+    max-width: 320px;
+    text-wrap: balance;
+    font-size: 15px;
+    line-height: 20px;
+  }
+  .vault-gate-card form {
+    width: 100%;
+    gap: 12px;
+    margin-top: 16px;
+  }
+  .vault-gate-card input {
+    min-height: 48px;
+    border-radius: 12px;
+    font-size: 17px;
+  }
+  .vault-gate-card .primary-btn {
+    min-height: 48px;
+    border-radius: 12px;
+    font-size: 17px;
+    justify-content: center;
+  }
+  .vault-gate-card .fold {
+    width: 100%;
+  }
+  .vg-how {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    min-height: 44px;
+    padding: 0 8px;
+    font-size: 15px;
+    font-weight: 500;
+    color: var(--accent);
+  }
+  .vg-how-text {
+    margin: 0 auto;
+    max-width: 320px;
+    font-size: 15px;
+    line-height: 20px;
+  }
+
+  /* The list: plain two-line rows, the divider from the text to the edge. */
+  .vault-phone {
+    background: var(--surface);
+  }
+  .vp-scroll {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding-bottom: calc(16px + var(--fab-space, 88px));
+  }
+  .vp-search {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 36px;
+    margin: 8px 16px 4px;
+    padding: 0 8px 0 10px;
+    border-radius: 10px;
+    background: var(--hover);
+    color: var(--text-3);
+  }
+  .vp-search input {
+    flex: 1;
+    min-width: 0;
+    height: 100%;
+    border: 0;
+    background: none;
+    font: inherit;
+    font-size: 17px;
+    color: var(--text);
+    outline: none;
+  }
+  .vp-clear {
+    display: grid;
+    place-items: center;
+    width: 32px;
+    height: 32px;
+    color: var(--text-3);
+  }
+  .vp-swipe .swipe-face {
+    background: var(--surface);
+  }
+  .vp-row {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    min-height: 64px;
+    padding: 10px 16px;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .vp-row:active {
+    background: var(--hover);
+  }
+  .vp-swipe + .vp-swipe .vp-row::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 72px;
+    right: 0;
+    height: 0.5px;
+    background: var(--border);
+  }
+  .vp-tile {
+    flex: none;
+    display: grid;
+    place-items: center;
+    color: #fff;
+    font-weight: 600;
+    line-height: 1;
+  }
+  .vp-text {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+  }
+  .vp-title {
+    font-size: 17px;
+    line-height: 22px;
+    color: var(--text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .vp-user {
+    font-size: 15px;
+    line-height: 20px;
+    color: var(--text-3);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .vp-mark {
+    flex: none;
+    color: var(--text-3);
+  }
+  .vp-mark + .vp-mark {
+    margin-left: -8px;
+  }
+  .vp-foot {
+    text-wrap: balance;
+    margin: 16px 32px 0;
+    font-size: 13px;
+    line-height: 18px;
+    text-align: center;
+    color: var(--text-3);
+  }
+  .vp-none {
+    margin: 24px 16px;
+    font-size: 15px;
+    text-align: center;
+    color: var(--text-3);
+  }
+  .vp-confirm-text {
+    margin: 0 4px 8px;
+    font-size: 15px;
+    line-height: 20px;
+    color: var(--text-2);
+  }
+
+  /* A login, pushed full screen: a header with no card, then grouped cards. */
+  .vp-screen .push-head,
+  .vault-edit .push-head {
+    border-bottom-color: transparent;
+    background: var(--bg);
+  }
+  .vp-screen .push-body,
+  .vault-edit .push-body {
+    background: var(--bg);
+  }
+  .vp-detail {
+    padding: 8px 0 32px;
+  }
+  .vp-head {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    margin: 0 16px 24px;
+    text-align: center;
+  }
+  .vp-head .vp-tile {
+    margin-bottom: 8px;
+  }
+  .vp-head h2 {
+    margin: 0;
+    font-size: 22px;
+    font-weight: 700;
+    line-height: 28px;
+    overflow-wrap: anywhere;
+  }
+  .vp-head p {
+    margin: 0;
+    font-size: 13px;
+    color: var(--text-3);
+  }
+  .vp-edit {
+    min-height: 44px;
+    padding: 0 10px;
+    border-radius: 12px;
+    font-size: 17px;
+    color: var(--accent);
+    transition: background 0.15s, opacity 0.15s;
+  }
+  .vp-edit.strong {
+    font-weight: 600;
+  }
+  .vp-edit:disabled {
+    opacity: 0.4;
+  }
+  .vp-edit:active:not(:disabled) {
+    background: var(--hover);
+  }
+  .vp-field.g-row {
+    min-height: 64px;
+  }
+  .vp-label {
+    font-size: 15px;
+    line-height: 20px;
+    color: var(--text-3);
+  }
+  .vp-field .g-sub {
+    font-size: 17px;
+    line-height: 22px;
+    color: var(--text);
+  }
+  .vp-value.dots {
+    letter-spacing: 0.08em;
+  }
+  .vp-value.mono {
+    font-family: ui-monospace, Menlo, monospace;
+    font-size: 16px;
+  }
+  .vp-code {
+    font-family: ui-monospace, Menlo, monospace;
+    font-size: 22px;
+    line-height: 28px;
+    letter-spacing: 0.06em;
+    color: var(--text);
+  }
+  .vp-ring {
+    flex: none;
+    transform: rotate(-90deg);
+  }
+  .vp-ring circle {
+    fill: none;
+    stroke-width: 3;
+  }
+  .vp-ring-track {
+    stroke: var(--border);
+  }
+  .vp-ring-fill {
+    stroke: var(--accent);
+    stroke-linecap: round;
+    transition: stroke-dashoffset 1s linear;
+  }
+  .vp-notes .g-label {
+    padding: 4px 0;
+  }
+  .vp-notes-text {
+    font-size: 17px;
+    line-height: 22px;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+
+  /* New and edit: Apple's form, one field per row in grouped cards. */
+  .vp-form {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    padding: 16px 16px 32px;
+  }
+  .vp-form .vault-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    border-radius: 16px;
+    background: var(--surface);
+    overflow: hidden;
+  }
+  .vp-form .vault-grid > .field {
+    position: relative;
+    padding: 8px 16px;
+  }
+  .vp-form .vault-grid > .field + .field::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 16px;
+    right: 0;
+    height: 0.5px;
+    background: var(--border);
+  }
+  /* No box inside the card: fields and pickers are plain, the card is the frame. */
+  .vp-form input:not([type='checkbox']),
+  .vp-form .sel {
+    width: 100%;
+    border: 0;
+    padding: 0;
+    min-height: 32px;
+    background: none;
+    box-shadow: none;
+    border-radius: 0;
+  }
+  .vp-form .sel {
+    padding: 0;
+  }
+  .vp-form .pw-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .vp-form .field > span:first-child {
+    font-size: 13px;
+    color: var(--text-3);
+  }
+  .vp-form > .field {
+    padding: 12px 16px;
+    border-radius: 16px;
+    background: var(--surface);
+  }
+  :root[data-theme='dark'] .vp-form .vault-grid,
+  :root[data-theme='dark'] .vp-form > .field {
+    background: #1c1c1f;
+  }
+  .vault-edit .push-back svg {
+    display: none;
+  }
+}
+@media (max-width: 767px) and (prefers-reduced-motion: reduce) {
+  .vp-ring-fill {
+    transition: none;
+  }
+}

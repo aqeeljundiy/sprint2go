@@ -2,6 +2,7 @@
    builders working at the same time never edit the same file. See docs/mobile-kit.md. */
 @import './kit.css';
 @import './shell.css';
+@import './grouped.css';
 @import './home.css';
 @import './tasks.css';
 @import './chat.css';

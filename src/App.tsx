@@ -4849,6 +4849,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             items={vaultItems}
             reload={loadVault}
             filter={vaultFilter}
+            onFilter={setVaultFilter}
             clients={wsClientsAll}
             users={members}
             teams={wsTeams}

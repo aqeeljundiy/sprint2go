@@ -141,6 +141,30 @@ const id: Record<string, string> = {
     'Kunci 2FA itu sepertinya salah. Tempel kunci penyiapan (huruf dan angka) atau link otpauth://.',
   'Passwords and codes stay with them: you’re signed in as them.': 'Kata sandi dan kode hanya untuk mereka: Anda sedang masuk sebagai mereka.',
   'No 2FA on this login.': 'Login ini tidak punya 2FA.',
+
+  // Phones: Apple Passwords' list, a login's own screen, the locked screen
+  'Which logins': 'Login mana',
+  'No logins yet': 'Belum ada login',
+  'Tap + to add a client login. Paste its 2FA setup key and the team gets the codes here.': 'Ketuk + untuk menambah login klien. Tempel kunci penyiapan 2FA-nya, dan tim mendapat kodenya di sini.',
+  'Search logins': 'Cari login',
+  'No logins with “{query}”.': 'Tidak ada login dengan “{query}”.',
+  'End-to-end encrypted. Copying a password is logged.': 'Terenkripsi end-to-end. Setiap salinan kata sandi tercatat.',
+  'End-to-end encrypted.': 'Terenkripsi end-to-end.',
+  'Everyone who uses it loses it too. This can’t be undone.': 'Semua yang memakainya juga kehilangan login ini. Tidak bisa dibatalkan.',
+  'Delete login': 'Hapus login',
+  'Copy 2FA code': 'Salin kode 2FA',
+  'Has a 2FA code': 'Punya kode 2FA',
+  'No username': 'Tanpa nama pengguna',
+  '{n} seconds left': '{n} detik lagi',
+  'Changed {when} by {name}': 'Diubah {when} oleh {name}',
+  Username: 'Nama pengguna',
+  'Show the 2FA code': 'Tampilkan kode 2FA',
+  'Vault is locked': 'Vault terkunci',
+  'Your passphrase opens it on this device until you close {product}.': 'Frasa sandi Anda membukanya di perangkat ini sampai Anda menutup {product}.',
+  'Logins are encrypted with keys only you hold. This passphrase locks your key, and it can’t be reset.':
+    'Login dienkripsi dengan kunci yang hanya Anda pegang. Frasa sandi ini mengunci kunci Anda, dan tidak bisa diatur ulang.',
+  'The server never sees a password: logins are locked on your devices. If the passphrase is lost, teammates share the logins with you again.':
+    'Server tidak pernah melihat kata sandi: login dikunci di perangkat Anda. Jika frasa sandi hilang, rekan tim membagikan ulang login kepada Anda.',
 };
 
 export default id;
