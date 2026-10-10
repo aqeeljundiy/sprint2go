@@ -1,4 +1,5 @@
 import { ProjectBadge } from './ProjectBadge';
+import { Sheet } from './ui/Sheet';
 import { IconTile } from './ui/IconTile';
 import { useRef, useState } from 'react';
 import { usePersisted } from '../settings';
@@ -57,7 +58,24 @@ export function ProjectsHome({ projects, tasks, users, onOpen, onCreate, onMenu,
     setType('');
     setAdding(false);
   };
-  const newForm = (
+  // Phones: a bottom sheet with the name field focused (it rides above the keyboard), not a form at the top.
+  const newForm = phone ? (
+    adding && (
+      <Sheet
+        title={t('New {project}', { project: term.one })}
+        onClose={() => setAdding(false)}
+        className="proj-new-sheet"
+        footer={
+          <button type="button" className="primary-btn" disabled={!name.trim()} onClick={save}>
+            {t('Add')}
+          </button>
+        }
+      >
+        <input className="pns-name" autoFocus value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && save()} placeholder={t('{Project} name', { project: term.one })} aria-label={t('{Project} name', { project: term.one })} />
+        <Select<string> value={type} onChange={setType} label={t('Type')} className="sel-flat" options={[{ value: '', label: t('No type') }, ...PROJECT_TYPES.map((ty) => ({ value: ty, label: t(ty) }))]} />
+      </Sheet>
+    )
+  ) : (
     <SmoothHeight>
       {adding && (
         <div className="proj-new">

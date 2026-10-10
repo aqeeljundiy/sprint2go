@@ -1,7 +1,8 @@
 import { useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type RefObject } from 'react';
 import { Repeat } from 'lucide-react';
 import type { CalEvent } from '../../types';
-import { fmtTime, monthGrid, sameDay, startOfDay } from '../../calendarUtils';
+import { eventsOn, fmtTime, monthGrid, sameDay, startOfDay } from '../../calendarUtils';
+import { EventCard } from './EventCard';
 import type { CardKit } from './EventCard';
 import { isPending, onColor } from './calTools';
 import { monthLayout, type MonthPiece } from './monthLayout';
@@ -61,6 +62,76 @@ export function MonthView({
   onCreate: (start: Date) => void;
   onStep: (dir: 1 | -1) => void;
 }) {
+  if (phone) return <PhoneMonth cursor={cursor} events={events} kit={kit} onDay={onDay} onCreate={onCreate} onStep={onStep} />;
+  return <GridMonth cursor={cursor} events={events} phone={phone} kit={kit} onDay={onDay} onCreate={onCreate} onStep={onStep} />;
+}
+
+/**
+ * Phones (iOS Calendar's month): the dates with up to three coloured dots under each, no text in the cells, and the
+ * picked day's events listed under the grid. Tap a day to pick it, tap it again to open it; swipe for other months.
+ */
+function PhoneMonth({ cursor, events, kit, onDay, onCreate, onStep }: { cursor: Date; events: CalEvent[]; kit: CardKit; onDay: (d: Date) => void; onCreate: (start: Date) => void; onStep: (dir: 1 | -1) => void }) {
+  const grid = useRef<HTMLDivElement>(null);
+  useSwipeNav(grid, onStep, false);
+  const cells = useMemo(() => monthGrid(cursor), [cursor]);
+  const today = new Date();
+  const inMonth = (d: Date) => d.getMonth() === cursor.getMonth() && d.getFullYear() === cursor.getFullYear();
+  const [picked, setPicked] = useState<Date>(() => (inMonth(today) ? today : new Date(cursor.getFullYear(), cursor.getMonth(), 1)));
+  // Another month on screen: pick today there, else its first day.
+  const monthKey = `${cursor.getFullYear()}-${cursor.getMonth()}`;
+  const [shownKey, setShownKey] = useState(monthKey);
+  if (shownKey !== monthKey) {
+    setShownKey(monthKey);
+    setPicked(inMonth(today) ? today : new Date(cursor.getFullYear(), cursor.getMonth(), 1));
+  }
+  const dayList = eventsOn(events, picked).sort((a, b) => Number(!!b.allDay) - Number(!!a.allDay) || a.start.localeCompare(b.start));
+  const nine = new Date(startOfDay(picked));
+  nine.setHours(9);
+  return (
+    <div className="mp">
+      <div className="mp-head" aria-hidden>
+        {cells.slice(0, 7).map((d) => (
+          <span key={d.getDay()}>{fmtDate(d, { weekday: 'narrow' })}</span>
+        ))}
+      </div>
+      <div className="mp-grid" ref={grid} role="grid" aria-label={fmtMonth(cursor)} key={monthKey}>
+        {cells.map((d) => {
+          const list = eventsOn(events, d);
+          const on = sameDay(d, picked);
+          return (
+            <button
+              key={d.toDateString()}
+              type="button"
+              className={`mp-day${inMonth(d) ? '' : ' out'}${sameDay(d, today) ? ' today' : ''}${on ? ' on' : ''}`}
+              onClick={() => (on ? onDay(d) : setPicked(d))}
+              aria-pressed={on}
+              aria-label={list.length ? tn(list.length, '{day}, {n} event', '{day}, {n} events', { day: fmtWeekdayLong(d) }) : fmtWeekdayLong(d)}
+            >
+              <span className="mp-num">{d.getDate()}</span>
+              <span className="mp-dots" aria-hidden>
+                {list.slice(0, 3).map((e) => (
+                  <i key={e.id} style={{ background: kit.color(e.calendarId) }} />
+                ))}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+      <div className="mp-list">
+        <h2 className="mp-list-head">{fmtWeekdayLong(picked)}</h2>
+        {dayList.length ? (
+          dayList.map((e) => <EventCard key={e.id} e={e} kit={kit} now={Date.now()} />)
+        ) : (
+          <button type="button" className="sch-free mp-free" onClick={() => onCreate(nine)}>
+            {sameDay(picked, today) ? t('Nothing planned today') : t('Nothing planned')}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function GridMonth({ cursor, events, phone, kit, onDay, onCreate, onStep }: { cursor: Date; events: CalEvent[]; phone: boolean; kit: CardKit; onDay: (d: Date) => void; onCreate: (start: Date) => void; onStep: (dir: 1 | -1) => void }) {
   const body = useRef<HTMLDivElement>(null);
   useSwipeNav(body, onStep, !phone);
   const cells = useMemo(() => monthGrid(cursor), [cursor]);

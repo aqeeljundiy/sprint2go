@@ -5,9 +5,9 @@
 /** Each app's sections, in the order of its phone bar. The first is the app's root: `/tasks` means Today. */
 export const SECTIONS: Record<string, readonly string[]> = {
   mail: ['inbox', 'search', 'files', 'contacts'],
-  chat: ['home', 'dms', 'activity', 'search'],
+  chat: ['home', 'dms', 'activity', 'you'],
   tasks: ['today', 'upcoming', 'mine', 'browse'],
-  calendar: ['schedule', 'month', 'meetings'],
+  calendar: ['schedule', 'month'],
   notes: ['notes', 'shared', 'search'],
   drive: ['home', 'starred', 'shared', 'files'],
   projects: ['active', 'mine', 'past'],

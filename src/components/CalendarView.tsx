@@ -331,7 +331,10 @@ export function CalendarView(props: Props) {
   const [allDayOf, setAllDayOf] = useState<Date | null>(null);
 
   const today = new Date();
-  const title = titleOf(view, cursor, days, phone || narrow);
+  // Schedule on phones: the bar names the month at the top of the list as it scrolls (December, then January…).
+  const [topDay, setTopDay] = useState<Date | null>(null);
+  useEffect(() => setTopDay(null), [cursor.toDateString(), view]); // eslint-disable-line react-hooks/exhaustive-deps
+  const title = titleOf(view, view === 'schedule' && topDay ? topDay : cursor, days, phone || narrow);
   const toToday = () => {
     setDrop(false);
     props.onCursor(new Date());
@@ -423,7 +426,7 @@ export function CalendarView(props: Props) {
       {!phone && <UpNext events={events} color={color} onOpen={(id) => select(id)} botWill={props.botWillJoin} />}
 
       {view === 'schedule' ? (
-        <ScheduleView events={events} cursor={cursor} kit={kit} dueTasks={props.dueTasks} onToggleTask={props.onToggleTask} onOpenTask={props.onOpenTask} onEmptyDay={(d) => create(nextSlot(d))} />
+        <ScheduleView events={events} cursor={cursor} kit={kit} dueTasks={props.dueTasks} onToggleTask={props.onToggleTask} onOpenTask={props.onOpenTask} onEmptyDay={(d) => create(nextSlot(d))} onTopDay={phone ? (d) => setTopDay((was) => (was && was.getMonth() === d.getMonth() && was.getFullYear() === d.getFullYear() ? was : d)) : undefined} />
       ) : view === 'month' ? (
         <MonthView
           cursor={cursor}

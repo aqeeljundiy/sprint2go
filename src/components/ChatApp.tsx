@@ -134,6 +134,7 @@ interface SidebarProps {
   onFollow?: (rootId: string, on: boolean) => void;
   /** Phones: Home, DMs or Activity, picked in the app's own bottom bar (App's useAppSections). */
   part?: ChatPart;
+  settings?: { id: string; label: string; hint?: string; run: () => void }[]; // phones' You tab: Chat's settings rows
 }
 
 export function ChatSidebar(p: SidebarProps) {
@@ -458,7 +459,7 @@ export function ChatSidebar(p: SidebarProps) {
         </>
       )}
 
-      {phone && inBar && <TopBar app="chat" actions={part === 'home' || (part === 'activity' && !activityUnread) ? undefined : filterBtn} />}
+      {phone && inBar && <TopBar app="chat" actions={part === 'home' || part === 'you' || (part === 'activity' && !activityUnread) ? undefined : filterBtn} />}
       {phone && !inBar && (
         <div className="chat-switch-row" ref={switchRow}>
           <div className="segmented chat-switch" role="tablist" aria-label={t('Chat')}>
@@ -533,6 +534,44 @@ export function ChatSidebar(p: SidebarProps) {
                 </button>
               )}
             </>
+          ) : part === 'you' ? (
+            <div className="chat-you">
+              <div className="as-list">
+                <button type="button" className="as-item" onClick={() => p.onPage('saved')}>
+                  <Bookmark size={20} className="as-icon" />
+                  <span className="as-label">
+                    {TILE_NAMES.saved}
+                    <small>{tileState.saved.line}</small>
+                  </span>
+                  <ChevronRight size={18} className="as-chev" />
+                </button>
+                <button type="button" className="as-item" onClick={() => p.onPage('drafts')}>
+                  <SendHorizontal size={20} className="as-icon" />
+                  <span className="as-label">
+                    {TILE_NAMES.drafts}
+                    <small>{tileState.drafts.line}</small>
+                  </span>
+                  <ChevronRight size={18} className="as-chev" />
+                </button>
+              </div>
+              {!!p.settings?.length && (
+                <>
+                  <h2 className="chat-you-head">{t('Settings')}</h2>
+                  <div className="as-list">
+                    {p.settings.map((r) => (
+                      <button key={r.id} type="button" className="as-item" onClick={r.run}>
+                        <Settings size={20} className="as-icon" />
+                        <span className="as-label">
+                          {r.label}
+                          {r.hint && <small>{r.hint}</small>}
+                        </span>
+                        <ChevronRight size={18} className="as-chev" />
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
           ) : part === 'dms' ? (
             <DmList dms={dmsShown} filter={dmFilter} row={(c) => <ConvoRow key={c.id} c={c} p={p} info={info[c.id]} phone two starred={star.has(c.id)} draggable={false} onDragState={setDropOn} onMenu={(where) => setRowMenu({ id: c.id, ...where })} />} onNew={() => setNewMsg(true)} />
           ) : (
@@ -830,7 +869,7 @@ export function ChatSidebar(p: SidebarProps) {
   );
 }
 
-type ChatPart = 'home' | 'dms' | 'activity';
+type ChatPart = 'home' | 'dms' | 'activity' | 'you';
 /** Re-tapping the part you're on scrolls its list back to the top (Slack, iOS). */
 function scrollListTop(from: HTMLElement | null) {
   let el = from?.parentElement ?? null;

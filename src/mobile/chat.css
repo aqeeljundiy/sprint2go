@@ -1804,3 +1804,15 @@
     padding: 0;
   }
 }
+
+/* Chat's You tab (Slack's): saved, drafts, then Chat's settings. */
+@media (max-width: 767px) {
+  .chat-you {
+    padding: 8px 0 var(--fab-space);
+  }
+  .chat-you-head {
+    margin: 0;
+    padding: 24px 16px 8px;
+    font: var(--t-heading);
+  }
+}

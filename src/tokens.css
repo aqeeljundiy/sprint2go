@@ -132,6 +132,7 @@
   /* ---------- Shell ---------- */
   --topbar-h: 52px;
   --tabbar-h: 56px; /* the bar: five labelled tabs, plus the home bar under it */
+  --fab-bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom) + 16px); /* the create button's one spot, bar or not */
   --bar-space: 0px; /* how much of the bottom the bar takes (phones only) */
   --fab-space: 0px; /* room lists keep at their end so the last row scrolls clear of the floating create button */
   --ctl-h: 32px; /* buttons, dropdowns, tabs and segmented controls on desktop */

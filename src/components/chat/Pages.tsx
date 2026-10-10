@@ -172,7 +172,7 @@ function CatchUp(p: PagesProps & { chat: ChatState }) {
 
   const wrap = (content: ReactNode, footer?: ReactNode) =>
     p.phone ? (
-      <PushScreen title={TILE_NAMES.catchup} closeX onBack={p.onClose} className="chat-page-push page-catchup" actions={card ? <span className="cu-left">{left === 1 ? t('Last one') : tn(left, '{n} left', '{n} left')}</span> : undefined} footer={footer}>
+      <PushScreen title={TILE_NAMES.catchup} backLabel={t('Chat')} onBack={p.onClose} className="chat-page-push page-catchup" actions={card ? <span className="cu-left">{left === 1 ? t('Last one') : tn(left, '{n} left', '{n} left')}</span> : undefined} footer={footer}>
         {content}
       </PushScreen>
     ) : (

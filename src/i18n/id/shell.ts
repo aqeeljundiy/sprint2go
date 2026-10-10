@@ -132,7 +132,7 @@ const id: Record<string, string> = {
   'Nothing hidden. Tap − on an app to hide it; it stays one search away.': 'Tidak ada yang disembunyikan. Ketuk − pada aplikasi untuk menyembunyikannya; tetap bisa dicari.',
   'Notifications, new ones': 'Notifikasi, ada yang baru',
   'On your launcher': 'Di layar aplikasi Anda',
-  'Past': 'Lama',
+  'Past': 'Selesai',
   'Search apps and people': 'Cari aplikasi, orang',
   'See all {n}': 'Lihat semua {n}',
   'Signature, undo send, out of office': 'Tanda tangan, batalkan kirim, di luar kantor',
