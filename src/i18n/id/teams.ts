@@ -70,6 +70,9 @@ const id: Record<string, string> = {
   '{team} deleted. Its tasks keep their {projects}': '{team} dihapus. Tugas-tugasnya tetap di {projects} masing-masing',
   '{team} created, with its own channel': '{team} dibuat, lengkap dengan channel-nya',
   'Moved {n} tasks': '{n} tugas dipindahkan',
+
+  // Phones: Slack's people directory
+  'Search teams and people': 'Cari tim dan orang',
 };
 
 export default id;

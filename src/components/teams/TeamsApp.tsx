@@ -1,5 +1,7 @@
 import { useMemo, useRef, useState } from 'react';
-import { ArrowLeft, Check, ChevronRight, LogOut, Menu, Plus, Trash2, UserPlus, Users, X } from 'lucide-react';
+import { ArrowLeft, Check, ChevronRight, Crown, LogOut, Mail, Menu, Plus, Search, Trash2, UserPlus, Users, X } from 'lucide-react';
+import { useActionMenu } from '../ui/ActionSheet';
+import { usePhone } from '../../mobile/media';
 import type { Client, HomeTemplateId, Team, Todo, User } from '../../types';
 import { localDay, relative } from '../../utils';
 import { kindOf, projectStages, stageBadge, stageOf, stagesFor } from '../../stages';
@@ -122,6 +124,15 @@ function teamState(tm: Team, tasks: Todo[]) {
 export function TeamsHome({ teams, users, tasks, me, canCreate, actions, onOpen, onNew, onMenu }: { teams: Team[]; users: User[]; tasks: Todo[]; me: string; canCreate: boolean; actions: TeamActions; onOpen: (id: string) => void; onNew: () => void; onMenu: () => void }) {
   const sorted = [...teams].sort((a, b) => Number(b.members.includes(me)) - Number(a.members.includes(me)) || a.name.localeCompare(b.name));
   useCreateAction('teams', canCreate && { label: t('New team'), icon: Plus, run: onNew });
+  const phone = usePhone();
+  if (phone && teams.length)
+    return (
+      <section className="tasks-pane view-enter tp-pane">
+        <div className="tracking-scroll">
+          <TeamsPhone teams={teams} users={users} tasks={tasks} me={me} actions={actions} onOpen={onOpen} />
+        </div>
+      </section>
+    );
   return (
     <section className="tasks-pane view-enter">
       <header className="tracking-head tasks-head">
@@ -195,6 +206,123 @@ export function TeamsHome({ teams, users, tasks, me, canCreate, actions, onOpen,
         )}
       </div>
     </section>
+  );
+}
+
+/**
+ * Teams on a phone: Slack's people directory. Search on top, then Your teams and Other teams as plain rows (a status
+ * word only when something needs a look), and the people who match while searching.
+ */
+function TeamsPhone({ teams, users, tasks, me, actions, onOpen }: { teams: Team[]; users: User[]; tasks: Todo[]; me: string; actions: TeamActions; onOpen: (id: string) => void }) {
+  const [q, setQ] = useState('');
+  const query = q.trim().toLowerCase();
+  const hit = (s?: string) => !!s && s.toLowerCase().includes(query);
+  const shown = teams.filter((tm) => !query || hit(tm.name) || hit(tm.about)).sort((a, b) => a.name.localeCompare(b.name));
+  const mine = shown.filter((tm) => tm.members.includes(me));
+  const others = shown.filter((tm) => !tm.members.includes(me));
+  const people = query ? users.filter((u) => hit(u.name) || hit(u.title) || hit(u.email)).slice(0, 20) : [];
+  const row = (tm: Team, other: boolean) => {
+    const lead = users.find((u) => u.id === tm.leadId);
+    const s = teamState(tm, tasks);
+    return (
+      <div key={tm.id} className="tp-row" role="button" tabIndex={0} onClick={() => onOpen(tm.id)} onKeyDown={(e) => e.key === 'Enter' && e.target === e.currentTarget && onOpen(tm.id)}>
+        <span className="tp-tile" style={{ background: tm.color }} aria-hidden>
+          {tm.name.charAt(0).toUpperCase()}
+        </span>
+        <span className="tp-text">
+          <strong>{tm.name}</strong>
+          <small>{[lead ? t('Led by {name}', { name: lead.name.split(' ')[0] }) : t('No lead yet'), tm.members.length ? tn(tm.members.length, '{n} person', '{n} people') : t('Nobody yet')].join(' · ')}</small>
+        </span>
+        {s.issues.length > 0 && <span className={`tp-state ${s.late ? 'bad' : 'warn'}`}>{s.issues[0]}</span>}
+        {other && <JoinButton tm={tm} me={me} actions={actions} small />}
+      </div>
+    );
+  };
+  const section = (title: string, list: Team[], other: boolean) =>
+    list.length > 0 && (
+      <section className="tp-sec">
+        <h2 className="tp-head">{title}</h2>
+        <div className="tp-list">{list.map((tm) => row(tm, other))}</div>
+      </section>
+    );
+  return (
+    <div className="tp">
+      <label className="tp-search">
+        <Search size={17} />
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t('Search teams and people')} aria-label={t('Search teams and people')} enterKeyHint="search" />
+        {q && (
+          <button type="button" onClick={() => setQ('')} aria-label={t('Clear the search')}>
+            <X size={15} />
+          </button>
+        )}
+      </label>
+      {section(t('Your teams'), mine, false)}
+      {section(t('Other teams'), others, true)}
+      {people.length > 0 && (
+        <section className="tp-sec">
+          <h2 className="tp-head">{t('People')}</h2>
+          <div className="tp-list">
+            {people.map((u) => {
+              const theirs = teams.filter((tm) => tm.members.includes(u.id));
+              return (
+                <div key={u.id} className="tp-row" role={theirs[0] ? 'button' : undefined} onClick={theirs[0] ? () => onOpen(theirs[0].id) : undefined}>
+                  <Avatar person={u} size={36} />
+                  <span className="tp-text">
+                    <strong>{u.name}</strong>
+                    <small>{[u.title, theirs.map((x) => x.name).join(', ')].filter(Boolean).join(' · ') || u.email}</small>
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
+      {query && !shown.length && !people.length && <p className="tp-none">{t('Nothing matches “{q}”.', { q: q.trim() })}</p>}
+    </div>
+  );
+}
+
+/** A member on a phone: a 56 px row; tap for their profile and, for whoever runs the team, Make lead and Remove. */
+function MemberRow({ u, tm, teams, me, manage, actions }: { u: User; tm: Team; teams: Team[]; me: string; manage: boolean; actions: TeamActions }) {
+  const also = teams.filter((x) => x.id !== tm.id && x.members.includes(u.id));
+  const remove = () => {
+    const before = { members: tm.members, leadId: tm.leadId };
+    actions.patch(tm.id, { members: tm.members.filter((x) => x !== u.id), leadId: tm.leadId === u.id ? undefined : tm.leadId });
+    toastUndo(t('Removed {name} from {team}', { name: u.name.split(' ')[0], team: tm.name }), () => actions.patch(tm.id, before));
+  };
+  const menu = useActionMenu(
+    () => [
+      ...(u.email ? [{ label: t('Email {name}', { name: u.name.split(' ')[0] }), icon: Mail, run: () => void (location.href = `mailto:${u.email}`) }] : []),
+      ...(manage && tm.leadId !== u.id ? [{ label: t('Make lead'), icon: Crown, run: () => actions.patch(tm.id, { leadId: u.id }) }] : []),
+      ...(u.id === me && !manage ? [{ label: t('Leave'), icon: LogOut, danger: true, group: 'end', run: () => actions.leave(tm) }] : []),
+      ...(manage ? [{ label: t('Remove from team'), icon: X, danger: true, group: 'end', run: remove }] : []),
+    ],
+    {
+      header: (
+        <div className="tp-profile">
+          <Avatar person={u} size={56} />
+          <strong>{u.name}</strong>
+          <small>{[u.title, u.email].filter(Boolean).join(' · ')}</small>
+          {also.length > 0 && <small>{t('Also in {teams}', { teams: also.map((x) => x.name).join(', ') })}</small>}
+        </div>
+      ),
+    },
+  );
+  return (
+    <>
+      <div className="tp-row tp-member lp" role="button" tabIndex={0} {...menu.bind} onClick={(e) => menu.openAt(e.clientX, e.clientY)} onKeyDown={(e) => e.key === 'Enter' && menu.openAt(0, 0)}>
+        <Avatar person={u} size={36} />
+        <span className="tp-text">
+          <strong>
+            {u.name}
+            {u.id === me && <Badge tone="accent">{t('You')}</Badge>}
+            {tm.leadId === u.id && <Badge>{t('Lead')}</Badge>}
+          </strong>
+          <small>{u.title || u.email}</small>
+        </span>
+      </div>
+      {menu.menu}
+    </>
   );
 }
 
@@ -284,6 +412,7 @@ export function TeamPage({
 }
 
 function MembersTab({ tm, teams, users, me, manage, actions }: { tm: Team; teams: Team[]; users: User[]; me: string; manage: boolean; actions: TeamActions }) {
+  const phone = usePhone();
   const people = tm.members.map((id) => users.find((u) => u.id === id)).filter(Boolean) as User[];
   const requests = (tm.requests ?? []).map((r) => ({ r, u: users.find((u) => u.id === r.userId) })).filter((x) => x.u) as { r: { userId: string; at: string }; u: User }[];
   const approve = (id: string) => actions.patch(tm.id, { members: [...new Set([...tm.members, id])], requests: (tm.requests ?? []).filter((r) => r.userId !== id) });
@@ -313,6 +442,7 @@ function MembersTab({ tm, teams, users, me, manage, actions }: { tm: Team; teams
         </div>
         {!people.length && <p className="muted small">{manage ? t('Nobody in this team yet. Add people above.') : tm.join === 'open' ? t('Nobody in this team yet. Join it from the top.') : t('Nobody in this team yet.')}</p>}
         {people.map((u) => {
+          if (phone) return <MemberRow key={u.id} u={u} tm={tm} teams={teams} me={me} manage={manage} actions={actions} />;
           const also = teams.filter((x) => x.id !== tm.id && x.members.includes(u.id));
           return (
             <div key={u.id} className="team-row">

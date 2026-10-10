@@ -710,3 +710,170 @@
     transition: none;
   }
 }
+
+/* ---------- Teams on phones (teams/TeamsApp.tsx): Slack's people directory ---------- */
+
+@media (max-width: 767px) {
+  .tasks-pane.tp-pane > .tracking-scroll {
+    padding-top: 8px;
+    padding-left: 0;
+    padding-right: 0;
+  }
+  .tp-search {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 40px;
+    margin: 0 16px 8px;
+    padding: 0 6px 0 12px;
+    border-radius: 10px;
+    background: var(--hover);
+    color: var(--text-3);
+  }
+  .tp-search input {
+    flex: 1;
+    min-width: 0;
+    height: 100%;
+    border: 0;
+    background: none;
+    font: inherit;
+    font-size: 17px;
+    color: var(--text);
+    outline: none;
+  }
+  .tp-search button {
+    display: grid;
+    place-items: center;
+    width: 32px;
+    height: 32px;
+    color: var(--text-3);
+  }
+  .tp-sec {
+    margin-top: 16px;
+  }
+  .tp-pane .tp-head {
+    padding: 0;
+    border: 0;
+    background: none;
+    margin: 0 16px 4px;
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    color: var(--text-3);
+  }
+  .tp-row {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-height: 60px;
+    padding: 8px 16px;
+    cursor: pointer;
+    color: var(--text);
+    transition: background 0.15s;
+  }
+  .tp-row:active {
+    background: var(--hover);
+  }
+  .tp-row + .tp-row::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 64px;
+    right: 0;
+    height: 0.5px;
+    background: var(--border);
+  }
+  .tp-tile {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 9px;
+    color: #fff;
+    font-size: 15px;
+    font-weight: 700;
+  }
+  .tp-text {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+  }
+  .tp-text strong {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    font-size: 17px;
+    font-weight: 600;
+    line-height: 22px;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  .tp-text small {
+    font-size: 15px;
+    line-height: 20px;
+    color: var(--text-3);
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  .tp-state {
+    flex: none;
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .tp-state.bad {
+    color: var(--danger);
+  }
+  .tp-state.warn {
+    color: var(--warn, #b45309);
+  }
+  .tp-row .ghost-btn.sm,
+  .tp-row .primary-btn.sm {
+    flex: none;
+    min-height: 32px;
+    border-radius: 16px;
+  }
+  .tp-none {
+    margin: 24px 16px;
+    text-align: center;
+    font-size: 15px;
+    color: var(--text-3);
+  }
+  /* A member's profile, on top of their actions. */
+  .tp-profile {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 8px 16px;
+    text-align: center;
+  }
+  .tp-profile strong {
+    margin-top: 8px;
+    font-size: 20px;
+    font-weight: 600;
+  }
+  .tp-profile small {
+    font-size: 15px;
+    color: var(--text-3);
+  }
+  /* Member rows: no hover box left behind after a tap (it showed as a stray rounded border). */
+  .team-page .tp-member {
+    width: calc(100% + 32px);
+    margin: 0 -16px;
+    min-height: 56px;
+  }
+  .team-page .team-row {
+    border-radius: 0;
+  }
+  .team-page .team-row:hover {
+    background: none;
+  }
+}
