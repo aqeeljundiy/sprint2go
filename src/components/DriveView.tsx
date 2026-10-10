@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
-import { ChevronRight, Eye, LayoutGrid, List, Mail, Menu, MoreHorizontal, PenLine, Play, RotateCcw, Search, Star, Trash2, Upload, X } from 'lucide-react';
+import { flushSync } from 'react-dom';
+import { ArrowDown, ArrowUp, Camera, Check, ChevronRight, Download, Eye, Folder, FolderInput, FolderPlus, HardDrive, Info, LayoutGrid, Link2, List, Mail, Menu, MoreHorizontal, PenLine, Play, Plus, RotateCcw, Search, Star, Trash2, Upload, X } from 'lucide-react';
 import type { DriveItem, DriveSection } from '../types';
 import { fmtSize } from '../data/drive';
 import { relative } from '../utils';
@@ -8,8 +9,14 @@ import { DRIVE_SECTIONS } from './DriveSidebar';
 import { FileIcon } from './FileIcon';
 import { EmptyState } from './ui/EmptyState';
 import { useCreateAction } from '../mobile/chrome';
-import { useActionMenu, type SheetAction } from './ui/ActionSheet';
-import { t, tn } from '../i18n';
+import { ActionSheet, useActionMenu, type SheetAction } from './ui/ActionSheet';
+import { PushScreen } from './ui/PushScreen';
+import { Sheet } from './ui/Sheet';
+import { Group, GRow } from './ui/Grouped';
+import { usePhone } from '../mobile/media';
+import { fmtDay } from '../i18n/format';
+import { mark, t, tn } from '../i18n';
+import { toast } from '../toast';
 
 interface Props {
   items: DriveItem[]; // everything, including attachments from email
@@ -30,6 +37,11 @@ interface Props {
   onDropFiles: (files: FileList) => void;
   onOpenThread: (threadId: string) => void;
   onMenu: () => void;
+  // Phones (Google Drive's app): who's who for "You uploaded", a named new folder, moving into a folder.
+  me?: string;
+  nameOf?: (idOrEmail: string) => string;
+  onMakeFolder?: (name: string) => void;
+  onMove?: (id: string, parentId: string | null) => void;
 }
 
 const byName = (a: DriveItem, b: DriveItem) => a.name.localeCompare(b.name, undefined, { numeric: true });
@@ -37,7 +49,24 @@ const byDate = (a: DriveItem, b: DriveItem) => b.modified.localeCompare(a.modifi
 
 export function DriveView(props: Props) {
   const { items, section, folderId } = props;
-  useCreateAction('drive', section !== 'trash' && { label: t('Upload'), icon: Upload, run: props.onPickFiles });
+  const phone = usePhone();
+  const [newOpen, setNewOpen] = useState(false);
+  const [naming, setNaming] = useState<{ kind: 'new' } | { kind: 'rename'; item: DriveItem } | null>(null);
+  const [moving, setMoving] = useState<DriveItem | null>(null);
+  const [details, setDetails] = useState<DriveItem | null>(null);
+  const photo = useRef<HTMLInputElement>(null);
+  /** iPhone only opens the keyboard for focus given during the tap: render the sheet now, then focus its field. */
+  const askName = (n: NonNullable<typeof naming>) => {
+    flushSync(() => setNaming(n));
+    document.querySelector<HTMLInputElement>('.dp-name-input')?.focus();
+  };
+  const newActions: SheetAction[] = [
+    { label: t('Upload a file'), icon: Upload, run: props.onPickFiles },
+    { label: t('Take a photo'), icon: Camera, run: () => photo.current?.click() },
+    ...(props.onMakeFolder ? [{ label: t('Make a folder'), icon: FolderPlus, run: () => askName({ kind: 'new' }) }] : []),
+  ];
+  // Phones: "+" opens New (Drive's sheet); desktop and tablets keep Upload straight away.
+  useCreateAction('drive', section !== 'trash' && (phone ? { label: t('New'), icon: Plus, run: () => setNewOpen(true), more: newActions } : { label: t('Upload'), icon: Upload, run: props.onPickFiles }));
   const [layout, setLayout] = usePersisted<'grid' | 'list'>('pm-drive-layout', 'grid');
   const [query, setQuery] = useState('');
   const [dragging, setDragging] = useState(false);
@@ -156,6 +185,81 @@ export function DriveView(props: Props) {
         {i.name}
       </span>
     );
+
+  if (phone) {
+    const who = (i: DriveItem) => (i.uploadedBy ? (i.uploadedBy === props.me ? t('You') : (props.nameOf?.(i.uploadedBy) ?? '')) : '');
+    const phoneMeta = (i: DriveItem) => {
+      if (i.kind === 'folder') return tn(items.filter((x) => x.parentId === i.id && !x.trashed).length, '{n} item', '{n} items');
+      if (i.threadId) return `${props.senderOf(i.threadId)} · ${fmtDay(i.modified)} · ${fmtSize(i.size)}`;
+      const by = i.uploadedBy === props.me ? t('You uploaded') : who(i) ? t('{name} uploaded', { name: who(i) }) : '';
+      return [by, fmtDay(i.modified), fmtSize(i.size)].filter(Boolean).join(' · ');
+    };
+    const shareLink = (i: DriveItem) => {
+      const url = i.url && !i.url.startsWith('data:') ? new URL(i.url, location.href).href : '';
+      if (!url) return;
+      void navigator.clipboard?.writeText(url).then(() => toast({ text: t('Link copied') }));
+    };
+    const download = (i: DriveItem) => {
+      if (!i.url) return;
+      const a = document.createElement('a');
+      a.href = i.url;
+      a.download = i.name;
+      a.rel = 'noreferrer';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    };
+    const phoneMenu = (i: DriveItem) => (): SheetAction[] => {
+      if (section === 'trash') return menuFor(i)();
+      const own = !i.id.startsWith('att:');
+      const canLink = !!i.url && !i.url.startsWith('data:');
+      return i.kind === 'folder'
+        ? [
+            { label: t('Rename'), icon: PenLine, run: () => askName({ kind: 'rename', item: i }) },
+            ...(props.onMove ? [{ label: t('Move to folder'), icon: FolderInput, run: () => setMoving(i) }] : []),
+            { label: i.starred ? t('Remove star') : t('Star'), icon: Star, run: () => props.onStar(i.id) },
+            { label: t('Move to trash'), icon: Trash2, danger: true, group: 'end', run: () => props.onTrash(i.id) },
+          ]
+        : [
+            ...(canLink ? [{ label: t('Share link'), icon: Link2, run: () => shareLink(i) }] : []),
+            ...(i.url ? [{ label: t('Download'), icon: Download, run: () => download(i) }] : []),
+            ...(own ? [{ label: i.starred ? t('Remove star') : t('Star'), icon: Star, run: () => props.onStar(i.id) }] : []),
+            ...(i.threadId ? [{ label: t('Open the email'), icon: Mail, run: () => props.onOpenThread(i.threadId!) }] : []),
+            ...(own ? [{ label: t('Rename'), icon: PenLine, group: 'file', run: () => askName({ kind: 'rename', item: i }) }] : []),
+            ...(own && props.onMove ? [{ label: t('Move to folder'), icon: FolderInput, group: 'file', run: () => setMoving(i) }] : []),
+            { label: t('Details'), icon: Info, group: 'file', run: () => setDetails(i) },
+            ...(own ? [{ label: t('Move to trash'), icon: Trash2, danger: true, group: 'end', run: () => props.onTrash(i.id) }] : []),
+          ];
+    };
+    return (
+      <>
+        <DrivePhone {...props} live={live} q={q} query={query} setQuery={setQuery} crumbs={crumbs} sectionName={sectionName} menuFor={phoneMenu} onNew={() => setNewOpen(true)} open={(i, list) => (i.kind === 'folder' ? props.onFolder(i.id) : props.onOpen(i, list))} meta={phoneMeta} />
+        <ActionSheet open={newOpen} onClose={() => setNewOpen(false)} title={t('New')} actions={newActions} />
+        {naming && (
+          <NameSheet
+            title={naming.kind === 'new' ? t('New folder') : t('Rename')}
+            initial={naming.kind === 'new' ? t('Untitled folder') : naming.item.name}
+            done={naming.kind === 'new' ? t('Create') : t('Save')}
+            onDone={(n) => (naming.kind === 'new' ? props.onMakeFolder?.(n) : props.onRename(naming.item.id, n))}
+            onClose={() => setNaming(null)}
+          />
+        )}
+        {moving && <MoveSheet item={moving} items={items} onMove={(parentId) => props.onMove?.(moving.id, parentId)} onClose={() => setMoving(null)} />}
+        {details && <DetailsScreen item={details} items={items} who={who(details)} from={details.threadId ? props.senderOf(details.threadId) : undefined} onBack={() => setDetails(null)} />}
+        <input
+          ref={photo}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          hidden
+          onChange={(e) => {
+            if (e.target.files?.length) props.onDropFiles(e.target.files);
+            e.target.value = '';
+          }}
+        />
+      </>
+    );
+  }
 
   const thumb = (i: DriveItem) =>
     i.thumb ? (
@@ -335,8 +439,8 @@ export function DriveView(props: Props) {
  * on phones) open the same list of actions. The menu renders next to the card, not inside it, so a tap in the menu
  * never reaches the card.
  */
-function DriveItemCard({ className, style, label, actions, onOpen, children }: { className: string; style?: CSSProperties; label: string; actions: () => SheetAction[]; onOpen: () => void; children: ReactNode }) {
-  const menu = useActionMenu(actions, { title: label });
+function DriveItemCard({ className, style, label, actions, onOpen, children, header }: { className: string; style?: CSSProperties; label: string; actions: () => SheetAction[]; onOpen: () => void; children: ReactNode; header?: ReactNode }) {
+  const menu = useActionMenu(actions, header ? { header } : { title: label });
   const dots = useRef<HTMLButtonElement>(null);
   return (
     <>
@@ -357,5 +461,331 @@ function DriveItemCard({ className, style, label, actions, onOpen, children }: {
       </div>
       {menu.menu}
     </>
+  );
+}
+
+/* ---------------------------------------------------------------------------------------------------------------
+   Phones: Google Drive's iPhone app. A search pill, a sort row, plain 64 px rows with a meta line, folders first and
+   pushed full screen, "+" opens New (Upload, Take a photo, Make a folder), and the file menu from "…" or a hold.
+   --------------------------------------------------------------------------------------------------------------- */
+
+type Sort = { by: 'name' | 'modified' | 'size'; dir: 1 | -1 };
+const SORTS: { by: Sort['by']; label: string }[] = [
+  { by: 'name', label: 'Name' },
+  { by: 'modified', label: 'Last modified' },
+  { by: 'size', label: 'Size' },
+];
+
+function sorter(s: Sort) {
+  return (a: DriveItem, b: DriveItem) => {
+    // Folders first, whichever way it's sorted (Drive does the same).
+    const f = Number(b.kind === 'folder') - Number(a.kind === 'folder');
+    if (f) return f;
+    const d = s.by === 'name' ? byName(a, b) : s.by === 'size' ? a.size - b.size || byName(a, b) : a.modified.localeCompare(b.modified);
+    return d * s.dir;
+  };
+}
+
+/** "Proposal Rata Cof….pdf": a long name is cut before its type, which stays (Drive does the same). */
+function Middle({ name }: { name: string }) {
+  const dot = name.lastIndexOf('.');
+  const ext = dot > 0 && name.length - dot <= 6 ? name.slice(dot) : '';
+  return (
+    <span className="dp-name" title={name}>
+      <span className="dp-stem">{ext ? name.slice(0, dot) : name}</span>
+      {ext && <span className="dp-ext">{ext}</span>}
+    </span>
+  );
+}
+
+const TYPE_WORDS: Record<DriveItem['kind'], string> = {
+  folder: mark('Folder'),
+  image: mark('Image'),
+  video: mark('Video'),
+  pdf: mark('PDF'),
+  doc: mark('Document'),
+  sheet: mark('Spreadsheet'),
+  slides: mark('Slides'),
+  zip: mark('Archive'),
+  audio: mark('Audio'),
+  other: mark('File'),
+};
+
+function DrivePhone(props: Props & { live: DriveItem[]; q: string; query: string; setQuery: (q: string) => void; crumbs: DriveItem[]; sectionName: string; menuFor: (i: DriveItem) => () => SheetAction[]; onNew: () => void; open: (i: DriveItem, list: DriveItem[]) => void; meta: (i: DriveItem) => string }) {
+  const { items, section, live, q, crumbs } = props;
+  const [layout, setLayout] = usePersisted<'grid' | 'list'>('pm-drive-layout-phone', 'list');
+  const [sort, setSort] = usePersisted<Sort>('pm-drive-sort', { by: 'name', dir: 1 });
+  const [sortOpen, setSortOpen] = useState(false);
+
+  const listIn = (folder: string | null): DriveItem[] => {
+    if (q) return live.filter((i) => i.name.toLowerCase().includes(q)).sort(sorter(sort));
+    switch (section) {
+      case 'my':
+        return live.filter((i) => i.parentId === folder && !i.id.startsWith('att:')).sort(sorter(sort));
+      case 'recent':
+        return live.filter((i) => i.kind !== 'folder').sort(byDate).slice(0, 30);
+      case 'media':
+        return live.filter((i) => i.kind === 'image' || i.kind === 'video').sort(byDate);
+      case 'email':
+        return live.filter((i) => i.id.startsWith('att:')).sort(byDate);
+      case 'starred':
+        return live.filter((i) => i.starred).sort(sorter(sort));
+      case 'trash':
+        return items.filter((i) => i.trashed).sort(byDate);
+    }
+  };
+  const sortable = section === 'my' || section === 'starred' || !!q;
+
+  const icon = (i: DriveItem) =>
+    i.thumb ? (
+      <span className="dp-icon dp-photo">
+        <img src={i.thumb} alt="" loading="lazy" draggable={false} />
+      </span>
+    ) : (
+      <span className="dp-icon">
+        <FileIcon kind={i.kind} size={20} />
+      </span>
+    );
+
+  const body = (folder: string | null) => {
+    const list = listIn(folder);
+    const files = list.filter((i) => i.kind !== 'folder');
+    if (!list.length)
+      return (
+        <EmptyState
+          icon={section === 'trash' ? <Trash2 size={40} /> : q ? <Search size={40} /> : <Folder size={48} />}
+          title={q ? t('No files found') : section === 'trash' ? t('Trash is empty') : section === 'my' ? t('This folder is empty') : t('Nothing here yet')}
+          text={q ? t('Nothing matches “{q}”.', { q: props.query.trim() }) : section === 'my' ? t('Tap + to upload a file or make a folder.') : ''}
+        />
+      );
+    return (
+      <>
+        <div className="dp-sort">
+          {sortable ? (
+            <button type="button" className="dp-sort-btn" onClick={() => setSortOpen(true)}>
+              {t(SORTS.find((s) => s.by === sort.by)!.label)}
+              {sort.dir === 1 ? <ArrowUp size={15} /> : <ArrowDown size={15} />}
+            </button>
+          ) : (
+            <span className="dp-sort-note">{section === 'trash' ? t('Deleted forever after 30 days') : t('Newest first')}</span>
+          )}
+          <button type="button" className="icon-btn dp-layout" onClick={() => setLayout(layout === 'list' ? 'grid' : 'list')} aria-label={layout === 'list' ? t('Show as a grid') : t('Show as a list')}>
+            {layout === 'list' ? <LayoutGrid size={20} /> : <List size={20} />}
+          </button>
+        </div>
+        {layout === 'list' ? (
+          <div className="dp-list" key="list">
+            {list.map((i, n) => (
+              <DriveItemCard key={i.id} className="dp-row" style={{ ['--i' as string]: Math.min(n, 12) }} label={i.name} header={<DriveMenuHead i={i} meta={props.meta(i)} />} actions={props.menuFor(i)} onOpen={() => props.open(i, files)}>
+                {icon(i)}
+                <span className="dp-text">
+                  <Middle name={i.name} />
+                  <span className="dp-meta">
+                    {i.starred && <Star size={12} className="dp-star" fill="currentColor" />}
+                    {props.meta(i)}
+                  </span>
+                </span>
+              </DriveItemCard>
+            ))}
+          </div>
+        ) : (
+          <div className={section === 'media' && !q ? 'media-grid' : 'dp-grid'} key="grid">
+            {list.map((i, n) => (
+              <DriveItemCard key={i.id} className="file-card dp-tile" style={{ ['--i' as string]: Math.min(n, 16) }} label={i.name} header={<DriveMenuHead i={i} meta={props.meta(i)} />} actions={props.menuFor(i)} onOpen={() => props.open(i, files)}>
+                {i.thumb ? (
+                  <span className="d-thumb">
+                    <img src={i.thumb} alt="" loading="lazy" draggable={false} />
+                  </span>
+                ) : (
+                  <span className={`d-thumb icon-thumb k-${i.kind}`}>
+                    <FileIcon kind={i.kind} size={22} />
+                  </span>
+                )}
+                {(section !== 'media' || q) && (
+                  <span className="fc-text">
+                    <span className="d-name">{i.name}</span>
+                  </span>
+                )}
+              </DriveItemCard>
+            ))}
+          </div>
+        )}
+      </>
+    );
+  };
+
+  return (
+    <section className="drive-pane drive-phone view-enter">
+      <div className="drive-scroll" key={`${section}:${layout}`}>
+        <label className="dp-search">
+          <Search size={20} />
+          <input value={props.query} onChange={(e) => props.setQuery(e.target.value)} placeholder={t('Search in Drive')} aria-label={t('Search in Drive')} enterKeyHint="search" />
+          {props.query && (
+            <button type="button" onClick={() => props.setQuery('')} aria-label={t('Clear search')}>
+              <X size={16} />
+            </button>
+          )}
+        </label>
+        {section === 'email' && !q && (
+          <p className="drive-note">
+            <Mail size={14} /> {t('Attachments from your emails appear here automatically.')}
+          </p>
+        )}
+        {body(null)}
+      </div>
+      {section === 'my' &&
+        !q &&
+        crumbs.map((c, idx) => (
+          <PushScreen
+            key={c.id}
+            title={c.name}
+            backLabel={idx ? crumbs[idx - 1].name : t('My Drive')}
+            onBack={() => props.onFolder(c.parentId)}
+            className="drive-push"
+            actions={
+              <button type="button" className="icon-btn dp-push-new" onClick={props.onNew} aria-label={t('New in {folder}', { folder: c.name })}>
+                <Plus size={22} />
+              </button>
+            }
+          >
+            <div className="drive-scroll dp-in">{body(c.id)}</div>
+          </PushScreen>
+        ))}
+      {sortOpen && (
+        <Sheet title={t('Sort by')} onClose={() => setSortOpen(false)}>
+          <div className="as-list">
+            {SORTS.map((s) => (
+              <button
+                key={s.by}
+                type="button"
+                className="as-item"
+                onClick={() => {
+                  setSort(sort.by === s.by ? { by: s.by, dir: sort.dir === 1 ? -1 : 1 } : { by: s.by, dir: s.by === 'name' ? 1 : -1 });
+                  setSortOpen(false);
+                }}
+              >
+                <span className="as-label">{t(s.label)}</span>
+                {sort.by === s.by && (sort.dir === 1 ? <ArrowUp size={16} className="as-check" /> : <ArrowDown size={16} className="as-check" />)}
+              </button>
+            ))}
+          </div>
+        </Sheet>
+      )}
+    </section>
+  );
+}
+
+/** The top of a file's menu: its icon, name and what it is (Drive's quiet header row). */
+function DriveMenuHead({ i, meta }: { i: DriveItem; meta: string }) {
+  return (
+    <div className="dp-menu-head">
+      {i.thumb ? (
+        <span className="dp-icon dp-photo">
+          <img src={i.thumb} alt="" />
+        </span>
+      ) : (
+        <span className="dp-icon">
+          <FileIcon kind={i.kind} size={20} />
+        </span>
+      )}
+      <span className="dp-text">
+        <span className="dp-name">{i.name}</span>
+        <span className="dp-meta">{i.kind === 'folder' ? meta : `${t(TYPE_WORDS[i.kind])} · ${fmtSize(i.size)}`}</span>
+      </span>
+    </div>
+  );
+}
+
+/** A name for a new folder or a rename: one field, focused, with the name selected. */
+export function NameSheet({ title, initial, done, onDone, onClose }: { title: string; initial: string; done: string; onDone: (name: string) => void; onClose: () => void }) {
+  const [name, setName] = useState(initial);
+  const ok = name.trim().length > 0;
+  return (
+    <Sheet
+      title={title}
+      onClose={onClose}
+      className="dp-name-sheet"
+      head={
+        <button type="button" className="dp-done" disabled={!ok} onClick={() => ok && (onDone(name.trim()), onClose())}>
+          {done}
+        </button>
+      }
+    >
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (ok) (onDone(name.trim()), onClose());
+        }}
+      >
+        <input className="dp-name-input" value={name} onChange={(e) => setName(e.target.value)} onFocus={(e) => e.target.select()} aria-label={title} enterKeyHint="done" />
+      </form>
+    </Sheet>
+  );
+}
+
+/** Where a file or folder can go: My Drive and every folder that isn't the thing itself or inside it. */
+function MoveSheet({ item, items, onMove, onClose }: { item: DriveItem; items: DriveItem[]; onMove: (parentId: string | null) => void; onClose: () => void }) {
+  const inside = (id: string | null): boolean => {
+    for (let x = id; x; x = items.find((i) => i.id === x)?.parentId ?? null) if (x === item.id) return true;
+    return false;
+  };
+  const pathOf = (f: DriveItem) => {
+    const names: string[] = [];
+    for (let x = f.parentId; x; ) {
+      const p = items.find((i) => i.id === x);
+      if (!p) break;
+      names.unshift(p.name);
+      x = p.parentId;
+    }
+    return names.length ? names.join(' / ') : t('My Drive');
+  };
+  const folders = items.filter((i) => i.kind === 'folder' && !i.trashed && !inside(i.id)).sort(byName);
+  return (
+    <Sheet title={t('Move “{name}”', { name: item.name })} onClose={onClose} size="tall">
+      <div className="as-list">
+        <button type="button" className="as-item" onClick={() => (onMove(null), onClose())}>
+          <HardDrive size={18} className="as-icon" />
+          <span className="as-label">{t('My Drive')}</span>
+          {item.parentId === null && <Check size={16} className="as-check" />}
+        </button>
+        {folders.map((f) => (
+          <button key={f.id} type="button" className="as-item" onClick={() => (onMove(f.id), onClose())}>
+            <Folder size={18} className="as-icon" />
+            <span className="as-label">
+              {f.name}
+              {f.parentId && <small>{pathOf(f)}</small>}
+            </span>
+            {item.parentId === f.id && <Check size={16} className="as-check" />}
+          </button>
+        ))}
+      </div>
+    </Sheet>
+  );
+}
+
+/** Details & activity: what it is, how big, where it lives, who put it there and when. */
+function DetailsScreen({ item, items, who, from, onBack }: { item: DriveItem; items: DriveItem[]; who: string; from?: string; onBack: () => void }) {
+  const where: string[] = [];
+  for (let x = item.parentId; x; ) {
+    const p = items.find((i) => i.id === x);
+    if (!p) break;
+    where.unshift(p.name);
+    x = p.parentId;
+  }
+  return (
+    <PushScreen title={t('Details')} backLabel={t('Drive')} onBack={onBack} className="g-page dp-details">
+      <div className="dp-details-body">
+        <DriveMenuHead i={item} meta={tn(items.filter((x) => x.parentId === item.id && !x.trashed).length, '{n} item', '{n} items')} />
+        <Group>
+          <GRow label={t('Type')} value={t(TYPE_WORDS[item.kind])} />
+          {item.kind !== 'folder' && <GRow label={t('Size')} value={fmtSize(item.size)} />}
+          <GRow label={t('Location')} value={item.id.startsWith('att:') ? t('From email') : [t('My Drive'), ...where].join(' / ')} />
+          <GRow label={t('Modified')} value={fmtDay(item.modified)} />
+          {who && <GRow label={t('Uploaded by')} value={who} />}
+          {from && <GRow label={t('Saved from an email by')} value={from} />}
+          {item.starred && <GRow label={t('Starred')} value={t('Yes')} />}
+        </Group>
+      </div>
+    </PushScreen>
   );
 }

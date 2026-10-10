@@ -4991,6 +4991,19 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             onDropFiles={upload}
             onOpenThread={openThread}
             onMenu={() => setSidebarOpen(true)}
+            me={user.id}
+            nameOf={(id) => allUsers.find((u) => u.id === id || u.email === id)?.name.split(' ')[0] ?? id}
+            onMakeFolder={(name) => {
+              const parentId = driveSection === 'my' ? driveFolder : null;
+              setDrive((d) => [...d, { id: uid(), name, kind: 'folder', parentId, size: 0, modified: new Date().toISOString(), workspaceId: ws.id, uploadedBy: user.id }]);
+              setDriveSection('my');
+              showToast({ text: t('Folder made') });
+            }}
+            onMove={(id, parentId) => {
+              const before = drive.find((i) => i.id === id)?.parentId ?? null;
+              patchDrive(id, { parentId });
+              showToast({ text: t('Moved to {folder}', { folder: parentId ? (drive.find((i) => i.id === parentId)?.name ?? '') : t('My Drive') }), action: { label: t('Undo'), run: () => patchDrive(id, { parentId: before }) } });
+            }}
           />
         )}
 

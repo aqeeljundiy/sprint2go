@@ -74,6 +74,29 @@ const id: Record<string, string> = {
   'Untitled folder': 'Folder tanpa judul',
   'Uploaded {n} files': '{n} file diunggah',
   'That file isn’t in Drive any more.': 'File itu sudah tidak ada di Drive.',
+
+  // Phones: Google Drive's app (the New sheet, the sort row, the file menu, Details, Move)
+  'Make a folder': 'Buat folder',
+  'Folder made': 'Folder dibuat',
+  'Moved to {folder}': 'Dipindah ke {folder}',
+  'Move “{name}”': 'Pindahkan “{name}”',
+  'New in {folder}': 'Baru di {folder}',
+  'Remove star': 'Hapus bintang',
+  'Share link': 'Bagikan link',
+  'Show as a grid': 'Tampilkan sebagai kisi',
+  'Show as a list': 'Tampilkan sebagai daftar',
+  'This folder is empty': 'Folder ini kosong',
+  'Tap + to upload a file or make a folder.': 'Ketuk + untuk mengunggah file atau membuat folder.',
+  'Deleted forever after 30 days': 'Dihapus permanen setelah 30 hari',
+  'You uploaded': 'Anda unggah',
+  '{name} uploaded': 'Diunggah {name}',
+  'Uploaded by': 'Diunggah oleh',
+  'Saved from an email by': 'Disimpan dari email oleh',
+  Document: 'Dokumen',
+  Image: 'Gambar',
+  PDF: 'PDF',
+  Slides: 'Slide',
+  Spreadsheet: 'Spreadsheet',
 };
 
 export default id;

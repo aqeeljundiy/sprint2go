@@ -15,112 +15,306 @@
   user-select: text;
 }
 
+/* Phones: Google Drive's iPhone app (DriveView's DrivePhone). A search pill, a sort row, plain rows, no boxes. */
 @media (max-width: 767px) {
-  /* One row on top: search and the grid/list switch. A folder's path, when you're in one, goes on its own line. */
-  .drive-head {
-    flex-wrap: wrap;
-    gap: 8px;
-    row-gap: 0;
-    padding: 10px 16px;
+  .drive-phone .drive-scroll {
+    padding: 8px 0 calc(24px + var(--fab-space, 88px));
   }
-  .drive-head .crumbs {
-    order: 3;
-    flex: 1 1 100%;
+  .drive-phone .drive-note {
+    margin: 4px 16px 8px;
+    border: 0;
+  }
+  .dp-search {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    height: 48px;
+    margin: 0 16px 4px;
+    padding: 0 8px 0 16px;
+    border-radius: 24px;
+    background: var(--hover);
+    color: var(--text-2);
+  }
+  .dp-search input {
+    flex: 1;
     min-width: 0;
+    height: 100%;
+    border: 0;
+    background: none;
+    font: inherit;
+    font-size: 17px;
+    color: var(--text);
+    outline: none;
   }
-  .drive-head .crumbs:has(.crumb-wrap),
-  .drive-head .crumbs:has(h1:not(.drive-sec-title)) {
-    margin-top: 8px;
+  .dp-search input::placeholder {
+    color: var(--text-2);
   }
-  .drive-search {
-    order: 1;
-    flex: 1 1 0;
-    width: auto;
-    min-width: 0;
-  }
-  .drive-head .icon-seg {
-    order: 2;
-    flex: none;
-  }
-  .crumbs h1,
-  .crumb {
-    font-size: 18px;
-  }
-  .drive-scroll {
-    padding: 14px 16px 24px;
-  }
-  /* Folders are a list (their names need the width); files stay two across. */
-  .folder-grid {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 8px;
-  }
-  .file-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 10px;
-  }
-  .media-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 3px;
-  }
-  .media-grid .file-card {
-    border-radius: 4px;
+  .dp-search button {
+    display: grid;
+    place-items: center;
+    width: 36px;
+    height: 36px;
+    color: var(--text-3);
   }
 
-  /* No star and trash buttons sitting on every thumbnail (and no one-tap delete): "…" and long-press instead. */
-  .d-actions {
-    display: none;
+  /* "Name ↑" on the left, list or grid on the right. */
+  .dp-sort {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    min-height: 44px;
+    padding: 0 4px 0 16px;
+  }
+  .dp-sort-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    min-height: 44px;
+    margin-left: -8px;
+    padding: 0 8px;
+    border-radius: 10px;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-2);
+    transition: background 0.15s;
+  }
+  .dp-sort-btn:active {
+    background: var(--hover);
+  }
+  .dp-sort-note {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-3);
+  }
+  .dp-layout {
+    width: 44px;
+    height: 44px;
+    color: var(--text-2);
+  }
+
+  /* Rows: icon, name and one meta line, "…" at the end. No card, no header, no dividers. */
+  .dp-row {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    min-height: 64px;
+    padding: 12px 4px 12px 16px;
+    cursor: pointer;
+    transition: background 0.15s;
+    animation: cardIn 0.28s var(--ease) backwards;
+    animation-delay: calc(var(--i, 0) * 18ms);
+  }
+  .dp-row:active {
+    background: var(--hover);
+  }
+  .dp-icon {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    overflow: hidden;
+  }
+  .dp-icon .ficon {
+    width: 40px !important;
+    height: 40px !important;
+    border-radius: 10px;
+  }
+  .dp-photo img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+  .dp-text {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .dp-name {
+    font-size: 16px;
+    line-height: 21px;
+    color: var(--text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .dp-row .dp-name {
+    display: flex;
+    min-width: 0;
+  }
+  .dp-stem {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .dp-ext {
+    flex: none;
+  }
+  .dp-meta {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 13px;
+    line-height: 18px;
+    color: var(--text-3);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .dp-star {
+    flex: none;
+    color: var(--text-3);
   }
   .d-more {
     display: inline-grid;
     flex: none;
+    width: 44px;
+    height: 44px;
     color: var(--text-2);
   }
-  /* On a file, "…" sits on the picture's corner so the name keeps the card's width. The visible circle is 32 px; the
-     tap area around it is 44. */
-  .file-card .d-more {
-    position: absolute;
-    top: 12px;
-    right: 12px;
-    width: 32px;
-    min-width: 32px;
-    height: 32px;
-    min-height: 32px;
-    border-radius: 50%;
-    color: var(--text);
-    background: color-mix(in srgb, var(--surface) 88%, transparent);
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
-    backdrop-filter: blur(6px);
-  }
-  .file-card .d-more::after {
-    content: '';
-    position: absolute;
-    inset: -6px;
-  }
-  .media-grid .file-card .d-more {
-    top: 4px;
-    right: 4px;
-    color: #fff;
-    background: rgba(0, 0, 0, 0.42);
-    box-shadow: none;
-  }
-  .folder-card {
-    min-height: 56px;
-    padding: 6px 2px 6px 12px;
-  }
-  .d-tr {
-    grid-template-columns: minmax(0, 1fr) auto;
-    min-height: 52px;
-    padding: 4px 4px 4px 14px;
-  }
-  .d-th {
-    min-height: 0;
-    padding: 9px 14px;
-  }
 
-  /* Don't lift on hover: a phone keeps the last tap's hover. */
+  /* Grid: two across, soft tiles with no border, "…" beside the name under the picture. */
+  .dp-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    padding: 0 16px;
+  }
+  .dp-tile.file-card {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 4px 0;
+    padding: 8px 0 0 8px;
+    border: 0;
+    border-radius: 14px;
+    background: var(--hover);
+  }
+  .dp-tile .d-thumb {
+    grid-column: 1 / -1;
+    margin-right: 8px;
+    background: var(--surface);
+  }
+  .dp-tile .fc-text {
+    padding: 0 0 0 4px;
+  }
+  .dp-tile .d-name {
+    font-size: 14px;
+  }
+  .dp-tile .d-more {
+    position: static;
+  }
+  .drive-phone .media-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 3px;
+  }
+  .drive-phone .media-grid .file-card {
+    position: relative;
+    border-radius: 4px;
+  }
+  .drive-phone .media-grid .d-more {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    color: #fff;
+    filter: drop-shadow(0 1px 2px rgb(0 0 0 / 0.5));
+  }
   .folder-card:hover,
   .file-card:hover {
     transform: none;
     box-shadow: none;
+  }
+
+  /* An empty folder: the empty state centred in the room there is. */
+  .drive-phone .drive-scroll:has(> .empty-state),
+  .drive-push .drive-scroll:has(> .empty-state) {
+    display: flex;
+    flex-direction: column;
+  }
+  .drive-scroll > .empty-state {
+    flex: 1;
+    justify-content: center;
+    padding-bottom: 80px;
+  }
+  .drive-scroll > .empty-state .empty-art {
+    width: auto;
+    height: auto;
+    color: var(--text-3);
+    background: none;
+  }
+
+  /* A folder, pushed full screen. */
+  .drive-push .push-body {
+    display: flex;
+    flex-direction: column;
+  }
+  .dp-push-new {
+    width: 44px;
+    height: 44px;
+    color: var(--accent);
+  }
+  .drive-push .dp-in {
+    flex: 1;
+    overflow-y: auto;
+  }
+
+  /* The file menu's header: icon, name and what it is. */
+  .dp-menu-head {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 4px 0 12px;
+    margin-bottom: 4px;
+    border-bottom: 0.5px solid var(--border);
+  }
+  .dp-menu-head .dp-name {
+    font-weight: 600;
+  }
+
+  /* A name for a new folder or a rename. */
+  .dp-name-input {
+    width: 100%;
+    height: 48px;
+    padding: 0 14px;
+    border: 0;
+    border-radius: 12px;
+    background: var(--hover);
+    font: inherit;
+    font-size: 17px;
+    color: var(--text);
+    outline: none;
+  }
+  .dp-done {
+    min-height: 44px;
+    padding: 0 10px;
+    font-size: 17px;
+    font-weight: 600;
+    color: var(--accent);
+    transition: opacity 0.15s;
+  }
+  .dp-done:disabled {
+    opacity: 0.4;
+  }
+
+  /* Details. */
+  .dp-details-body {
+    padding: 16px 0 32px;
+  }
+  .dp-details-body > .dp-menu-head {
+    margin: 0 16px 16px;
+    border: 0;
+  }
+  .dp-details .push-head {
+    background: var(--bg);
+    border-bottom-color: transparent;
+  }
+}
+@media (max-width: 767px) and (prefers-reduced-motion: reduce) {
+  .dp-row {
+    animation: none;
   }
 }
