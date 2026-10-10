@@ -5,6 +5,8 @@ import { brand as product, term } from '../terms';
 import type { Settings } from '../settings';
 import { isIOS, pushState, sendTest, turnOff, turnOn, type PushState } from '../push';
 import { Select } from './ui/Select';
+import { ChoiceRow, Group } from './ui/Grouped';
+import { usePhone } from '../mobile/media';
 import { server } from '../sync';
 import { caps } from '../caps';
 import { mark, t } from '../i18n';
@@ -15,6 +17,7 @@ type Kind = 'notifyMessages' | 'notifyNewMail' | 'notifyTasks' | 'notifyGuests' 
 
 /** Settings, Notifications: this device (on, off, blocked, or what it needs first) and what to send. */
 export function NotificationSettings({ s, update }: { s: Settings; update: (p: Partial<Settings>) => void }) {
+  const phone = usePhone();
   const [state, setState] = useState<PushState | null>(null); // null while checking
   const [busy, setBusy] = useState<'' | 'on' | 'off' | 'test'>('');
   const [note, setNote] = useState<{ text: string; error?: boolean } | null>(null); // English, translated where it's shown
@@ -58,6 +61,11 @@ export function NotificationSettings({ s, update }: { s: Settings; update: (p: P
   // Teammates' away email (server/digest.ts) needs a server that can send mail; the demo shows the choice.
   const mailOn = !server.on || caps.demo || caps.emailNotes;
   const zoneName = (s.timeZone ?? '').split('/').pop()?.replace(/_/g, ' ') ?? '';
+  const digestOptions: { value: Settings['emailDigest']; label: string; hint?: string }[] = [
+    { value: 'daily', label: t('Daily at {time}', { time: fmtTime(new Date(2000, 0, 1, 9)) }), hint: zoneName ? t('{zone} time', { zone: zoneName }) : undefined },
+    { value: 'hourly', label: t('Every hour'), hint: t('After an hour away') },
+    { value: 'off', label: t('Off'), hint: t('The bell and notifications only') },
+  ];
   const emailHint = !mailOn
     ? t('This server can’t send email yet, so this is off. Everything still shows in the bell.')
     : s.emailDigest === 'off'
@@ -195,6 +203,13 @@ export function NotificationSettings({ s, update }: { s: Settings; update: (p: P
       <small className="set-hint">{t('These apply to every device you turn notifications on for, to the desktop app, and to the email below.')}</small>
 
       <h3>{t('Email when you’re away')}</h3>
+      {phone ? (
+        <div className="set-rows">
+          <Group footer={emailHint}>
+            <ChoiceRow<Settings['emailDigest']> label={t('What’s waiting, by email')} value={mailOn ? s.emailDigest : 'off'} onChange={(v) => update({ emailDigest: v })} disabled={!mailOn} options={digestOptions} />
+          </Group>
+        </div>
+      ) : (
       <div className="set-row">
         <span>
           <strong>{t('What’s waiting, by email')}</strong>
@@ -206,13 +221,10 @@ export function NotificationSettings({ s, update }: { s: Settings; update: (p: P
           label={t('Email when you’re away')}
           disabled={!mailOn}
           width={240}
-          options={[
-            { value: 'daily', label: t('Daily at {time}', { time: fmtTime(new Date(2000, 0, 1, 9)) }), hint: zoneName ? t('{zone} time', { zone: zoneName }) : undefined },
-            { value: 'hourly', label: t('Every hour'), hint: t('After an hour away') },
-            { value: 'off', label: t('Off'), hint: t('The bell and notifications only') },
-          ]}
+          options={digestOptions}
         />
       </div>
+      )}
     </>
   );
 }

@@ -7,6 +7,9 @@ import { server } from '../sync';
 import { relative } from '../utils';
 import { t } from '../i18n';
 import '../connector.css';
+import { usePhone } from '../mobile/media';
+import { PushScreen } from './ui/PushScreen';
+import { GRow, Group } from './ui/Grouped';
 
 interface Grant {
   id: string;
@@ -28,6 +31,8 @@ export function ConnectedApps({ toast }: { toast?: (t: string) => void }) {
   const [data, setData] = useState<{ url: string; grants: Grant[] } | null>(null);
   const [copied, setCopied] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
+  const [opened, setOpened] = useState<string | null>(null);
+  const phone = usePhone();
   useEffect(() => {
     if (!server.on) return;
     fetch('/api/oauth/grants')
@@ -52,6 +57,48 @@ export function ConnectedApps({ toast }: { toast?: (t: string) => void }) {
     setData((d) => d && { ...d, grants: d.grants.filter((x) => x.id !== g.id) });
     toast?.(t('{app} is disconnected from {company}', { app: g.app, company: g.company }));
   };
+
+  // Phones (iOS Settings): a row per app with its company; its own screen says when it was used and has Disconnect.
+  if (phone) {
+    const g = data?.grants.find((x) => x.id === opened);
+    return (
+      <>
+        <Group title={t('Connected AI apps')} footer={t('Claude, ChatGPT and other AI apps you connected. Each one sees only what you see in the company you picked, and mail or messages to guests stay drafts.')}>
+          {data === null ? (
+            <GRow label={t('Loading…')} />
+          ) : rows.length === 0 ? (
+            <GRow label={t('No AI apps connected yet.')} />
+          ) : (
+            rows.map(({ item: x, leaving }) => <GRow key={x.id} className={leaving ? 'row-leaving' : ''} label={x.app} sub={x.company} value={x.off ? t('Not working') : undefined} onClick={() => setOpened(x.id)} />)
+          )}
+        </Group>
+        <Group title={t('Add sprint2go to Claude')} footer={t('In Claude, open Settings, Connectors, Add custom connector, and paste this address. ChatGPT and other apps that connect to MCP servers use the same one.')}>
+          <GRow
+            label={<code className="cn-url">{url}</code>}
+            accessory={
+              <button type="button" className="g-btn" onClick={copy} aria-label={t('Copy the address')}>
+                {copied ? <Check size={20} /> : <Copy size={20} />}
+              </button>
+            }
+          />
+        </Group>
+        {g && (
+          <PushScreen title={g.app} onBack={() => setOpened(null)} className="g-page g-edit">
+            <div className="g-body">
+              <Group footer={g.off ? t('{company} switched AI apps off, or you’re no longer on its team.', { company: g.company }) : undefined}>
+                <GRow label={t('Company')} value={g.company} />
+                {g.host && <GRow label={t('Connected from')} value={g.host} />}
+                <GRow label={t('Last used')} value={g.usedAt ? relative(g.usedAt) : t('Not used yet')} />
+              </Group>
+              <Group>
+                <GRow label={busy === g.id ? t('Disconnecting…') : t('Disconnect')} danger onClick={busy ? undefined : () => void disconnect(g).then(() => setOpened(null))} />
+              </Group>
+            </div>
+          </PushScreen>
+        )}
+      </>
+    );
+  }
 
   return (
     <>

@@ -21,6 +21,7 @@ export function PushScreen({
   className = '',
   iconBack = false,
   closeX = false,
+  cancel = false,
 }: {
   title: ReactNode;
   onBack: () => void;
@@ -31,6 +32,7 @@ export function PushScreen({
   className?: string;
   iconBack?: boolean; // Gmail's back: an arrow alone (backLabel is still read out to screen readers)
   closeX?: boolean; // a screen you close rather than go back from (Slack's New message): X alone, read out as Close
+  cancel?: boolean; // an edit screen (iOS): "Cancel" in words instead of the arrow; Back, Escape and the swipe still leave without saving
 }) {
   useFocusedScreen(true);
   const ref = useRef<HTMLDivElement>(null);
@@ -118,10 +120,16 @@ export function PushScreen({
   return createPortal(
     <div ref={ref} className={`push-screen ${className}`} role="dialog" aria-modal="true" aria-label={typeof title === 'string' ? title : undefined}>
       <header className="push-head">
-        <button type="button" className={`push-back${iconBack || closeX ? ' icon-only' : ''}`} onClick={() => backRef.current()} aria-label={closeX ? t('Close') : named ? t('Back to {screen}', { screen: named }) : t('Back')}>
-          {closeX ? <X size={22} /> : iconBack ? <ArrowLeft size={22} /> : <ChevronLeft size={22} />}
-          {named && !iconBack && !closeX && <span>{named}</span>}
-        </button>
+        {cancel ? (
+          <button type="button" className="push-back is-cancel" onClick={() => backRef.current()}>
+            <span>{t('Cancel')}</span>
+          </button>
+        ) : (
+          <button type="button" className={`push-back${iconBack || closeX ? ' icon-only' : ''}`} onClick={() => backRef.current()} aria-label={closeX ? t('Close') : named ? t('Back to {screen}', { screen: named }) : t('Back')}>
+            {closeX ? <X size={22} /> : iconBack ? <ArrowLeft size={22} /> : <ChevronLeft size={22} />}
+            {named && !iconBack && !closeX && <span>{named}</span>}
+          </button>
+        )}
         <h1 className="push-title">{title}</h1>
         <div className="push-actions">{actions}</div>
       </header>

@@ -1,5 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import { Check, Copy, Download, KeyRound, Smartphone } from 'lucide-react';
+import { usePhone } from '../mobile/media';
+import { EditScreen, GField, GRow, Group } from './ui/Grouped';
+import { PushScreen } from './ui/PushScreen';
+import { Check, Copy, Download, KeyRound, Plus, Smartphone } from 'lucide-react';
 import type { Workspace } from '../types';
 import { SmoothHeight, TabPane, useLeaving } from './ui/Smooth';
 import { EmptyState } from './ui/EmptyState';
@@ -103,6 +106,9 @@ export function PhoneMailApps({ ws, canManage, onWorkspace, toast }: { ws: Works
     if (step === 'form') setTimeout(() => nameRef.current?.focus(), 60);
   }, [step]);
   const rows = useLeaving(info && info !== 'failed' ? info.passwords : [], (p) => p.id);
+  const phone = usePhone();
+  const [pwOpen, setPwOpen] = useState<string | null>(null); // phones: an app password on its own screen
+  const justMade = useRef(false);
 
   if (!server.on)
     return (
@@ -117,8 +123,9 @@ export function PhoneMailApps({ ws, canManage, onWorkspace, toast }: { ws: Works
   const others = d?.mailboxes.filter((m) => !m.top) ?? [];
   const here = ws.mailApps !== false;
 
-  const make = async () => {
-    if (!name.trim() || !pw || busy) return;
+  /** Makes an app password; the error (also kept for the desktop form) when it couldn't. */
+  const make = async (): Promise<string | null> => {
+    if (!name.trim() || !pw || busy) return null;
     setBusy('make');
     setError(null);
     try {
@@ -127,9 +134,12 @@ export function PhoneMailApps({ ws, canManage, onWorkspace, toast }: { ws: Works
       setStep('shown');
       setPw('');
       setInfo((x) => (x && x !== 'failed' ? { ...x, passwords: [{ id: r.id, name: r.name, createdAt: r.createdAt, lastUsedAt: null, lastUsedBy: null }, ...x.passwords] } : x));
+      return null;
     } catch (e) {
-      setError(e instanceof Error ? e.message : t('It couldn’t be made. Try again.'));
+      const m = e instanceof Error ? e.message : t('It couldn’t be made. Try again.');
+      setError(m);
       setPw('');
+      return m;
     } finally {
       setBusy(null);
     }
@@ -162,6 +172,7 @@ export function PhoneMailApps({ ws, canManage, onWorkspace, toast }: { ws: Works
           ? t('Not available yet: the mail app ports couldn’t open on this server.')
           : null;
   const canMake = !!d?.on && d.mailboxes.length > 0;
+  const opened = d?.passwords.find((p) => p.id === pwOpen);
   /** "Made 8 Oct, used 5 min ago": one sentence per state, so each language orders it its own way. */
   const madeLine = (p: AppPassword) =>
     !p.lastUsedAt
@@ -200,7 +211,62 @@ export function PhoneMailApps({ ws, canManage, onWorkspace, toast }: { ws: Works
           )}
         </SmoothHeight>
 
-        {d && (canMake || d.passwords.length > 0) && (
+        {d && (canMake || d.passwords.length > 0) && phone && (
+          <div className="set-rows">
+            <Group title={t('App passwords')} footer={t('Each mail app signs in with its own app password. Your sprint2go password never works there, so two-step sign-in stays safe. Remove one and that app is signed out at once.')}>
+              {rows.length === 0 && <GRow label={t('No app passwords yet.')} />}
+              {rows.map(({ item: p, leaving }) => (
+                <GRow key={p.id} icon={KeyRound} plainIcon className={leaving ? 'row-leaving' : ''} label={p.name} sub={madeLine(p)} onClick={() => setPwOpen(p.id)} />
+              ))}
+              {canMake && <GRow icon={Plus} plainIcon action label={t('New app password')} onClick={() => setStep('form')} />}
+            </Group>
+            {step === 'form' && (
+              <EditScreen title={t('New app password')} saveLabel={t('Make')} canSave={!!name.trim() && !!pw} onBack={() => (justMade.current ? (justMade.current = false) : close())} onSave={async () => {
+                const err = await make();
+                // Made: this screen gives way to the one with the password (step 'shown'), so leaving it doesn't close that.
+                if (!err) justMade.current = true;
+                return err;
+              }}>
+                <Group title={t('Name')}>
+                  <GField value={name} onChange={setName} label={t('Name')} placeholder={t('iPhone, Work laptop…')} maxLength={60} autoComplete="off" autoFocus />
+                </Group>
+                <Group title={t('Your sprint2go password')} footer={t('So nobody at an unlocked computer can add a way into your mail.')}>
+                  <GField value={pw} onChange={setPw} label={t('Your sprint2go password')} type="password" autoComplete="current-password" />
+                </Group>
+              </EditScreen>
+            )}
+            {step === 'shown' && made && (
+              <PushScreen title={made.name} onBack={close} className="g-page g-edit" actions={<button type="button" className="g-save" onClick={close}>{t('Done')}</button>}>
+                <div className="g-body">
+                  <Group title={t('Your app password for “{name}”', { name: made.name })} footer={t('Type it into your mail app as the password, with your email address as the user name. You won’t see it here again.')}>
+                    <GRow
+                      label={<code className="pm-secret-code">{made.password}</code>}
+                      accessory={
+                        <button type="button" className="g-btn" aria-label={t('Copy')} onClick={() => void navigator.clipboard?.writeText(made.password).then(() => setCopied(true), () => {})}>
+                          {copied ? <Check size={20} /> : <Copy size={20} />}
+                        </button>
+                      }
+                    />
+                  </Group>
+                </div>
+              </PushScreen>
+            )}
+            {opened && (
+              <PushScreen title={opened.name} onBack={() => setPwOpen(null)} className="g-page g-edit">
+                <div className="g-body">
+                  <Group footer={t('Remove one and that app is signed out at once.')}>
+                    <GRow label={madeLine(opened)} />
+                  </Group>
+                  <Group>
+                    <GRow label={busy === opened.id ? t('Removing…') : t('Remove')} danger onClick={busy ? undefined : () => (setPwOpen(null), void remove(opened))} />
+                  </Group>
+                </div>
+              </PushScreen>
+            )}
+          </div>
+        )}
+
+        {d && (canMake || d.passwords.length > 0) && !phone && (
           <div className="set-block pm-block">
             <h3>{t('App passwords')}</h3>
             <p className="set-hint pm-hint">{t('Each mail app signs in with its own app password. Your sprint2go password never works there, so two-step sign-in stays safe. Remove one and that app is signed out at once.')}</p>

@@ -5,6 +5,8 @@ import { TRY_THIS, type DemoState, type TryKey } from '../sandbox';
 import { Layer } from './ui/Layer';
 import { Badge } from './ui/Person';
 import { t } from '../i18n';
+import { usePhone } from '../mobile/media';
+import { GRow, Group } from './ui/Grouped';
 import { tj } from '../i18n/tj';
 
 /*
@@ -245,7 +247,27 @@ export interface DemoSettings {
 
 /** Help & support and Settings, Your apps: the demo company, and the way back to it once it's hidden. */
 export function DemoCompanyBlock({ d }: { d: DemoSettings }) {
+  const phone = usePhone();
   if (!d.allowed && d.state !== 'on') return null;
+  const about = d.allowed ? t('A sample agency with mail, chat, tasks and projects, just for you. Nothing in it is real and nothing leaves it.') : t('Your company switched the demo company off.');
+  // Phones (iOS Settings): what it is under the group, and what can be done as text rows.
+  if (phone)
+    return (
+      <div className="set-rows">
+        <Group title={t('Demo company')} footer={about}>
+          {!d.allowed ? (
+            <GRow label={t('Off')} />
+          ) : d.state === 'on' ? (
+            <>
+              {!d.inDemo && <GRow icon={FlaskConical} plainIcon action label={t('Go to the demo company')} onClick={d.onOpen} />}
+              <GRow label={d.listOff ? t('Show the Try this list') : t('Open the Try this list')} action onClick={d.onList} />
+            </>
+          ) : (
+            <GRow icon={FlaskConical} plainIcon action label={d.busy ? t('Opening…') : d.state === 'hidden' ? t('Show the demo company') : t('Open the demo company')} onClick={d.busy ? undefined : d.onOpen} />
+          )}
+        </Group>
+      </div>
+    );
   return (
     <div className="set-block demo-block">
       <h3>{t('Demo company')}</h3>

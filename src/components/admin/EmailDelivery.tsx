@@ -1,4 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
+import { usePhone } from '../../mobile/media';
+import { GRow, Group } from '../ui/Grouped';
+import { PushScreen } from '../ui/PushScreen';
 import { AlertTriangle, Check, Cloud, Copy, ImageOff, Loader2, MailX, PenLine, Plus, RefreshCw, Server, Shuffle, Trash2, Upload, Zap, type LucideIcon } from 'lucide-react';
 import type { Account, EmailSetup, MailAlias, MailProvider, Workspace } from '../../types';
 import { AliasDialog } from '../WorkspaceForms';
@@ -79,6 +82,10 @@ export function EmailDeliverySection({
   const [copied, setCopied] = useState('');
   const [guide, setGuide] = useState(false);
   const [aliasEdit, setAliasEdit] = useState<MailAlias | 'new' | null>(null);
+  // Phones (iOS Settings): the records, the logo and each mailbox on screens of their own.
+  const phone = usePhone();
+  const [pane, setPane] = useState<'records' | 'bimi' | null>(null);
+  const [boxOpen, setBoxOpen] = useState<string | null>(null);
   const [leaving, setLeaving] = useState<string[]>([]); // addresses folding away while they're removed
   const mailboxes = ws.accounts.filter((a) => !a.temp);
   const mailboxRows = useLeaving(mailboxes, (a) => a.id); // a removed one folds away (the remove happens in a dialog)
@@ -169,6 +176,104 @@ export function EmailDeliverySection({
   const route = info?.route ?? ws.mailRoute ?? 'own';
   const checks = info?.checks ?? ws.mailChecks ?? null;
   const resultFor = (key: string) => checks?.checks.find((c) => c.key === key);
+  const box = mailboxes.find((a) => a.id === boxOpen);
+  // The DNS records and whether they're there: in place on desktop, a screen of its own on phones.
+  const recordsBlock = (
+  <div className="set-block">
+    <div className="ed-head">
+      <h3>{t('Records for {domain}', { domain: info?.domain ?? ws.domains[0] ?? t('your domain') })}</h3>
+      {info?.ownDomain && (
+        <button type="button" className="ghost-btn sm outline" disabled={checking} onClick={() => void check()}>
+          {checking ? <Loader2 size={14} className="spin" /> : <RefreshCw size={14} />} {checking ? t('Checking…') : checks ? t('Check again') : t('Check the records')}
+        </button>
+      )}
+    </div>
+    {!info && !error && <div className="lazy-wait" aria-hidden />}
+    {info && !info.ownDomain && (
+      <p className="small muted">
+        {tj('Your addresses live at {host}, so there is nothing to add: mail to them arrives here as it is. To use your own domain, add it under General.', { host: <code className="mono">{info.host}</code> })}
+      </p>
+    )}
+    {info?.ownership && (info.ownership.state === 'held' || info.ownership.state === 'taken') && (
+      <p className="ed-owner bad">
+        <AlertTriangle size={15} />
+        <span>
+          <strong>{t('Another company uses {domain}.', { domain: info.ownership.domain })}</strong> {t('Its mail can’t arrive here or go out from {product} for you until you prove the domain is yours with the record below.', { product: product.name })}
+        </span>
+      </p>
+    )}
+    {info && info.ownDomain && (
+      <>
+        <p className="small muted">
+          {info.dnsHost ? (
+            tj('{domain}’s DNS is at {host}, so add these there: {where}.', { domain: info.domain, host: <b>{info.dnsHost.name}</b>, where: info.dnsHost.where })
+          ) : (
+            <>
+              {setup === 'keep' || setup === 'mix'
+                ? t('Add these where {domain}’s DNS is managed: the company its nameservers belong to, usually where you bought the domain, and often not {provider}.', { domain: info.domain, provider: providerLabel(provider) })
+                : t('Add these where {domain}’s DNS is managed: the company its nameservers belong to, usually where you bought the domain.', { domain: info.domain })}
+              {info.nameservers?.length ? ` ${t('{domain} uses {nameservers}.', { domain: info.domain, nameservers: fmtList(info.nameservers) })}` : ''}
+            </>
+          )}{' '}
+          {t('Changes can take up to an hour to show.')}
+        </p>
+        <div className="ed-records">
+          {info.records.map((r) => {
+            const res = resultFor(r.key);
+            return (
+              <div key={r.key + r.host} className={`ed-record ${res ? (res.ok ? 'ok' : 'bad') : ''}`}>
+                <span className="ed-rec-type mono">{r.type}</span>
+                <span className="ed-rec-main">
+                  <span className="ed-rec-host mono">{r.host.startsWith('(') ? t(r.host) : r.host}</span>
+                  <span className="ed-rec-value">
+                    <code className="mono">{r.value.startsWith('(') || r.host.startsWith('(') ? t(r.value) : r.value}</code>
+                    {!r.value.startsWith('(') && (
+                      <button type="button" className="icon-btn sm" title={t('Copy')} onClick={() => copy(r.value)}>
+                        {copied === r.value ? <Check size={13} /> : <Copy size={13} />}
+                      </button>
+                    )}
+                  </span>
+                  <small className="muted">{t(r.note)}</small>
+                  {res && !res.ok && <small className="ed-found">{t('Found: {found}', { found: t(res.found) })}</small>}
+                </span>
+                <span className="ed-rec-state">{res ? res.ok ? <Check size={15} /> : <AlertTriangle size={15} /> : null}</span>
+              </div>
+            );
+          })}
+        </div>
+        {checks && (
+          <p className={`small ${checks.allOk ? 'ed-ok' : 'muted'}`}>
+            {checks.allOk ? t('Everything is in place.') : t('{missing} of {total} still missing.', { missing: checks.checks.filter((c) => !c.ok).length, total: checks.checks.length })} {t('Checked {ago}.', { ago: relative(checks.at) })}
+          </p>
+        )}
+        {info.ownership?.state === 'verified' && (
+          <p className="small ed-ok">
+            {info.ownership.how && PROVEN_BY[info.ownership.how]
+              ? t('{domain} is verified as yours by {how}.', { domain: info.ownership.domain, how: t(PROVEN_BY[info.ownership.how]) })
+              : t('{domain} is verified as yours.', { domain: info.ownership.domain })}
+          </p>
+        )}
+        {info.ownership?.state === 'pending' && (
+          <p className="small muted ed-owner-line">
+            <span>
+              {setup === 'hosted'
+                ? tj('{domain} isn’t verified as yours yet. That happens by itself once the MX record points here, or add this TXT record at {at}:', { domain: info.ownership.domain, at: <code className="mono">@</code> })
+                : route === 'own'
+                  ? tj('{domain} isn’t verified as yours yet. That happens by itself once the DKIM record is in place, or add this TXT record at {at}:', { domain: info.ownership.domain, at: <code className="mono">@</code> })
+                  : tj('{domain} isn’t verified as yours yet. That happens by itself once a record proves it, or add this TXT record at {at}:', { domain: info.ownership.domain, at: <code className="mono">@</code> })}
+            </span>
+            <span className="ed-rec-value">
+              <code className="mono">{info.ownership.record.value}</code>
+              <button type="button" className="icon-btn sm" title={t('Copy')} onClick={() => copy(info.ownership!.record.value)}>
+                {copied === info.ownership.record.value ? <Check size={13} /> : <Copy size={13} />}
+              </button>
+            </span>
+          </p>
+        )}
+      </>
+    )}
+  </div>
+  );
 
   return (
     <>
@@ -323,104 +428,89 @@ export function EmailDeliverySection({
           </SmoothHeight>
         </div>
 
-        <div className="set-block">
-          <div className="ed-head">
-            <h3>{t('Records for {domain}', { domain: info?.domain ?? ws.domains[0] ?? t('your domain') })}</h3>
-            {info?.ownDomain && (
-              <button type="button" className="ghost-btn sm outline" disabled={checking} onClick={() => void check()}>
-                {checking ? <Loader2 size={14} className="spin" /> : <RefreshCw size={14} />} {checking ? t('Checking…') : checks ? t('Check again') : t('Check the records')}
-              </button>
+        {phone ? (
+          <div className="set-rows">
+            <Group title={t('Records for {domain}', { domain: info?.domain ?? ws.domains[0] ?? t('your domain') })} footer={info && !info.ownDomain ? t('Your addresses live at our address, so there is nothing to add.') : t('Changes can take up to an hour to show.')}>
+              <GRow
+                label={t('DNS records')}
+                value={!info ? t('Checking…') : !info.ownDomain ? t('Nothing to add') : checks ? (checks.allOk ? t('All in place') : t('{missing} of {total} still missing.', { missing: checks.checks.filter((c) => !c.ok).length, total: checks.checks.length }).replace(/\.$/, '')) : t('Not checked yet')}
+                onClick={info?.ownDomain ? () => setPane('records') : undefined}
+              />
+              {info?.ownDomain && server.on && <GRow label={t('Logo in inboxes (BIMI)')} onClick={() => setPane('bimi')} />}
+            </Group>
+          </div>
+        ) : (
+          <>
+        {recordsBlock}
+        {info?.ownDomain && server.on && <BimiBlock ws={ws} copy={copy} copied={copied} toast={toast} />}
+          </>
+        )}
+
+        {ws.emailSetup !== 'none' && phone && (
+          <div className="set-rows">
+            <Group
+              title={t('Your mailboxes')}
+              footer={
+                (setup === 'hosted' || setup === 'mix'
+                  ? boxRoom.sharedFree
+                    ? tn(boxRoom.total, '{used} of {n} hosted mailbox in use: one comes with the plan for each person, and shared inboxes are free.', '{used} of {n} hosted mailboxes in use: one comes with the plan for each person, and shared inboxes are free.', { used: fmtNumber(boxRoom.used) })
+                    : tn(boxRoom.total, '{used} of {n} hosted mailbox in use: on Free, each hosted mailbox is an add-on.', '{used} of {n} hosted mailboxes in use: on Free, each hosted mailbox is an add-on.', { used: fmtNumber(boxRoom.used) })
+                  : '') + (ws.mailReady && mailboxes.length > 0 ? ` ${t('Checked {ago}.', { ago: relative(ws.mailReady.at) })}` : '')
+              }
+            >
+              {mailboxes.length === 0 && <GRow label={t('No mailboxes yet. Add one for each person, and shared inboxes like hello@ for the team.')} />}
+              {mailboxRows.map(({ item: a, leaving: going }) => {
+                const r = ws.mailReady?.mailboxes?.[a.id];
+                const kept = !!a.provider && a.provider !== 'sprint2go';
+                return (
+                  <GRow
+                    key={a.id}
+                    className={going ? 'row-leaving' : ''}
+                    label={a.email}
+                    sub={!r ? t('Not checked yet') : kept ? (r.receive ? t('Copies arrive here') : t('No copies yet')) : `${r.receive ? t('Receives') : t('Doesn’t receive yet')} · ${r.send ? t('sends') : t('doesn’t send yet')}`}
+                    onClick={() => setBoxOpen(a.id)}
+                  />
+                );
+              })}
+              {canManage && onAddAccount && <GRow icon={Plus} plainIcon action label={t('Add a mailbox')} onClick={onAddAccount} />}
+              {mailboxes.length > 0 && (
+                <GRow
+                  icon={RefreshCw}
+                  plainIcon
+                  action
+                  label={checking ? t('Checking…') : t('Check again')}
+                  onClick={
+                    checking
+                      ? undefined
+                      : () => {
+                          setChecking(true);
+                          void post('ready', { workspaceId: ws.id })
+                            .then(() => toast(t('Checked again.')))
+                            .catch((e: Error) => toast(e.message))
+                            .finally(() => setChecking(false));
+                        }
+                  }
+                />
+              )}
+            </Group>
+            {(setup === 'hosted' || setup === 'mix') && hostedBoxes.length > 0 && (
+              <Group title={t('Other addresses')} footer={t('Addresses like sales@ or info@ that deliver into mailboxes here: into a shared inbox, or a copy to each of several people.')}>
+                {aliases.map((al) => (
+                  <GRow
+                    key={al.id}
+                    className={leaving.includes(al.id) ? 'row-leaving' : ''}
+                    label={al.address}
+                    sub={al.to.length > 1 ? t('A copy to each of {mailboxes}', { mailboxes: fmtList(al.to.map((id) => ws.accounts.find((x) => x.id === id)?.email ?? t('a removed mailbox'))) }) : t('Into {mailbox}', { mailbox: al.to.map((id) => ws.accounts.find((x) => x.id === id)?.email ?? t('a removed mailbox')).join(', ') })}
+                    onClick={canManage ? () => setAliasEdit(al) : undefined}
+                  />
+                ))}
+                {canManage && <GRow icon={Plus} plainIcon action label={t('Add an address')} onClick={() => (ws.domains.length ? setAliasEdit('new') : toast(t('Add your domain under General first: addresses live at your own domain.')))} />}
+              </Group>
             )}
           </div>
-          {!info && !error && <div className="lazy-wait" aria-hidden />}
-          {info && !info.ownDomain && (
-            <p className="small muted">
-              {tj('Your addresses live at {host}, so there is nothing to add: mail to them arrives here as it is. To use your own domain, add it under General.', { host: <code className="mono">{info.host}</code> })}
-            </p>
-          )}
-          {info?.ownership && (info.ownership.state === 'held' || info.ownership.state === 'taken') && (
-            <p className="ed-owner bad">
-              <AlertTriangle size={15} />
-              <span>
-                <strong>{t('Another company uses {domain}.', { domain: info.ownership.domain })}</strong> {t('Its mail can’t arrive here or go out from {product} for you until you prove the domain is yours with the record below.', { product: product.name })}
-              </span>
-            </p>
-          )}
-          {info && info.ownDomain && (
-            <>
-              <p className="small muted">
-                {info.dnsHost ? (
-                  tj('{domain}’s DNS is at {host}, so add these there: {where}.', { domain: info.domain, host: <b>{info.dnsHost.name}</b>, where: info.dnsHost.where })
-                ) : (
-                  <>
-                    {setup === 'keep' || setup === 'mix'
-                      ? t('Add these where {domain}’s DNS is managed: the company its nameservers belong to, usually where you bought the domain, and often not {provider}.', { domain: info.domain, provider: providerLabel(provider) })
-                      : t('Add these where {domain}’s DNS is managed: the company its nameservers belong to, usually where you bought the domain.', { domain: info.domain })}
-                    {info.nameservers?.length ? ` ${t('{domain} uses {nameservers}.', { domain: info.domain, nameservers: fmtList(info.nameservers) })}` : ''}
-                  </>
-                )}{' '}
-                {t('Changes can take up to an hour to show.')}
-              </p>
-              <div className="ed-records">
-                {info.records.map((r) => {
-                  const res = resultFor(r.key);
-                  return (
-                    <div key={r.key + r.host} className={`ed-record ${res ? (res.ok ? 'ok' : 'bad') : ''}`}>
-                      <span className="ed-rec-type mono">{r.type}</span>
-                      <span className="ed-rec-main">
-                        <span className="ed-rec-host mono">{r.host.startsWith('(') ? t(r.host) : r.host}</span>
-                        <span className="ed-rec-value">
-                          <code className="mono">{r.value.startsWith('(') || r.host.startsWith('(') ? t(r.value) : r.value}</code>
-                          {!r.value.startsWith('(') && (
-                            <button type="button" className="icon-btn sm" title={t('Copy')} onClick={() => copy(r.value)}>
-                              {copied === r.value ? <Check size={13} /> : <Copy size={13} />}
-                            </button>
-                          )}
-                        </span>
-                        <small className="muted">{t(r.note)}</small>
-                        {res && !res.ok && <small className="ed-found">{t('Found: {found}', { found: t(res.found) })}</small>}
-                      </span>
-                      <span className="ed-rec-state">{res ? res.ok ? <Check size={15} /> : <AlertTriangle size={15} /> : null}</span>
-                    </div>
-                  );
-                })}
-              </div>
-              {checks && (
-                <p className={`small ${checks.allOk ? 'ed-ok' : 'muted'}`}>
-                  {checks.allOk ? t('Everything is in place.') : t('{missing} of {total} still missing.', { missing: checks.checks.filter((c) => !c.ok).length, total: checks.checks.length })} {t('Checked {ago}.', { ago: relative(checks.at) })}
-                </p>
-              )}
-              {info.ownership?.state === 'verified' && (
-                <p className="small ed-ok">
-                  {info.ownership.how && PROVEN_BY[info.ownership.how]
-                    ? t('{domain} is verified as yours by {how}.', { domain: info.ownership.domain, how: t(PROVEN_BY[info.ownership.how]) })
-                    : t('{domain} is verified as yours.', { domain: info.ownership.domain })}
-                </p>
-              )}
-              {info.ownership?.state === 'pending' && (
-                <p className="small muted ed-owner-line">
-                  <span>
-                    {setup === 'hosted'
-                      ? tj('{domain} isn’t verified as yours yet. That happens by itself once the MX record points here, or add this TXT record at {at}:', { domain: info.ownership.domain, at: <code className="mono">@</code> })
-                      : route === 'own'
-                        ? tj('{domain} isn’t verified as yours yet. That happens by itself once the DKIM record is in place, or add this TXT record at {at}:', { domain: info.ownership.domain, at: <code className="mono">@</code> })
-                        : tj('{domain} isn’t verified as yours yet. That happens by itself once a record proves it, or add this TXT record at {at}:', { domain: info.ownership.domain, at: <code className="mono">@</code> })}
-                  </span>
-                  <span className="ed-rec-value">
-                    <code className="mono">{info.ownership.record.value}</code>
-                    <button type="button" className="icon-btn sm" title={t('Copy')} onClick={() => copy(info.ownership!.record.value)}>
-                      {copied === info.ownership.record.value ? <Check size={13} /> : <Copy size={13} />}
-                    </button>
-                  </span>
-                </p>
-              )}
-            </>
-          )}
-        </div>
+        )}
 
-        {info?.ownDomain && server.on && <BimiBlock ws={ws} copy={copy} copied={copied} toast={toast} />}
-
-        {ws.emailSetup !== 'none' && (
+        {ws.emailSetup !== 'none' && !phone && (
           <div className="set-block">
             <div className="ed-head">
               <h3>{t('Your mailboxes')}</h3>
@@ -494,7 +584,7 @@ export function EmailDeliverySection({
           </div>
         )}
 
-        {(setup === 'hosted' || setup === 'mix') && hostedBoxes.length > 0 && (
+        {(setup === 'hosted' || setup === 'mix') && hostedBoxes.length > 0 && !phone && (
           <div className="set-block">
             <div className="ed-head">
               <h3>{t('Other addresses')}</h3>
@@ -604,6 +694,45 @@ export function EmailDeliverySection({
           </div>
         ) : null}
       </fieldset>
+      {pane === 'records' && (
+        <PushScreen title={t('Records for {domain}', { domain: info?.domain ?? ws.domains[0] ?? t('your domain') })} onBack={() => setPane(null)} className="settings-push ed-push">
+          <div className="settings-content">
+            <fieldset className="plain" disabled={!canManage}>
+        {recordsBlock}
+            </fieldset>
+          </div>
+        </PushScreen>
+      )}
+      {pane === 'bimi' && (
+        <PushScreen title={t('Logo in inboxes (BIMI)')} onBack={() => setPane(null)} className="settings-push ed-push">
+          <div className="settings-content">
+            <BimiBlock ws={ws} copy={copy} copied={copied} toast={toast} />
+          </div>
+        </PushScreen>
+      )}
+      {box && (
+        <PushScreen title={box.email} onBack={() => setBoxOpen(null)} className="g-page g-edit">
+          <div className="g-body">
+            {(() => {
+              const r = ws.mailReady?.mailboxes?.[box.id];
+              const kept = !!box.provider && box.provider !== 'sprint2go';
+              const extra = aliases.filter((al) => al.to.includes(box.id)).map((al) => al.address);
+              return (
+                <Group footer={r?.why ? t(r.why) : extra.length ? t('Also gets mail for {addresses}', { addresses: fmtList(extra) }) : undefined}>
+                  <GRow label={t('Kind')} value={box.kind === 'shared' ? t('Shared inbox') : t('Personal')} />
+                  <GRow label={kept ? t('Copies') : t('Receives')} value={!r ? t('Not checked yet') : r.receive ? t('Yes') : t('Not yet')} />
+                  {!kept && <GRow label={t('Sends')} value={!r ? t('Not checked yet') : r.send ? t('Yes') : t('Not yet')} />}
+                </Group>
+              );
+            })()}
+            {canManage && onRemoveAccount && (
+              <Group>
+                <GRow label={t('Remove {address}', { address: box.email })} danger onClick={() => (setBoxOpen(null), onRemoveAccount(box))} />
+              </Group>
+            )}
+          </div>
+        </PushScreen>
+      )}
       {aliasEdit && (
         <AliasDialog
           workspace={ws}

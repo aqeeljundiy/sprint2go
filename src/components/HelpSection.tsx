@@ -1,11 +1,14 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { usePhone } from '../mobile/media';
+import { EditScreen, GField, GRow, Group, SwitchRow } from './ui/Grouped';
+import { PushScreen } from './ui/PushScreen';
 import { ArrowLeft, Check, LifeBuoy, Loader2, Paperclip, Send, X } from 'lucide-react';
 import { SmoothHeight, TabPane } from './ui/Smooth';
 import { uploadFile, wasSkipped } from '../sync';
 import { diagnostics } from '../diagnostics';
 import { relative } from '../utils';
 import { EmptyState } from './ui/EmptyState';
-import { t, tn } from '../i18n';
+import { mark, t, tn } from '../i18n';
 
 interface Ticket {
   id: string;
@@ -45,6 +48,37 @@ export function HelpSection({ workspaceId, toast, extra }: { workspaceId: string
     return () => clearInterval(timer);
   }, []);
   const view = open ? 'thread' : writing ? 'new' : 'list';
+  const phone = usePhone();
+  // Phones (iOS Settings): Ask for help and each conversation are rows; each opens on its own screen.
+  if (phone) {
+    const tk = list?.find((x) => x.id === open);
+    return (
+      <>
+        <h2>{t('Help & support')}</h2>
+        <div className="set-rows">
+          <Group footer={t('Questions about email setup, billing, guests or anything that doesn’t work: we usually answer within a few hours.')}>
+            <GRow icon={Send} plainIcon action label={t('Ask for help')} onClick={() => setWriting(true)} />
+          </Group>
+          {list !== null && list.length > 0 && (
+            <Group title={t('Conversations')}>
+              {list.map((x) => (
+                <GRow key={x.id} className={x.unread ? 'is-unread' : ''} label={x.subject} sub={`#${x.number} · ${relative(x.updatedAt)}`} value={x.unread ? t('New reply') : statusText(x)} onClick={() => setOpen(x.id)} />
+              ))}
+            </Group>
+          )}
+        </div>
+        {extra && <div className="help-extra">{extra}</div>}
+        {writing && <NewTicketPhone workspaceId={workspaceId} toast={toast} onBack={() => setWriting(false)} onSent={(id) => (void load(), setOpen(id))} />}
+        {open && (
+          <PushScreen title={tk?.subject ?? t('Help & support')} onBack={() => (setOpen(null), void load())} className="g-page help-push">
+            <div className="help-push-body">
+              <Thread id={open} onBack={() => (setOpen(null), void load())} toast={toast} workspaceId={workspaceId} />
+            </div>
+          </PushScreen>
+        )}
+      </>
+    );
+  }
   return (
     <>
       <h2>{t('Help & support')}</h2>
@@ -277,5 +311,53 @@ function Thread({ id, onBack, toast, workspaceId }: { id: string; onBack: () => 
         </div>
       </div>
     </div>
+  );
+}
+
+/** Asking for help on a phone (iOS): Cancel and Send at the top, the subject and the message as rows, then the choices. */
+function NewTicketPhone({ workspaceId, toast, onBack, onSent }: { workspaceId: string; toast: (t: string) => void; onBack: () => void; onSent: (id: string) => void }) {
+  const [subject, setSubject] = useState('');
+  const [body, setBody] = useState('');
+  const [urgent, setUrgent] = useState(false);
+  const [share, setShare] = useState(true);
+  const [files, setFiles] = useState<File2[]>([]);
+  const d = diagnostics();
+  return (
+    <EditScreen
+      title={t('Ask for help')}
+      saveLabel={t('Send')}
+      canSave={!!subject.trim() && !!body.trim()}
+      onBack={onBack}
+      onSave={async () => {
+        const r = await fetch('/api/support', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ subject, body, urgent, workspaceId, attachments: files, context: share ? d : undefined }) }).catch(() => null);
+        const data = r ? await r.json().catch(() => ({})) : {};
+        const why = (data as { error?: string }).error;
+        if (!r?.ok) return why ?? mark('Couldn’t send. Check your connection and try again.');
+        toast(t('Sent. We’ll reply here and by email (ticket #{number}).', { number: (data as { number: number }).number }));
+        // After this screen has gone: the conversation opens on its own screen.
+        setTimeout(() => onSent((data as { id: string }).id), 0);
+        return null;
+      }}
+    >
+      <Group title={t('What’s it about?')}>
+        <GField value={subject} onChange={setSubject} label={t('What’s it about?')} placeholder={t('e.g. Mail from our domain lands in spam')} maxLength={200} autoFocus />
+      </Group>
+      <Group title={t('Tell us more')}>
+        <GField value={body} onChange={setBody} label={t('Tell us more')} placeholder={t('What you did, what you expected, what happened instead.')} multiline />
+      </Group>
+      <div className="help-phone-attach">
+        <Attach files={files} setFiles={setFiles} workspaceId={workspaceId} toast={toast} />
+      </div>
+      <Group
+        footer={
+          d.errors.length
+            ? tn(d.errors.length, 'Include what helps us fix it: this page, {browser}, the app version and {n} recent error', 'Include what helps us fix it: this page, {browser}, the app version and {n} recent errors', { browser: d.browser })
+            : t('Include what helps us fix it: this page, {browser}, the app version', { browser: d.browser })
+        }
+      >
+        <SwitchRow label={t('It’s stopping our work')} on={urgent} onChange={setUrgent} />
+        <SwitchRow label={t('Include what helps us fix it')} on={share} onChange={setShare} />
+      </Group>
+    </EditScreen>
   );
 }

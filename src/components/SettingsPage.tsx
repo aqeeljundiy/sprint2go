@@ -42,7 +42,8 @@ import { ImportSection } from './imports/ImportSection';
 import { BarDefaults } from '../mobile/BarDefaults';
 import { MAIL_APPS_SECTION, PhoneMailApps } from './PhoneMailApps';
 import { Avatar } from './Avatar';
-import { Group, GRow, type GColor } from './ui/Grouped';
+import { ChoiceRow, Group, GRow, type GColor } from './ui/Grouped';
+import { AccountPhone, DeleteAccountPhone, MailPhone, MailboxesPhone, MembersPhone, PasswordPhone, WorkspacePhone } from './SettingsPhone';
 import { fmtSize } from '../data/drive';
 import { planName } from '../data/pricing';
 import { LANGS, getLang, mark, t, tn, type Lang, tx } from '../i18n';
@@ -236,125 +237,6 @@ function SettingsList({ sections, company, me, values, onOpen }: { sections: typ
   );
 }
 
-/** One value on a screen of its own (iOS: Settings, General, About, Name): a 17 px field, Save at the top right. */
-function TextEditScreen({ title, value, placeholder, footer, onSave, onBack }: { title: string; value: string; placeholder?: string; footer?: string; onSave: (v: string) => void; onBack: () => void }) {
-  const [v, setV] = useState(value);
-  return (
-    <PushScreen
-      title={title}
-      backLabel={t('Back')}
-      onBack={onBack}
-      className="g-page set-edit"
-      actions={
-        <button type="button" className="set-save" disabled={v.trim() === value.trim()} onClick={() => (onSave(v), onBack())}>
-          {t('Save')}
-        </button>
-      }
-    >
-      <div className="set-edit-body">
-        <Group footer={footer}>
-          <div className="g-row">
-            <input className="set-edit-input" autoFocus value={v} onChange={(e) => setV(e.target.value)} placeholder={placeholder} aria-label={title} onKeyDown={(e) => e.key === 'Enter' && v.trim() !== value.trim() && (onSave(v), onBack())} />
-          </div>
-        </Group>
-      </div>
-    </PushScreen>
-  );
-}
-
-/**
- * General & email on a phone, as iOS rows: each setting with its value on the right. Text opens its own screen;
- * choices open a sheet with a tick; explanations sit under the card they explain. No brand preview.
- */
-function WorkspacePhone({ ws, canManage, onWorkspace, onHolidays, holidayCal }: { ws: Workspace; canManage: boolean; onWorkspace: (p: Partial<Workspace>) => void; onHolidays: (country: string | null) => void; holidayCal?: CalendarDef }) {
-  const [edit, setEdit] = useState<'name' | 'domains' | 'brand' | null>(null);
-  const open = (k: typeof edit) => (canManage ? () => setEdit(k) : undefined);
-  const holidayNote = !ws.holidays
-    ? t('Show your country’s public holidays as all-day items in everyone’s calendar here. Tasks due on a holiday get a note.')
-    : holidayCal?.error
-      ? t('Couldn’t update them: {error}', { error: t(holidayCal.error) })
-      : t('In everyone’s calendar, and a note on tasks due that day.');
-  const choice = (node: ReactNode) => <span className="set-choice">{node}</span>;
-  return (
-    <div className="set-rows">
-      {!canManage && <p className="g-foot set-only">{t('Only owners and admins can change workspace settings.')}</p>}
-      <Group footer={t('People at these domains are your team, so their email is never tracked.')}>
-        <GRow label={t('Business name')} value={ws.name || t('Untitled')} onClick={open('name')} />
-        <GRow
-          label={t('Logo and colour')}
-          accessory={
-            <span className="set-brand-val">
-              <WorkspaceLogo ws={ws} size={28} />
-              <i className="set-dot" style={{ background: ws.color }} />
-            </span>
-          }
-          chevron={canManage}
-          onClick={open('brand')}
-        />
-        <GRow label={t('Email domains')} value={ws.domains.join(', ') || t('None yet')} onClick={open('domains')} />
-      </Group>
-      <Group footer={t('Changes the word everywhere in the app. With Projects, the people you invite are called guests.')}>
-        <GRow
-          label={t('What you call your work')}
-          accessory={choice(
-            <Select<'project' | 'client'>
-              value={ws.terms?.word ?? 'project'}
-              onChange={(v) => onWorkspace({ terms: { word: v } })}
-              label={t('What you call your work')}
-              title={t('What you call your work')}
-              disabled={!canManage}
-              className="sel-flat"
-              options={[
-                { value: 'project', label: t('Projects'), hint: t('Any kind of work: clients, partners, internal') },
-                { value: 'client', label: t('Clients'), hint: t('For agencies that work for clients') },
-              ]}
-            />,
-          )}
-        />
-      </Group>
-      <Group footer={holidayNote}>
-        <GRow
-          label={t('Public holidays')}
-          accessory={choice(<Select value={ws.holidays?.country ?? ''} onChange={(v) => onHolidays(v || null)} label={t('Public holidays')} title={t('Public holidays')} disabled={!canManage} className="sel-flat" searchable options={[{ value: '', label: t('Off') }, ...HOLIDAY_COUNTRIES.map((c) => ({ value: c.code, label: t(c.name) }))]} />)}
-        />
-        <GRow label={t('Time zone')} accessory={choice(<Select value={companyTz(ws)} onChange={(v) => onWorkspace({ timeZone: v })} label={t('Time zone')} title={t('Time zone')} disabled={!canManage} className="sel-flat" searchable options={zoneOptions(companyTz(ws))} />)} />
-        <GRow
-          label={t('Language')}
-          accessory={choice(
-            <Select<'' | Lang>
-              value={ws.language ?? ''}
-              onChange={(v) => onWorkspace({ language: v || undefined })}
-              label={t('Language')}
-              title={t('Language')}
-              disabled={!canManage}
-              className="sel-flat"
-              options={[{ value: '', label: t('Each person’s browser') }, ...LANGS.map((l) => ({ value: l.id, label: l.name }))]}
-            />,
-          )}
-        />
-      </Group>
-      {edit === 'name' && <TextEditScreen title={t('Business name')} value={ws.name} onSave={(v) => onWorkspace({ name: v.trim() })} onBack={() => setEdit(null)} />}
-      {edit === 'domains' && (
-        <TextEditScreen
-          title={t('Email domains')}
-          value={ws.domains.join(', ')}
-          placeholder={t('business.com')}
-          footer={t('People at these domains are your team, so their email is never tracked. Separate them with commas.')}
-          onSave={(v) => onWorkspace({ domains: v.split(/[,\s]+/).map((d) => d.replace(/^@/, '').toLowerCase()).filter(Boolean) })}
-          onBack={() => setEdit(null)}
-        />
-      )}
-      {edit === 'brand' && (
-        <PushScreen title={t('Logo and colour')} backLabel={t('Back')} onBack={() => setEdit(null)} className="set-edit">
-          <div className="set-edit-body set-brand">
-            <BrandFields value={ws} onChange={onWorkspace} />
-          </div>
-        </PushScreen>
-      )}
-    </div>
-  );
-}
-
 /** One section: in place on desktop; on phones, full screen over the list while it's open. */
 function SectionScreen({ phone, open, title, onBack, children }: { phone: boolean; open: boolean; title: string; onBack: () => void; children: ReactNode }) {
   if (!phone) return <>{children}</>;
@@ -385,6 +267,54 @@ export function SettingsPage({ email, settings: s, update, section, onSection, u
   // Members see the company's money (plan, billing, AI costs) only when the company allows it.
   // The demo company has no money, keys, mail delivery or sign-in rules of its own: those are the real company's.
   const sections = SECTIONS.filter((x) => (canManage || perms.seeBilling || (x.id !== 'billing' && x.id !== 'ai' && x.id !== 'storage')) && (canManage || x.id !== 'import') && !(demo?.inDemo && DEMO_OUT.includes(x.id)));
+  const [routingOpen, setRoutingOpen] = useState(false);
+  // Mail routing (some mail stays with Google or Microsoft): in place on desktop, its own screen on phones.
+  const routingBlock = (
+  <div className="set-block routing-block">
+    <p className="small">
+      {t('{domain} stays with {provider}, which passes mail for addresses it doesn’t know on to {product}.', { domain: ws.domains[0] ?? t('Your domain'), provider: providerLabel(ws.emailProvider), product: product.name })}{' '}
+      {ws.mailRouting?.lastCheck
+        ? ws.mailRouting.lastCheck.ok
+          ? t('Last check {when}: working.', { when: relative(ws.mailRouting.lastCheck.at) })
+          : t('Last check {when}: the test didn’t arrive. Check the routing rule.', { when: relative(ws.mailRouting.lastCheck.at) })
+        : ws.mailRouting?.verifiedAt
+          ? t('Checked {when} during setup.', { when: relative(ws.mailRouting.verifiedAt) })
+          : t('Not checked yet: mail to {product} mailboxes may not arrive.', { product: product.name })}
+    </p>
+    {/* The server sends a real test each day when it can send mail (caps.routingCheck); the demo plays it. */}
+    {(!realMail || caps.routingCheck) && (
+      <Toggle
+        on={ws.mailRouting?.dailyCheck ?? true}
+        onChange={(v) => canManage && onWorkspace({ mailRouting: { ...(ws.mailRouting ?? {}), dailyCheck: v } })}
+        label={t('Check every day')}
+        hint={
+          realMail
+            ? t('Once a day we send a test to an address at {domain} that only {product} knows. If two tests in a row don’t arrive, admins get a notice and an email.', { domain: ws.domains[0] ?? t('your domain'), product: product.name }) +
+              (ws.mailRouting?.verifiedAt ? '' : ` ${t('It starts once routing has worked.')}`)
+            : t('A test email each morning. If it stops arriving, admins hear about it straight away. Runs once {product} mail is live.', { product: product.name })
+        }
+      />
+    )}
+    <button type="button" className="link-btn small" onClick={() => setRoutingGuide((x) => !x)}>
+      {routingGuide ? t('Hide the setup steps') : t('Show the setup steps')}
+    </button>
+    <div className={`fold ${routingGuide ? 'open' : ''}`}>
+      <div className="fold-in">
+        <SmoothHeight>
+          <EmailSetupGuide
+            workspaceId={ws.id}
+            mode="split"
+            provider={ws.emailProvider ?? 'google'}
+            domain={ws.domains[0] ?? ''}
+            first={(users.find((u) => u.id === me)?.name ?? '').split(' ')[0].toLowerCase()}
+            onAddMailbox={canManage ? onAddAccount : undefined}
+            onVerified={() => onWorkspace({ mailRouting: { ...(ws.mailRouting ?? { dailyCheck: true }), verifiedAt: new Date().toISOString(), lastCheck: { at: new Date().toISOString(), ok: true } } })}
+          />
+        </SmoothHeight>
+      </div>
+    </div>
+  </div>
+  );
   const nameOf = (id: string) => (id === me ? t('You') : users.find((u) => u.id === id)?.name.split(' ')[0] ?? t('Someone'));
 
   return (
@@ -429,7 +359,21 @@ export function SettingsPage({ email, settings: s, update, section, onSection, u
                 {demo?.inDemo ? t('This is your demo company: change anything here, nothing leaves it. Billing, AI keys, mail delivery and security are set in your real company.') : t('Each business gets its own brand, email accounts, calendar and drive.')}
               </p>
               {onPhone ? (
-                <WorkspacePhone ws={ws} canManage={canManage} onWorkspace={onWorkspace} onHolidays={onHolidays} holidayCal={holidayCal} />
+                <div className="set-rows">
+                  <WorkspacePhone ws={ws} canManage={canManage} onWorkspace={onWorkspace} onHolidays={onHolidays} holidayCal={holidayCal} />
+                  <MembersPhone ws={ws} users={users} me={me} canManage={canManage} onRole={onRole} onRemove={onRemoveMember} onInvite={onInvite} />
+                  {ws.emailSetup === 'mix' && !demo?.inDemo && (
+                    <Group footer={t('{domain} stays with {provider}, which passes mail for addresses it doesn’t know on to {product}.', { domain: ws.domains[0] ?? t('Your domain'), provider: providerLabel(ws.emailProvider), product: product.name })}>
+                      <GRow label={t('Mail routing')} value={ws.mailRouting?.lastCheck ? (ws.mailRouting.lastCheck.ok ? t('Working') : t('Check the rule')) : ws.mailRouting?.verifiedAt ? t('Working') : t('Not checked yet')} onClick={() => setRoutingOpen(true)} />
+                    </Group>
+                  )}
+                  <MailboxesPhone ws={ws} users={users} me={me} canManage={canManage} nameOf={nameOf} onAccess={onAccess} onAdd={onAddAccount} onRemove={onRemoveAccount} />
+                  {routingOpen && (
+                    <PushScreen title={t('Mail routing')} onBack={() => setRoutingOpen(false)} className="settings-push set-routing">
+                      <div className="settings-content">{routingBlock}</div>
+                    </PushScreen>
+                  )}
+                </div>
               ) : (
               <>
               <div className="ws-preview">
@@ -519,6 +463,8 @@ export function SettingsPage({ email, settings: s, update, section, onSection, u
               </>
               )}
 
+              {!onPhone && (
+              <>
               <h3>{t('Members')}</h3>
               <div className="acct-list">
                 {memberRows.map(({ item: m, leaving }) => {
@@ -561,50 +507,7 @@ export function SettingsPage({ email, settings: s, update, section, onSection, u
               {ws.emailSetup === 'mix' && !demo?.inDemo && (
                 <>
                   <h3>{t('Mail routing')}</h3>
-                  <div className="set-block routing-block">
-                    <p className="small">
-                      {t('{domain} stays with {provider}, which passes mail for addresses it doesn’t know on to {product}.', { domain: ws.domains[0] ?? t('Your domain'), provider: providerLabel(ws.emailProvider), product: product.name })}{' '}
-                      {ws.mailRouting?.lastCheck
-                        ? ws.mailRouting.lastCheck.ok
-                          ? t('Last check {when}: working.', { when: relative(ws.mailRouting.lastCheck.at) })
-                          : t('Last check {when}: the test didn’t arrive. Check the routing rule.', { when: relative(ws.mailRouting.lastCheck.at) })
-                        : ws.mailRouting?.verifiedAt
-                          ? t('Checked {when} during setup.', { when: relative(ws.mailRouting.verifiedAt) })
-                          : t('Not checked yet: mail to {product} mailboxes may not arrive.', { product: product.name })}
-                    </p>
-                    {/* The server sends a real test each day when it can send mail (caps.routingCheck); the demo plays it. */}
-                    {(!realMail || caps.routingCheck) && (
-                      <Toggle
-                        on={ws.mailRouting?.dailyCheck ?? true}
-                        onChange={(v) => canManage && onWorkspace({ mailRouting: { ...(ws.mailRouting ?? {}), dailyCheck: v } })}
-                        label={t('Check every day')}
-                        hint={
-                          realMail
-                            ? t('Once a day we send a test to an address at {domain} that only {product} knows. If two tests in a row don’t arrive, admins get a notice and an email.', { domain: ws.domains[0] ?? t('your domain'), product: product.name }) +
-                              (ws.mailRouting?.verifiedAt ? '' : ` ${t('It starts once routing has worked.')}`)
-                            : t('A test email each morning. If it stops arriving, admins hear about it straight away. Runs once {product} mail is live.', { product: product.name })
-                        }
-                      />
-                    )}
-                    <button type="button" className="link-btn small" onClick={() => setRoutingGuide((x) => !x)}>
-                      {routingGuide ? t('Hide the setup steps') : t('Show the setup steps')}
-                    </button>
-                    <div className={`fold ${routingGuide ? 'open' : ''}`}>
-                      <div className="fold-in">
-                        <SmoothHeight>
-                          <EmailSetupGuide
-                            workspaceId={ws.id}
-                            mode="split"
-                            provider={ws.emailProvider ?? 'google'}
-                            domain={ws.domains[0] ?? ''}
-                            first={(users.find((u) => u.id === me)?.name ?? '').split(' ')[0].toLowerCase()}
-                            onAddMailbox={canManage ? onAddAccount : undefined}
-                            onVerified={() => onWorkspace({ mailRouting: { ...(ws.mailRouting ?? { dailyCheck: true }), verifiedAt: new Date().toISOString(), lastCheck: { at: new Date().toISOString(), ok: true } } })}
-                          />
-                        </SmoothHeight>
-                      </div>
-                    </div>
-                  </div>
+                  {routingBlock}
                 </>
               )}
 
@@ -670,6 +573,8 @@ export function SettingsPage({ email, settings: s, update, section, onSection, u
                   </button>
                 )}
               </div>
+              </>
+              )}
             </>
           )}
 
@@ -677,6 +582,35 @@ export function SettingsPage({ email, settings: s, update, section, onSection, u
             <>
               <h2>{t('Account')}</h2>
               <p className="set-intro">{t('How you appear to people you email.')}</p>
+              {onPhone ? (
+                <div className="set-rows">
+                  <AccountPhone
+                    s={s}
+                    update={update}
+                    email={email}
+                    me={users.find((u) => u.id === me)}
+                    onPhoto={onPhoto}
+                    security={
+                      <>
+                        <Group title={t('Security')}>
+                          <PasswordPhone
+                            on={server.on}
+                            save={async (cur, next) => {
+                              const err = await changePassword(cur, next);
+                              if (!err) admin.toast(t('Password changed.'));
+                              return err;
+                            }}
+                          />
+                          <TwoStepRow toast={admin.toast} />
+                        </Group>
+                        <ConnectedApps toast={admin.toast} />
+                        {server.on && <DeleteAccountPhone go={deleteAccount} />}
+                      </>
+                    }
+                  />
+                </div>
+              ) : (
+              <>
               <div className="profile-card">
                 <PhotoPicker name={s.name} email={email} color={s.avatarColor} photo={users.find((u) => u.id === me)?.photo} onChange={(ph) => onPhoto?.(ph)} />
                 <div className="avatar-colors">
@@ -718,6 +652,8 @@ export function SettingsPage({ email, settings: s, update, section, onSection, u
               <TwoStepRow toast={admin.toast} />
               <ConnectedApps toast={admin.toast} />
               <DeleteAccountRow />
+              </>
+              )}
             </>
           )}
 
@@ -783,6 +719,12 @@ export function SettingsPage({ email, settings: s, update, section, onSection, u
             <>
               <h2>{t('Mail & signature')}</h2>
               <p className="set-intro">{t('Added to the end of every new email and reply.')}</p>
+              {onPhone ? (
+                <div className="set-rows">
+                  <MailPhone s={s} update={update} ws={ws} canManage={canManage} blocked={blocked} onUnblock={onUnblock} onSecurity={() => onSection('security')} extras={mailExtras} />
+                </div>
+              ) : (
+              <>
               <div className="signature-box">
                 <RichEditor initialHtml={s.signature} placeholder={t('Your signature')} onChange={(html) => update({ signature: html })} />
               </div>
@@ -856,6 +798,8 @@ export function SettingsPage({ email, settings: s, update, section, onSection, u
                   ))}
                 </div>
               )}
+              </>
+              )}
             </>
           )}
 
@@ -886,15 +830,18 @@ export function SettingsPage({ email, settings: s, update, section, onSection, u
               <p className="set-intro">{t('What your clients see and can do when they sign in to their portal. You can change any of these for one client on its client page (Portal tab).')}</p>
               <div className="access-types">
                 <span className="muted small">{t('Settings for')}</span>
-                {/* Phones: five choices don't fit in a row, so they're a list that opens as a sheet. */}
+                {/* Phones: five choices don't fit in a row, so they're a row that opens a sheet. */}
                 {onPhone && (
-                  <Select
-                    value={accessType}
-                    onChange={setAccessType}
-                    label={t('Settings for')}
-                    className="access-type-sel"
-                    options={['', ...PROJECT_TYPES].map((tp) => ({ value: tp, label: tp ? t(tp) : t('Every {project}', { project: term.one }), hint: tp && ws.clientAccessByType?.[tp] && Object.keys(ws.clientAccessByType[tp]).length ? t('Changed for this type') : undefined }))}
-                  />
+                  <div className="set-rows">
+                    <Group>
+                      <ChoiceRow
+                        label={t('Settings for')}
+                        value={accessType}
+                        onChange={setAccessType}
+                        options={['', ...PROJECT_TYPES].map((tp) => ({ value: tp, label: tp ? t(tp) : t('Every {project}', { project: term.one }), hint: tp && ws.clientAccessByType?.[tp] && Object.keys(ws.clientAccessByType[tp]).length ? t('Changed for this type') : undefined }))}
+                      />
+                    </Group>
+                  </div>
                 )}
                 <div className="segmented sm">
                   {['', ...PROJECT_TYPES].map((tp) => (
@@ -1015,6 +962,16 @@ export function PasswordRow() {
       </SmoothHeight>
     </>
   );
+}
+
+/** Deletes the signed-in account after a last confirm; an error from the server comes back to show. */
+async function deleteAccount(password: string): Promise<string | null> {
+  if (!confirm(t('Delete your account? This can’t be undone. Your tasks, messages and files stay with your company.'))) return null;
+  const r = await fetch('/api/account/delete', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ password }) });
+  const d = (await r.json().catch(() => ({}))) as { error?: string };
+  if (!r.ok) return d.error ?? mark('Couldn’t delete the account.');
+  location.href = '/';
+  return null;
 }
 
 /** Deleting the account: the sign-in goes, work stays with its company. The only owner of a company must hand over first. */

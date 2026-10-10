@@ -9,6 +9,9 @@ import { SmoothHeight, TabPane } from '../ui/Smooth';
 import { mark, t } from '../../i18n';
 import { tj } from '../../i18n/tj';
 import { fmtList } from '../../i18n/format';
+import { usePhone } from '../../mobile/media';
+import { GRow, Group, SwitchRow, TextRow } from '../ui/Grouped';
+import { PushScreen } from '../ui/PushScreen';
 
 /**
  * Client portal & brand: the company's own name and look in place of sprint2go, and its own address where clients
@@ -26,6 +29,58 @@ export function AgencySection({ ws, canManage, brandingAddon, onWorkspace, onBil
     r.onload = () => set({ logo: String(r.result) });
     r.readAsDataURL(f);
   };
+  const phone = usePhone();
+  const [addr, setAddr] = useState(false);
+  const color = useRef<HTMLInputElement>(null);
+
+  // Phones (iOS Settings): the switch, then name, logo and colour as rows; the address and its steps on their own screen.
+  if (phone) {
+    const st = wl.domain ? wl.domainStatus ?? 'waiting' : null;
+    const stWord = !st ? t('Not set') : st === 'live' ? t('Live') : st === 'issuing' ? t('Certificate') : st === 'found' ? t('Found') : t('Waiting for the record');
+    return (
+      <>
+        <h2>{t('Client portal & brand')}</h2>
+        <div className="set-rows">
+          <Group
+            footer={
+              brandingAddon
+                ? t('Sign-in page, the app, the shared space, invites and the install prompt.')
+                : tj('The branding add-on is on your plan page: {link}', {
+                    link: (
+                      <button type="button" className="link-btn small" onClick={onBilling}>
+                        {t('Plan & billing')}
+                      </button>
+                    ),
+                  })
+            }
+          >
+            <SwitchRow label={t('Show our brand instead of sprint2go')} on={wl.enabled} disabled={!canManage} onChange={() => set({ enabled: !wl.enabled, slug })} />
+          </Group>
+          <div className={`fold ${wl.enabled ? 'open' : ''}`}>
+            <div className="fold-in">
+              <Group title={t('Your brand')}>
+                <TextRow label={t('Name')} value={wl.name} disabled={!canManage} allowEmpty={false} placeholder={t('e.g. {example}', { example: 'Nusa Studio' })} onSave={(v) => set({ name: v })} />
+                <GRow label={t('Logo')} accessory={<span className="wl-logo set-wl-logo">{wl.logo || ws.logo ? <img src={wl.logo ?? ws.logo} alt="" /> : <Building2 size={20} />}</span>} chevron={canManage} onClick={canManage ? () => file.current?.click() : undefined} />
+                <GRow label={t('Colour')} accessory={<i className="set-dot" style={{ background: wl.color ?? ws.color }} />} chevron={canManage} onClick={canManage ? () => color.current?.click() : undefined} />
+              </Group>
+              <input ref={file} type="file" accept="image/*" hidden onChange={(e) => pickLogo(e.target.files?.[0])} />
+              <input ref={color} type="color" className="set-color-input" value={wl.color ?? ws.color} onChange={(e) => set({ color: e.target.value })} aria-label={t('Brand colour')} tabIndex={-1} />
+              <Group title={t('Where {whos} sign in', { whos: term.whos })} footer={t('Your own address, for example portal.youragency.com. Once it’s live, invite links for {whos} use it.', { whos: term.whos })}>
+                <GRow label={wl.domain || t('Your address')} value={stWord} onClick={() => setAddr(true)} />
+              </Group>
+            </div>
+          </div>
+        </div>
+        {addr && (
+          <PushScreen title={t('Where {whos} sign in', { whos: term.whos })} onBack={() => setAddr(false)} className="settings-push set-address">
+            <div className="settings-content">
+              <OwnAddress ws={ws} wl={wl} slug={slug} canManage={canManage} brandingAddon={brandingAddon} onBilling={onBilling} toast={toast} />
+            </div>
+          </PushScreen>
+        )}
+      </>
+    );
+  }
 
   return (
     <>
