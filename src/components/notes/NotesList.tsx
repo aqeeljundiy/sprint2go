@@ -239,9 +239,8 @@ export function NotesList({
   const same = (a: Facet | null, b: Facet) => !!a && a.kind === b.kind && ('id' in a ? a.id : '') === ('id' in b ? b.id : '');
   return (
     <section ref={phoneRoot} className={`notes-phone view-enter${searching || looking ? ' searching' : ''}`}>
-      <div className={`nl-scroll${shown.length || looking ? '' : ' is-empty'}`}>{phoneList}</div>
-      <div className="nl-search-dock">
-        <div className={`fold${searching && !query ? ' open' : ''}`}>
+      {/* While searching, the ways to narrow it sit at the top (Apple Notes' suggestions), not floating over the list. */}
+      <div className={`fold nl-facets-top${searching && !query ? ' open' : ''}`}>
           <div>
             <div className="nl-facets" aria-label={t('Narrow the search')}>
               {facets.map((x) => (
@@ -253,6 +252,8 @@ export function NotesList({
             </div>
           </div>
         </div>
+      <div className={`nl-scroll${shown.length || looking ? '' : ' is-empty'}`}>{phoneList}</div>
+      <div className="nl-search-dock">
         <label className="nl-search">
           <Search size={17} />
           <input value={q} onChange={(e) => setQ(e.target.value)} onFocus={() => setSearching(true)} onBlur={() => setSearching(false)} placeholder={facet ? t('Search in {place}', { place: facets.find((x) => same(facet, x.f))?.label ?? '' }) : t('Search')} aria-label={t('Search notes')} enterKeyHint="search" />

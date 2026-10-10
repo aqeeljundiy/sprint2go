@@ -257,6 +257,8 @@ function Open(p: NoteEditorProps & { note: Note }) {
               <span>{t('View only. {name} keeps this note as it is.', { name: ownerName })}</span>
             </div>
           )}
+          {/* Phones: saving and when it was last edited, one quiet line above the title (Apple Notes puts the date there), never floating mid-page. */}
+          {phone && <p className="note-meta note-meta-top">{status}</p>}
           <textarea
             ref={title}
             className="note-title"
@@ -323,8 +325,7 @@ function Open(p: NoteEditorProps & { note: Note }) {
             </button>
           )}
           {phone && linked}
-          {/* Phones: when it was edited goes at the end (Apple Notes), so the writing starts at the top. */}
-          {phone && <p className="note-meta note-meta-end">{status}</p>}
+
         </div>
         {!phone && linked && <aside className="note-side">{linked}</aside>}
       </div>
