@@ -11,7 +11,7 @@ import { fromWall, isPending, placeOf, startsIn, wallIn, whenLine, zoneCity } fr
 import { deviceTz, isZone } from '../../jobTimes';
 import { remindWords } from './EventForm';
 import { repeatWords } from '../../repeat';
-import { mark, t, tn } from '../../i18n';
+import { mark, t, tn, tx } from '../../i18n';
 import { fmtDate, fmtTime } from '../../i18n/format';
 import { fmtTimeRange, sameDay, addDays } from '../../calendarUtils';
 import { calLabel } from '../../data/calendar';
@@ -349,6 +349,7 @@ function PhoneDetail(p: DetailProps & { rsvp: ReactNode }) {
       () => toast({ text: t('Couldn’t copy it here. Open the event and copy from there.') }),
     );
   const zone = event.timeZone && isZone(event.timeZone) && event.timeZone !== deviceTz() && !event.allDay;
+  const canEdit = !p.readOnly && !!p.onEdit && !event.feed;
   return (
     <>
       <Sheet
@@ -356,7 +357,14 @@ function PhoneDetail(p: DetailProps & { rsvp: ReactNode }) {
         label={event.title}
         size="full"
         className="ev-page ev-detail-page"
-        footer={p.rsvp}
+        footer={
+          p.rsvp ||
+          (canEdit ? (
+            <button type="button" className="primary-btn ev-dp-edit" onClick={p.onEdit}>
+              <Pencil size={16} /> {t('Edit event')}
+            </button>
+          ) : undefined)
+        }
         head={
           <>
             <button type="button" className="icon-btn ev-page-x" onClick={p.onClose} aria-label={t('Close')}>
@@ -439,6 +447,22 @@ function PhoneDetail(p: DetailProps & { rsvp: ReactNode }) {
           )}
           {place && <DRow icon={<MapPin size={20} />}>{place}</DRow>}
           {typeof event.remind === 'number' && <DRow icon={<Bell size={20} />}>{remindWords(event.remind)}</DRow>}
+          {/* Google's rows even when empty: what this event could have, each one tap from the editor. */}
+          {canEdit && !place && !link && (
+            <DRow icon={<MapPin size={20} />} onClick={p.onEdit}>
+              <span className="dr-muted">{t('Add a place or a call link')}</span>
+            </DRow>
+          )}
+          {canEdit && typeof event.remind !== 'number' && (
+            <DRow icon={<Bell size={20} />} onClick={p.onEdit}>
+              <span className="dr-muted">{tx('event', 'No reminder')}</span>
+            </DRow>
+          )}
+          {canEdit && !people.length && (
+            <DRow icon={<Users size={20} />} onClick={p.onEdit}>
+              <span className="dr-muted">{t('Add guests')}</span>
+            </DRow>
+          )}
 
           {people.length > 0 && (
             <div className="dr-guests">
@@ -474,10 +498,16 @@ function PhoneDetail(p: DetailProps & { rsvp: ReactNode }) {
             </div>
           )}
 
-          {event.notes && (
+          {event.notes ? (
             <DRow icon={<TextAlignStart size={20} />} className="top">
               <span className="dr-notes">{event.notes}</span>
             </DRow>
+          ) : (
+            canEdit && (
+              <DRow icon={<TextAlignStart size={20} />} onClick={p.onEdit}>
+                <span className="dr-muted">{t('Add a description')}</span>
+              </DRow>
+            )
           )}
           {calendar && (
             <DRow icon={<span className="dr-cal-dot" style={{ background: calendar.color }} />}>

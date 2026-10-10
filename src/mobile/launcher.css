@@ -43,16 +43,13 @@
   width: 60px;
   height: 60px; /* system: the launcher's tile (plan: 60 x 60) */
   border-radius: var(--r-card);
-  background: color-mix(in srgb, var(--c) 14%, transparent);
-  color: var(--c);
+  background: color-mix(in srgb, var(--c) var(--tile-tint), var(--surface)); /* IconTile's family (tokens.css) */
+  color: color-mix(in srgb, var(--c) var(--tile-ink), white);
   transition:
     transform 0.15s var(--ease),
     background 0.15s;
 }
-:root[data-theme='dark'] .ln-sq {
-  background: color-mix(in srgb, var(--c) 22%, transparent);
-  color: color-mix(in srgb, var(--c) 70%, white);
-}
+
 .ln-tile:active .ln-sq,
 .ln-tile.lp-lifted .ln-sq {
   transform: scale(0.94);
@@ -363,6 +360,12 @@
   .ln-fab.fab {
     bottom: calc(env(safe-area-inset-bottom) + 16px);
   }
+  /* The launcher's + leaves at once when an app opens, so the app's own + is never shown next to it mid-fade. */
+  .launcher:not(.on) .ln-fab.fab {
+    visibility: hidden;
+    opacity: 0;
+    transition: none;
+  }
 
   /* ---------- The launcher button in every app's top bar ---------- */
 
@@ -539,5 +542,12 @@
   }
   .ea-row {
     animation: none;
+  }
+}
+
+/* The full Needs you list, pushed over the launcher from "See all". */
+@media (max-width: 767px) {
+  .ln-all .ln-all-card {
+    margin: 16px;
   }
 }

@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { Bell, EyeOff, LayoutGrid, Plus, Search, Sparkles, type LucideIcon } from 'lucide-react';
 import type { Person, Workspace } from '../types';
 import type { Need } from '../needsYou';
@@ -6,6 +6,7 @@ import { NeedsList, type NeedActions } from '../components/home/HomeParts';
 import { Avatar } from '../components/Avatar';
 import { WorkspaceLogo } from '../components/WorkspaceLogo';
 import { ActionSheet, type SheetAction } from '../components/ui/ActionSheet';
+import { PushScreen } from '../components/ui/PushScreen';
 import { useLongPress } from '../components/ui/useLongPress';
 import { fmtTime, fmtWeekdayLong } from '../i18n/format';
 import { t, tn, tx } from '../i18n';
@@ -85,11 +86,19 @@ export function Launcher(p: {
   const name = p.firstName;
   const greeting = (hour < 11 ? t('Good morning, {name}.', { name }) : hour < 15 ? t('Good afternoon, {name}.', { name }) : hour < 18 ? t('Good evening, {name}.', { name }) : hour < 19 ? tx('after 6 pm', 'Good evening, {name}.', { name }) : t('Working late, {name}.', { name })).replace(/\.$/, '');
   const list = p.needs.filter((x) => x.group === 'needs');
+  // The Needs you card right below says what needs you, so the line under the greeting only adds what's next.
   const lede = list.length
-    ? [tn(list.length, '{n} thing needs you.', '{n} things need you.'), p.next ? t('Next: {title} at {time}.', { title: p.next.title, time: fmtTime(p.next.start) }) : ''].filter(Boolean).join(' ')
+    ? p.next
+      ? t('Next: {title} at {time}.', { title: p.next.title, time: fmtTime(p.next.start) })
+      : ''
     : p.next
       ? t('Nothing needs you right now. Next: {title} at {time}.', { title: p.next.title, time: fmtTime(p.next.start) })
       : t('Nothing needs you right now.');
+  const [allNeeds, setAllNeeds] = useState(false);
+  // Opening an app from the full list closes the launcher; the list goes with it.
+  useEffect(() => {
+    if (!p.open) setAllNeeds(false);
+  }, [p.open]);
   const [menuFor, setMenuFor] = useState<{ app: LauncherApp; anchor: HTMLElement } | null>(null);
   const anchor = useRef<HTMLElement | null>(null);
   if (menuFor) anchor.current = menuFor.anchor;
@@ -114,11 +123,11 @@ export function Launcher(p: {
           </button>
           {p.ai && (
             <button type="button" className="icon-btn ln-ib" onClick={p.onAsk} aria-label={t('Ask AI')} title={t('Ask AI')}>
-              <Sparkles size={24} />
+              <Sparkles size={24} strokeWidth={1.75} />
             </button>
           )}
           <button type="button" className="icon-btn ln-ib" onClick={p.onBell} aria-label={p.unreadNotices ? t('Notifications, new ones') : t('Notifications')}>
-            <Bell size={24} />
+            <Bell size={24} strokeWidth={1.75} />
             {p.unreadNotices > 0 && <i className="ln-dot" />}
           </button>
           <button type="button" className="ln-me" onClick={p.onAccount} aria-label={t('Your account')}>
@@ -129,16 +138,18 @@ export function Launcher(p: {
         <div className="ln-hello">
           <p className="ln-date">{fmtWeekdayLong(new Date())}</p>
           <FitTitle full={greeting} short={greeting.split(',')[0]} />
-          <p className="ln-lede">{lede}</p>
+          {lede && <p className="ln-lede">{lede}</p>}
         </div>
 
         {list.length > 0 && (
           <section className="ln-sec" aria-label={t('Needs you')}>
             <h2 className="ln-h">
               <span>{t('Needs you')}</span>
-              <button type="button" className="link-btn" onClick={p.onSeeAll}>
-                {list.length > 3 ? tn(list.length, 'See all {n}', 'See all {n}') : t('See all')}
-              </button>
+              {list.length > 3 && (
+                <button type="button" className="link-btn" onClick={() => setAllNeeds(true)}>
+                  {tn(list.length, 'See all {n}', 'See all {n}')}
+                </button>
+              )}
             </h2>
             <div className="ln-card">
               <NeedsList items={list} a={p.needActions} limit={3} more={false} />
@@ -189,6 +200,13 @@ export function Launcher(p: {
       <button type="button" className={`fab ln-fab${p.open ? ' on' : ''}`} onClick={p.onNew} aria-label={t('New')} title={t('New')} tabIndex={p.open ? 0 : -1}>
         <Plus size={24} />
       </button>
+      {allNeeds && (
+        <PushScreen title={t('Needs you')} onBack={() => setAllNeeds(false)} backLabel={t('Home')} iconBack className="ln-all">
+          <div className="ln-card ln-all-card">
+            <NeedsList items={list} a={p.needActions} limit={list.length} more={false} />
+          </div>
+        </PushScreen>
+      )}
       <ActionSheet open={!!menuFor} onClose={() => setMenuFor(null)} title={menuFor?.app.name ?? ''} anchor={anchor} actions={actions} />
     </div>
   );

@@ -144,6 +144,7 @@ const id: Record<string, string> = {
   '{app}, {n} new': '{app}, {n} baru',
   '{app}. Alt and arrow keys move it.': '{app}. Alt dan tombol panah untuk memindahkannya.',
   '{n} new': '{n} baru',
+  '99+ new': '99+ baru',
   'Search or jump to an app, {project} or person': 'Cari aplikasi, {project}, atau orang',
   New: 'Baru',
   Recent: 'Terbaru',

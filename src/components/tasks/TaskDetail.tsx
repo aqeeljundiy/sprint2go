@@ -475,6 +475,8 @@ export function TaskDetail({
             <div key={f.id} className={`tdp-row td-f-${f.id}`} role="group" aria-label={f.label}>
               <f.icon size={20} className="tdp-icon" aria-hidden="true" />
               <span className="tdp-val">
+                {/* Who checks it and who follows: a person alone says nothing, so these two rows say what they are. */}
+                {(f.id === 'supervisor' || f.id === 'followers') && <small className="tdp-lab">{f.label}</small>}
                 {f.id === 'notes' ? <textarea ref={notesRef} className="tdp-desc" rows={1} value={task.notes ?? ''} onChange={(e) => onPatch(task.id, { notes: e.target.value })} placeholder={t('Description')} aria-label={t('Description')} /> : f.row}
               </span>
             </div>

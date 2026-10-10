@@ -125,7 +125,18 @@
     padding-left: 16px;
     color: var(--text-2);
   }
+  /* An account's address as a group heading: one line, cut with an ellipsis instead of running off the drawer. */
+  .ad-heading {
+    min-width: 0;
+  }
+  .ad-heading > span:not(.src-mark) {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
   .ad-heading .src-mark {
+    flex: none;
     width: var(--av-xs);
     height: var(--av-xs);
     border-radius: var(--r-tile);
@@ -1339,7 +1350,7 @@
     text-align: left;
     white-space: nowrap;
     overflow: hidden;
-    text-overflow: clip;
+    text-overflow: ellipsis;
   }
   .mg-chip.pending {
     background: var(--surface);
@@ -1369,10 +1380,8 @@
 
 /* Dark: the colours a little deeper behind white text, so it stays readable (Google's dark cards). */
 @media (max-width: 767px) {
-  :root[data-theme='dark'] .ev-card.solid:not(.pending):not(.maybe),
   :root[data-theme='dark'] .tg-phone .block-event:not(.pending):not(.maybe),
-  :root[data-theme='dark'] .tg-phone .pill-event:not(.pending),
-  :root[data-theme='dark'] .mg-chip:not(.pending) {
+  :root[data-theme='dark'] .tg-phone .pill-event:not(.pending) {
     background-color: color-mix(in srgb, var(--c) 80%, #000);
   }
 }
@@ -1662,5 +1671,46 @@
 @media (max-width: 767px) {
   .scope-opt .rp-radio {
     margin: 0 16px 0 0;
+  }
+}
+
+/* Calm cards (design review): a tint of the calendar's colour with a 4 px edge in it, text in the page's ink. */
+@media (max-width: 767px) {
+  .ev-card.solid {
+    background: color-mix(in srgb, var(--c) calc(var(--tile-tint) * 0.6), var(--surface)); /* calmer than an app tile */
+    box-shadow: inset 4px 0 0 var(--c);
+    color: var(--text);
+  }
+  .ev-card.solid .ev-card-meta,
+  .ev-card.solid .ev-card-place {
+    color: var(--text-2);
+  }
+  .mg-chip {
+    background: color-mix(in srgb, var(--c) var(--tile-tint), var(--surface));
+    box-shadow: inset 2px 0 0 var(--c);
+    color: var(--text);
+  }
+}
+
+@media (max-width: 767px) {
+  .ev-dp-edit {
+    flex: 1;
+    justify-content: center;
+    min-height: var(--tap);
+    border-radius: var(--r-pill);
+  }
+}
+
+@media (max-width: 767px) {
+  .is-phone .sch-task {
+    background: color-mix(in srgb, var(--accent) var(--tile-tint), var(--surface));
+    box-shadow: inset 4px 0 0 var(--accent);
+    color: var(--text);
+  }
+  .is-phone .sch-task .ev-check {
+    color: var(--accent-text);
+  }
+  .is-phone .sch-task.done .sch-task-title {
+    color: var(--text-3);
   }
 }

@@ -5,6 +5,7 @@
 // the file, not the folder: the server can't import a folder.
 import type { StageKind } from './types';
 import { t, tn, textOf, type Msg } from './i18n/index';
+import { fmtDay } from './i18n/format';
 
 export type NeedKind =
   | 'meeting' // starts within 30 minutes (or started under 5 minutes ago): Join
@@ -113,7 +114,7 @@ export function needsYou(p: NeedsInput): Need[] {
   const leads = p.teams.filter((tm) => tm.leadId === me);
   const queue = open.filter((tk) => !tk.userId && !doersOf(tk).length && (p.isOwner || leads.some((tm) => tm.id === tk.teamId)));
   const project = (id?: string) => p.clients.find((c) => c.id === id)?.name;
-  const words = p.dayWords ?? ((d: string) => d);
+  const words = p.dayWords ?? ((d: string) => fmtDay(d)); // never a raw 2026-10-06 in a sentence
   const out: Need[] = [];
   const task = (rank: number, kind: NeedKind, group: NeedGroup, tk: TaskIn, sub: string, tone?: 'warn') =>
     out.push({ key: `${kind}:${tk.id}`, rank, kind, group, text: tk.title, sub, taskId: tk.id, noticeIds: [], due: tk.due, ...(tone ? { tone } : {}) });

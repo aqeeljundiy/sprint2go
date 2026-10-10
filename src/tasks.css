@@ -475,20 +475,20 @@
 }
 .qa-tok.k-date,
 .qa-tok.k-reminder {
-  --tok: color-mix(in oklab, #f59e0b 24%, transparent);
+  --tok: var(--accent-soft);
 }
 .qa-tok.k-project {
   --tok: var(--accent-soft);
 }
 .qa-tok.k-person {
-  --tok: color-mix(in oklab, #10b981 20%, transparent);
+  --tok: var(--accent-soft);
 }
 .qa-tok.k-priority {
   --tok: var(--danger-soft);
 }
 .qa-tok.k-stage,
 .qa-tok.k-repeat {
-  --tok: color-mix(in oklab, #8b5cf6 18%, transparent);
+  --tok: var(--accent-soft);
 }
 .qa-suggest {
   display: grid;

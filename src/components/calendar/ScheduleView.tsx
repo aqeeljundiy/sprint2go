@@ -123,13 +123,14 @@ export function ScheduleView({
   const today = new Date(now);
   let month = -1;
   let week = -1;
-  /** Phones (Google's schedule): a quiet "12 to 18 Oct" row at the start of each week, empty weeks as just that row. */
+  /** Phones (Google's schedule): a quiet "12 to 18 Oct" row at the start of each week that has something on it. */
   const weekRows = (day: Date) => {
     if (!kit.phone) return null;
     const w = startOfWeek(day).getTime();
     if (w <= week) return null;
     const out: Date[] = [];
-    for (let s = week < 0 ? w : addDays(new Date(week), 7).getTime(); s <= w; s = addDays(new Date(s), 7).getTime()) out.push(new Date(s));
+    // Quiet weeks between are skipped (Google lists each as a row; months of them read as noise).
+    out.push(new Date(w));
     week = w;
     return out.map((s) => {
       const e = addDays(s, 6);

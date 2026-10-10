@@ -141,7 +141,7 @@ import { Huddle } from './components/Huddle';
 import { usePushBridge } from './pushBridge';
 import { routeBase } from './tryOut';
 import { useAppLanguage, useLang } from './i18n/useLang';
-import { mark, msg, phrase, t, textOf, tn, type Msg } from './i18n';
+import { getLang, mark, msg, phrase, t, textOf, tn, type Msg } from './i18n';
 import { fmtDay, fmtList, fmtNumber, fmtWeekday } from './i18n/format';
 import { setBrand } from './brandInk';
 
@@ -531,7 +531,12 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const [connectCal, setConnectCal] = useState<false | true | 'holidays'>(false);
   const [calCursor, setCalCursor] = useState(new Date());
   // The last view, remembered on this device (phones and wide screens each keep their own).
+  const [projMine, setProjMine] = useState(false);
   const [calViewPhone, setCalViewPhone] = usePersisted<CalView>('s2g-cal-view:phone', 'schedule');
+  // A Day opened by tapping a date is a visit, not a choice: the next time Calendar opens, it's the Schedule again.
+  useEffect(() => {
+    if (calViewPhone === 'day') setCalViewPhone('schedule');
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const [calViewWide, setCalViewWide] = usePersisted<CalView>('s2g-cal-view:wide', 'week');
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   const [newEventAt, setNewEventAt] = useState<Date | null>(null);
@@ -3398,7 +3403,11 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     }
     return out;
   }, [wsThreads, events]); // eslint-disable-line react-hooks/exhaustive-deps
-  const calEvents = useMemo(() => (pendingInvites.length ? [...visibleEvents, ...pendingInvites] : visibleEvents), [visibleEvents, pendingInvites]);
+  // Public holidays arrive with Google's English names: shown in the reader's language (id/calendar.ts has them).
+  const calEvents = useMemo(() => {
+    const shown = visibleEvents.map((e) => (e.feed === 'holidays' ? { ...e, title: t(e.title) } : e));
+    return pendingInvites.length ? [...shown, ...pendingInvites] : shown;
+  }, [visibleEvents, pendingInvites, getLang()]); // eslint-disable-line react-hooks/exhaustive-deps
   // One date of a repeating event is found by its id too (the id says which date).
   const selectedEvent = findEvent(events, selectedEventId) ?? findEvent(calEvents, selectedEventId);
   // The event being edited (one date of a repeating one: that date, with the series' repeat).
@@ -3863,13 +3872,14 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     if (mode === 'projects')
       return {
         label: term.Many,
-        value: projScope.kind === 'client' ? projScope.id : projScope.kind === 'past' ? 'past' : 'all',
+        value: projScope.kind === 'client' ? projScope.id : projScope.kind === 'past' ? 'past' : mobile && projMine ? 'mine' : 'all',
         options: [
           { value: 'all', label: t('All {projects}', { projects: term.many }), group: term.Many },
+          ...(mobile ? [{ value: 'mine', label: t('My {projects}', { projects: term.many }), group: term.Many }] : []), // the bar's Mine
           ...wsClients.map((c) => ({ value: c.id, label: c.name, group: term.Many })),
           { value: 'past', label: t('Past {projects}', { projects: term.many }), group: t('More') },
         ],
-        onChange: (v: string) => setProjScope(v === 'all' ? { kind: 'projects' } : v === 'past' ? { kind: 'past' } : { kind: 'client', id: v }),
+        onChange: (v: string) => (setProjMine(v === 'mine'), setProjScope(v === 'all' || v === 'mine' ? { kind: 'projects' } : v === 'past' ? { kind: 'past' } : { kind: 'client', id: v })),
       };
     if (mode === 'drive')
       return {
@@ -4052,10 +4062,17 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     setRecentOpen((l) => (l[0]?.kind === kind && l[0].id === id ? l : [{ kind, id }, ...l.filter((x) => !(x.kind === kind && x.id === id))].slice(0, 8)));
   };
   const openProjectId = mode === 'projects' && projScope.kind === 'client' ? projScope.id : null;
-  useEffect(() => visit('project', openProjectId), [openProjectId]); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => visit('note', mode === 'notes' ? noteId : null), [mode, noteId]); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => visit('table', mode === 'tables' ? tableId : null), [mode, tableId]); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => visit('channel', mode === 'chat' ? chatId : null), [mode, chatId]); // eslint-disable-line react-hooks/exhaustive-deps
+  // A place counts once it has stayed open a few seconds: passing through an app (which may pick its first item) doesn't
+  // reshuffle the launcher's Continue row, so the row is the same each time you come back.
+  const stay = (kind: 'project' | 'note' | 'table' | 'channel', id: string | null | undefined) => {
+    if (!id) return;
+    const timer = setTimeout(() => visit(kind, id), 3000);
+    return () => clearTimeout(timer);
+  };
+  useEffect(() => stay('project', openProjectId), [openProjectId]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => stay('note', mode === 'notes' ? noteId : null), [mode, noteId]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => stay('table', mode === 'tables' ? tableId : null), [mode, tableId]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => stay('channel', mode === 'chat' ? chatId : null), [mode, chatId]); // eslint-disable-line react-hooks/exhaustive-deps
   const recents: Recent[] = recentOpen.flatMap((r): Recent[] => {
     if (r.kind === 'project') {
       const c = wsClients.find((x) => x.id === r.id);
@@ -4063,11 +4080,12 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     }
     if (r.kind === 'note') {
       const n = wsNotesAll.find((x) => x.id === r.id && !x.deletedAt);
-      return n && enabled.has('notes') ? [{ key: 'n' + r.id, title: n.title || t('Untitled'), icon: NotebookText, app: 'notes', run: () => openNote(r.id) }] : [];
+      // An untitled note says nothing on a chip ("Untitled ta…"): only named places are offered.
+      return n && n.title?.trim() && enabled.has('notes') ? [{ key: 'n' + r.id, title: n.title, icon: NotebookText, app: 'notes', run: () => openNote(r.id) }] : [];
     }
     if (r.kind === 'table') {
       const tb = wsTables.find((x) => x.id === r.id);
-      return tb && enabled.has('tables') ? [{ key: 't' + r.id, title: tb.name, icon: Table2, app: 'tables', run: () => openTable(r.id) }] : [];
+      return tb && tb.name.trim() && !/^untitled/i.test(tb.name) && enabled.has('tables') ? [{ key: 't' + r.id, title: tb.name, icon: Table2, app: 'tables', run: () => openTable(r.id) }] : [];
     }
     const c = wsChannels.find((x) => x.id === r.id);
     return c && enabled.has('chat') ? [{ key: 'c' + r.id, title: c.kind === 'dm' ? chanName(c, allUsers, user.id) : c.name, icon: c.kind === 'dm' ? MessageCircle : Hash, app: 'chat', run: () => openChannel(r.id) }] : [];
@@ -4080,7 +4098,6 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   // Each app's sections on phones: what's selected now, and how to get to one (from its bar, the URL or Back).
   const [chatPart, setChatPart] = useState<'home' | 'dms' | 'activity'>('home');
   const [calMeetings, setCalMeetings] = useState(false);
-  const [projMine, setProjMine] = useState(false);
   const [meetPart, setMeetPart] = useState<'meetings' | 'notes'>('meetings');
   const [teamsPart, setTeamsPart] = useState<'teams' | 'people'>('teams');
   const sectionNow = (app: Mode): string | undefined => {
@@ -4124,7 +4141,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         setSelectedEventId(null);
         if (id === 'meetings') return setCalMeetings(true);
         setCalMeetings(false);
-        return setCalView(id === 'month' ? 'month' : calViewPhone === 'month' ? 'schedule' : calViewPhone);
+        // The bar's Schedule is the schedule: a Day opened from Month (or picked in the title) doesn't stay behind it.
+        return setCalView(id === 'month' ? 'month' : 'schedule');
       case 'notes':
         setNoteId(null);
         return setNotesFilter(id === 'shared' ? 'shared' : 'all');
@@ -4143,10 +4161,15 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     }
   };
   // The thing open in the app (a task, a channel, a note…), for the URL.
+  const BROWSE_KINDS = ['project', 'client', 'team', 'supervising', 'myteams', 'myclients', 'all', 'delegated', 'briefs', 'grid'];
   const itemNow = (app: Mode): string | undefined => {
     switch (app) {
-      case 'tasks':
-        return taskOpen ?? undefined;
+      case 'tasks': {
+        if (taskOpen) return taskOpen;
+        // A screen opened from Browse has its own address (/tasks/browse/project/p1), so Back and reload keep the place.
+        if (mobile && !taskBrowse && !['today', 'upcoming', 'mine'].includes(taskScope.kind)) return 'id' in taskScope ? `${taskScope.kind}/${taskScope.id}` : taskScope.kind;
+        return undefined;
+      }
       case 'chat':
         return chatId ?? undefined;
       case 'mail':
@@ -4181,9 +4204,19 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       return true;
     }
     switch (app) {
-      case 'tasks':
+      case 'tasks': {
+        // A Browse screen (see itemNow): "project/p1", "team/t1", "client/c1" or a list's name ("all", "briefs"…).
+        const [kind, ref] = id.split('/');
+        if (BROWSE_KINDS.includes(kind)) {
+          if (ref ? kind === 'team' ? !wsTeams.some((x) => x.id === ref) : !wsClientsAll.some((x) => x.id === ref) : false) return false;
+          setTaskBrowse(false);
+          setTaskOpen(null);
+          setTaskScope((ref ? { kind, id: ref } : { kind }) as TaskScope);
+          return true;
+        }
         if (!todos.some((x) => x.id === id)) return false;
         return (setTaskOpen(id), true);
+      }
       case 'chat':
         if (!channels.some((c) => c.id === id)) return false;
         return (setChatId(id), setChatPage(null), true);
@@ -4904,7 +4937,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             onPortal={setPortalKey}
             onShared={myPortals.length > 1 ? () => setPortalKey('*') : undefined}
             onSearch={searchHere}
-            me={{ person: ME, onOpen: () => (setSettingsSection('account'), go('settings')) }}
+            me={{ person: { ...ME, email: user.email } /* the sign-in address, as Settings > Account shows it */, onOpen: () => (setSettingsSection('account'), go('settings')) }}
             status={{ emoji: statuses[user.id]?.emoji, text: statuses[user.id] ? statusText(statuses[user.id]!) : t('Available'), run: () => setStatusOpen(true) }}
             onSettings={() => (openSettingsList(), go('settings'))}
             claim={chrome.bar}
@@ -4940,6 +4973,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
               dmIdFor={dmWith}
               onFollow={followThread}
               notices={myNotices.filter((n) => n.link?.app === 'chat')}
+              otherNotices={myNotices.filter((n) => n.link?.app !== 'chat' && !n.read).length}
+              onOtherNotices={() => setNoticesOpen(true)}
               onOpenNotice={openNotice}
               onReadNotices={(ids, read) => setNotices((ns) => ns.map((n) => (ids.includes(n.id) ? { ...n, read } : n)))}
               onHuddle={(id) => {
@@ -4997,7 +5032,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             portals={portalItems}
             onPortal={setPortalKey}
             onShared={myPortals.length > 1 ? () => setPortalKey('*') : undefined}
-            me={{ person: ME, onOpen: () => (setSettingsSection('account'), go('settings')) }}
+            me={{ person: { ...ME, email: user.email } /* the sign-in address, as Settings > Account shows it */, onOpen: () => (setSettingsSection('account'), go('settings')) }}
             status={{ emoji: statuses[user.id]?.emoji, text: statuses[user.id] ? statusText(statuses[user.id]!) : t('Available'), run: () => setStatusOpen(true) }}
             onSettings={() => (openSettingsList(), go('settings'))}
           />

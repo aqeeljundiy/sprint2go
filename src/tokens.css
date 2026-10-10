@@ -117,6 +117,8 @@
   --r-card: 16px; /* cards, sheets' top corners, drawers' open edge, dialogs */
   --r-pill: 999px; /* anything you press: buttons, chips, segmented controls, search, tags, the create button */
   --r-round: 50%; /* people and the unread dot */
+  --tile-tint: 14%; /* IconTile and calendar cards: how much of the colour fills the tile */
+  --tile-ink: 100%; /* how much of the colour the icon or text in a tile takes */
 
   /* ---------- Icons and pictures ---------- */
   --icon-s: 16px; /* inline with meta text */
@@ -174,5 +176,17 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']):not([data-theme='dark'])[data-theme-auto] {
     color-scheme: dark;
+  }
+}
+
+/* Tiles in the dark: a brighter tint on a lifted base, a lighter ink (no muddy squares). */
+:root[data-theme='dark'] {
+  --tile-tint: 30%;
+  --tile-ink: 55%;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --tile-tint: 30%;
+    --tile-ink: 55%;
   }
 }

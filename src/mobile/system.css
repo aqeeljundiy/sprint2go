@@ -177,14 +177,75 @@
     padding: 48px 24px;
   }
   .empty-state > .empty-art {
+    display: grid;
+    place-items: center;
+    width: 48px;
+    height: 48px;
     border-radius: var(--r-round);
+    background: var(--accent-soft);
+    color: var(--accent-text);
+  }
+  .empty-state > .empty-art svg {
+    width: var(--icon-l);
+    height: var(--icon-l);
   }
   .empty-state > .empty-title {
-    font: var(--t-heading);
+    font: var(--t-title);
     color: var(--text);
+  }
+  .empty-state > .empty-action > :is(button, a) {
+    min-height: var(--tap);
+    padding: 0 16px;
+    border-radius: var(--r-pill);
   }
   .empty-state > .empty-sub {
     font: var(--t-secondary);
     color: var(--text-3);
+  }
+}
+
+/* Links on phones: accent text, never underlined (one link style everywhere). */
+@media (max-width: 767px) {
+  .link-btn,
+  a.link-btn {
+    text-decoration: none;
+    color: var(--accent-text);
+  }
+}
+
+@media (max-width: 767px) {
+  /* N9: no underlined links anywhere on phones. */
+  .app a,
+  .app .link-btn,
+  .client-app a {
+    text-decoration: none;
+  }
+  .app .link-btn {
+    min-height: var(--tap);
+    display: inline-flex;
+    align-items: center;
+  }
+  /* N8: a sideways strip keeps the gutter at its end too (padding-right is lost in a scrolling flex row). */
+  .md-chips::after,
+  .mh-chips::after,
+  .tdp-chips::after {
+    content: '';
+    flex: none;
+    width: 8px;
+    height: 1px;
+  }
+  .md-chips,
+  .mh-chips {
+    scroll-padding-inline: 16px;
+  }
+}
+/* N7: on touch screens a hover never sticks: rows and options go back to plain once the finger lifts. */
+@media (hover: none) {
+  .as-item:hover,
+  .sel-opt:hover,
+  .nav-item:not(.active):hover,
+  .mh-main:hover,
+  .proj-sec-row:hover {
+    background: none;
   }
 }

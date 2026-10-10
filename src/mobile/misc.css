@@ -975,3 +975,137 @@
     letter-spacing: normal;
   }
 }
+
+/* ---------- Guest portal (ClientApp.tsx) on phones: one column of grouped cards, one-line rows ---------- */
+
+@media (max-width: 767px) {
+  .client-app .home-grid.cards {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
+    margin-top: 16px;
+  }
+  .client-app .home-card h3 {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 48px;
+    padding: 12px 16px 0;
+    font: var(--t-heading);
+    white-space: nowrap;
+  }
+  .client-app .home-card h3 .link-btn {
+    flex: none;
+    min-height: var(--tap);
+    margin-left: auto;
+    font: var(--t-segment);
+    color: var(--accent-text);
+  }
+  .client-app .home-card .card-body {
+    padding: 0 0 8px;
+  }
+  .client-app .home-card .empty-state.compact {
+    padding: 8px 16px 12px;
+    text-align: left;
+    font: var(--t-secondary);
+  }
+  .client-app .home-list .home-notice {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    min-height: 48px;
+    padding: 0 16px;
+    font: var(--t-body);
+  }
+  .client-app .home-list .home-notice > span:first-child {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .client-app .home-list .home-notice time {
+    flex: none;
+    font: var(--t-caption);
+    color: var(--text-3);
+  }
+  .client-app .home-card .card-body > .home-meeting {
+    display: grid;
+    gap: 4px;
+    width: 100%;
+    margin: 0;
+    padding: 4px 16px 8px;
+    border-radius: 0;
+    text-align: left;
+  }
+  .client-app .home-meeting strong {
+    font: var(--t-label);
+  }
+  .client-app .home-meeting small {
+    font: var(--t-secondary);
+    color: var(--text-3);
+  }
+  .client-app .home-meeting p {
+    margin: 0;
+    font: var(--t-secondary);
+    color: var(--text-2);
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  /* Files: name on one line, then size, who and when (tasks hide .src on phones; files need it). */
+  .client-app .file-task .task-title-btn {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .client-app .file-task .task-meta .src {
+    display: inline;
+    font: var(--t-secondary);
+    color: var(--text-3);
+  }
+  /* A meeting's notes: plain sections on the page, the date line on top. */
+  .client-notes {
+    gap: 0;
+    padding: 0 0 24px;
+  }
+  /* The sheet's Cancel closes it; no second X in the head. */
+  .request-modal .rq-close {
+    display: none;
+  }
+  .client-notes .cn-meta {
+    display: block;
+    margin: 0;
+    padding: 12px 16px 0;
+    font: var(--t-secondary);
+    color: var(--text-3);
+  }
+  .client-notes .side-card {
+    margin: 16px 16px 0;
+    padding: 0 16px 12px;
+  }
+  .client-notes .side-card h3 {
+    margin: 0;
+    padding: 16px 0 8px;
+    font: var(--t-heading);
+  }
+  .client-notes .side-card p,
+  .client-notes .side-card li {
+    margin: 0;
+    font: var(--t-para);
+  }
+  .client-notes ul {
+    padding-left: 16px;
+  }
+  .client-notes .side-card li + li {
+    margin-top: 4px;
+  }
+}
+
+@media (max-width: 767px) {
+  .request-modal .sel.date-sel {
+    justify-content: flex-start;
+  }
+}

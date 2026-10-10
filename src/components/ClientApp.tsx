@@ -417,7 +417,7 @@ export function ClientApp(p: Props) {
                   ))}
                 </ul>
               ) : (
-                <EmptyState compact text={t('Nothing waiting on you. 🎉')} />
+                <EmptyState compact text={t('Nothing waiting on you')} />
               ),
             )}
             {access.requests &&
@@ -660,7 +660,7 @@ export function ClientApp(p: Props) {
       pane(
         sel.meeting.title,
         `${fmtDay(sel.meeting.at)} · ${tn(sel.meeting.minutes, '{n} min', '{n} min')} · ${sel.meeting.attendees.join(', ')}`,
-        <MeetingNotes m={sel.meeting} notes={sel.notes} recording={access.recordings} />,
+        <MeetingNotes m={sel.meeting} notes={sel.notes} recording={access.recordings} meta={`${fmtDay(sel.meeting.at)} · ${tn(sel.meeting.minutes, '{n} min', '{n} min')}`} />,
       )
     ) : (
       pane(t('Meetings'), t('Notes from meetings you were in'), empty(<Video size={22} />, t('No meetings yet'), t('Notes appear here after you meet with the team.')))
@@ -968,9 +968,11 @@ function FileRow({ f, by, say }: { f: DriveItem; by: string; say: (text: string)
   );
 }
 
-function MeetingNotes({ m, notes, recording }: { m: Meeting; notes: boolean; recording: ClientAccess['recordings'] }) {
+function MeetingNotes({ m, notes, recording, meta }: { m: Meeting; notes: boolean; recording: ClientAccess['recordings']; meta?: string }) {
   return (
     <div className="client-notes">
+      {/* Phones hide the pane's subtitle, so the date and length sit on top of the notes there. */}
+      {meta && <p className="cn-meta">{meta}</p>}
       {recording !== 'off' && m.recording?.url && (
         <div className="client-recording">
           {recording === 'video' && m.recording.videoUrl ? (
@@ -1247,7 +1249,7 @@ function NewRequest({ onSend, onClose }: { onSend: (r: { title: string; details:
           <span className="dump-title">
             <Inbox size={15} /> {t('New request')}
           </span>
-          <button className="icon-btn sm" onClick={onClose} aria-label={t('Close')}>
+          <button className="icon-btn sm rq-close" onClick={onClose} aria-label={t('Close')}>
             <X size={15} />
           </button>
         </header>

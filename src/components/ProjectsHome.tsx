@@ -1,4 +1,5 @@
 import { ProjectBadge } from './ProjectBadge';
+import { IconTile } from './ui/IconTile';
 import { useRef, useState } from 'react';
 import { usePersisted } from '../settings';
 import { Popover } from './ui/Popover';
@@ -80,7 +81,7 @@ export function ProjectsHome({ projects, tasks, users, onOpen, onCreate, onMenu,
     const row = ({ c, s }: (typeof rows)[number]) => ({
       id: c.id,
       label: c.name,
-      icon: c.photo ? <span className="tbr-photo"><ProjectBadge p={c} kind="client-badge" /></span> : <span className="tbr-hash" style={{ color: c.color }}>#</span>,
+      icon: c.photo ? <span className="tbr-photo"><ProjectBadge p={c} kind="client-badge" /></span> : <IconTile letter={c.name} color={c.color} />, // N4: a project is a tile with its initial everywhere
       ...hint(s),
       run: () => onOpen(c.id),
     });
