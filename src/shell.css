@@ -362,6 +362,14 @@ body.resizing-x .pane-resize::after {
 .am-theme.segmented.wide {
   margin: 0 4px 6px;
   width: auto;
+  /* Columns as wide as their words (Otomatis is longer than Terang), so none runs into the edge. */
+  display: flex;
+}
+.am-theme.segmented.wide > button {
+  flex: 1 1 auto;
+  gap: 6px;
+  padding: 0 10px;
+  white-space: nowrap;
 }
 .am-item {
   display: flex;
