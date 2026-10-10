@@ -6,7 +6,7 @@ import { Sheet } from '../ui/Sheet';
 import { ActionSheet } from '../ui/ActionSheet';
 import { GuestPicker } from './GuestPicker';
 import { draftEvent, draftOf, type Draft } from './EventForm';
-import { t } from '../../i18n';
+import { t, tx } from '../../i18n';
 import { fmtDate } from '../../i18n/format';
 
 /**
@@ -94,7 +94,7 @@ export function QuickCreate({
             onChange={(e) => setTitle(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && !e.nativeEvent.isComposing && (e.preventDefault(), save())}
             placeholder={t('Add title')}
-            aria-label={t('Title')}
+            aria-label={tx('event', 'Title')}
             enterKeyHint="done"
           />
           <button type="button" className="qc-when" onClick={more} aria-label={t('{when}. More options', { when: `${fmtDate(quick.start, { weekday: 'short', day: 'numeric', month: 'short' })}, ${fmtTimeRange(quick.start, quick.end)}` })}>

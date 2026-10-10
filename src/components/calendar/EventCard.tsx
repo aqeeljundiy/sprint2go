@@ -1,3 +1,4 @@
+import { useRef } from 'react';
 import { Check, CircleCheck, MapPin, Mic, Repeat, Video } from 'lucide-react';
 import type { CalEvent } from '../../types';
 import { fmtTimeRange } from '../../calendarUtils';
@@ -26,6 +27,8 @@ export interface CardKit {
  */
 export function EventCard({ e, kit, now }: { e: CalEvent; kit: CardKit; now: number }) {
   const press = useLongPress((p) => kit.onMenu?.(e, p.x, p.y), { disabled: !kit.onMenu });
+  // Phones: a long hold does nothing (Google's schedule), so the click a long hold ends in doesn't open the event.
+  const downAt = useRef(0);
   const task = kit.taskOf?.(e) ?? null;
   const link = meetingLinkOf(e);
   const where = e.location && e.location !== link?.url ? e.location : '';
@@ -52,7 +55,13 @@ export function EventCard({ e, kit, now }: { e: CalEvent; kit: CardKit; now: num
   if (kit.phone) {
     const place = placeOf(e, link?.url);
     return (
-      <div {...open} className={`${cls} solid${place ? ' three' : ''}`} style={{ ['--c' as string]: color, ['--on' as string]: onColor(color) }}>
+      <div
+        {...open}
+        onPointerDown={() => (downAt.current = performance.now())}
+        onClick={() => !(downAt.current && performance.now() - downAt.current >= 500) && kit.onSelect(e.id)}
+        className={`${cls} solid${place ? ' three' : ''}`}
+        style={{ ['--c' as string]: color, ['--on' as string]: onColor(color) }}
+      >
         {task && (task.done ? <span className="ev-done-mark" aria-hidden><CircleCheck size={16} /></span> : check)}
         <span className="ev-card-text">
           <span className="ev-card-title">{e.title}</span>

@@ -1,7 +1,6 @@
 import { useState } from 'react';
-import { ChevronDown, Minus, Plus, Repeat } from 'lucide-react';
+import { ChevronDown, Minus, Plus, Repeat, X } from 'lucide-react';
 import { Sheet } from '../ui/Sheet';
-import { PushScreen } from '../ui/PushScreen';
 import { DatePicker } from '../ui/DatePicker';
 import { Select, type Option } from '../ui/Select';
 import { SmoothHeight } from '../ui/Smooth';
@@ -260,18 +259,27 @@ export function RepeatRow({ value, startWall, startDay, onChange }: { value: Rep
         </Sheet>
       )}
       {custom && (
-        <PushScreen
-          title={t('Custom repeat')}
-          onBack={() => setCustom(null)}
-          className="rp-custom-screen"
-          actions={
-            <button type="button" className="primary-btn sm rp-done" onClick={() => (onChange({ spec: custom, raw: null, touched: true }), setCustom(null))}>
-              {t('Done')}
-            </button>
+        // A full page over the editor (a sheet, so the pickers inside it open above it).
+        <Sheet
+          size="full"
+          className="ev-page rp-custom-sheet"
+          label={t('Custom repeat')}
+          onClose={() => setCustom(null)}
+          head={
+            <>
+              <button type="button" className="icon-btn ev-page-x" onClick={() => setCustom(null)} aria-label={t('Close')}>
+                <X size={22} />
+              </button>
+              <h2 className="sheet-title">{t('Custom repeat')}</h2>
+              <span className="spacer" />
+              <button type="button" className="primary-btn ev-page-save" onClick={() => (onChange({ spec: custom, raw: null, touched: true }), setCustom(null))}>
+                {t('Done')}
+              </button>
+            </>
           }
         >
           <CustomRepeat spec={custom} startWall={startWall} startDay={startDay} onChange={setCustom} />
-        </PushScreen>
+        </Sheet>
       )}
     </>
   );

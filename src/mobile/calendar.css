@@ -215,6 +215,8 @@
   .cal-settings-hol .hol-countries .sb-label {
     display: grid;
     gap: 2px;
+    font-size: 16px;
+    text-align: left;
   }
   .cal-settings-hol .hol-countries small {
     font-size: 13px;
@@ -840,10 +842,9 @@
     text-align: center;
     font: inherit;
   }
-  .rp-done {
-    min-height: 36px;
-    padding: 0 16px;
-    border-radius: 18px;
+  .rp-custom-sheet .sheet-title {
+    flex: none;
+    font-size: 18px;
   }
 
   /* A question over an event (Discard?, which dates): the last toast steps aside so it never covers a choice. */

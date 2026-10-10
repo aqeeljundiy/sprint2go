@@ -1347,7 +1347,7 @@ export function SendBotDialog({ clients, botName, languages, real, workspaceId, 
                 <FileText size={20} />
               </span>
               <span className="er-body">
-                <input className="er-input" value={title} onChange={(e) => setTitle(e.target.value)} placeholder={t('Title')} aria-label={t('Title')} />
+                <input className="er-input" value={title} onChange={(e) => setTitle(e.target.value)} placeholder={t('Title (optional)')} aria-label={t('Title (optional)')} />
               </span>
             </div>
             <div className="er-row">

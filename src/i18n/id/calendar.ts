@@ -404,9 +404,9 @@ const id: Record<string, string> = {
   '{name} added, but it has nothing in the coming year. Check it’s the right calendar.': '{name} ditambahkan, tetapi tidak ada acara setahun ke depan. Pastikan kalendernya benar.',
   'Holidays in {country} now show for everyone at {company}': 'Hari libur di {country} sekarang tampil untuk semua orang di {company}',
   // Phones, as Google Calendar (the drawer, the + menu, the full-screen editor and details)
-  'Add location': 'Tambahkan lokasi',
-  'Add notes': 'Tambahkan catatan',
-  'Add video call': 'Tambahkan panggilan video',
+  'Add location': 'Tambah lokasi',
+  'Add notes': 'Tambah catatan',
+  'Add video call': 'Tambah panggilan video',
   'Calendar settings': 'Pengaturan kalender',
   'Custom repeat': 'Ulangi khusus',
   'Custom…': 'Khusus…',
