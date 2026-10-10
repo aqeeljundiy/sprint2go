@@ -516,6 +516,16 @@ export interface TaskEvent {
   toClient?: boolean; // a comment the client can read (team comments are internal unless marked)
   /** What the app wrote, for each reader in their own language (msg() and textOf() in src/i18n). Older entries have none. */
   tr?: Msg;
+  /** Files attached to a comment: uploads, seen by whoever sees the comment (server/taskFiles.ts). */
+  files?: CommentFile[];
+}
+
+/** A file on a task's comment (an upload: /api/files/<id>; a data URL in the demo company). */
+export interface CommentFile {
+  name: string;
+  size: number; // bytes
+  type: string; // mime
+  url: string;
 }
 
 export interface Approval {

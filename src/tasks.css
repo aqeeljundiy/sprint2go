@@ -2022,3 +2022,176 @@ button.td-chip:hover,
   align-items: center;
   gap: 8px;
 }
+
+/* ---------- Files on a task's comments (src/components/tasks/CommentFiles.tsx) ---------- */
+
+.cf-cards {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: 2px;
+}
+.cf-card {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  max-width: 100%;
+  padding: 6px 12px 6px 6px;
+  border-radius: 10px;
+  background: var(--surface-2);
+  color: var(--text);
+  text-decoration: none;
+  transition: background-color 0.15s ease;
+}
+a.cf-card:hover {
+  background: var(--hover);
+}
+a.cf-card:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.cf-card.off {
+  opacity: 0.6;
+}
+/* A picture: a small preview with its name under it. */
+.cf-card.pic {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+  width: 168px;
+  padding: 0;
+  overflow: hidden;
+}
+.cf-thumb {
+  display: block;
+  height: 104px;
+  background: var(--hover);
+}
+.cf-thumb img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.cf-card.pic .cf-card-text {
+  padding: 6px 8px;
+}
+.cf-icon {
+  flex: none;
+  display: grid;
+}
+.cf-card-text,
+.cf-chip-text {
+  display: grid;
+  min-width: 0;
+}
+.cf-name {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+}
+.cf-card-text small,
+.cf-chip-text small {
+  font-size: 12px;
+  color: var(--text-3);
+}
+/* Going with the comment: chips above the field, in and out with a fade. */
+.cf-waiting {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.cf-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  max-width: 240px;
+  padding: 4px;
+  border-radius: 10px;
+  background: var(--surface-2);
+  animation: cf-in 0.18s ease-out backwards;
+  transition: opacity 0.18s ease-in, transform 0.18s ease-in;
+}
+.cf-chip.leaving {
+  opacity: 0;
+  transform: scale(0.92);
+}
+.cf-chip-pic {
+  position: relative;
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  overflow: hidden;
+  border-radius: 8px;
+  background: var(--surface);
+}
+.cf-chip-pic img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.cf-spin {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: color-mix(in srgb, var(--surface) 65%, transparent);
+  color: var(--text-2);
+}
+.cf-spin svg {
+  animation: spin 0.9s linear infinite;
+}
+.cf-chip-x {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  color: var(--text-2);
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+.cf-chip-x:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+.td-c-row .td-clip {
+  flex: none;
+  width: 40px;
+  height: 40px;
+}
+.comment-box {
+  flex-wrap: wrap;
+}
+.comment-box > .cf-waiting {
+  flex: 1 0 100%;
+}
+.tdp-last-text .cf-cards {
+  margin-top: 4px;
+}
+@keyframes cf-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.98);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cf-chip {
+    animation: none;
+    transition: none;
+  }
+  .cf-spin svg {
+    animation-duration: 2.4s;
+  }
+}

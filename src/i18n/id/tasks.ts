@@ -748,6 +748,15 @@ const id: Record<string, string> = {
   'Add a task on {day}': 'Tambah tugas pada {day}',
   'Nothing due today.': 'Tidak ada tugas hari ini.',
   'Nothing due this day.': 'Tidak ada tugas pada hari ini.',
+  // Files on comments (tasks/CommentFiles.tsx)
+  'Attach files': 'Lampirkan file',
+  'Take a photo': 'Ambil foto',
+  'Upload a file': 'Unggah file',
+  'Files to send': 'File yang akan dikirim',
+  'Uploading…': 'Mengunggah…',
+  'Remove {name}': 'Hapus {name}',
+  'The upload failed.': 'Unggahan gagal.',
+  Photo: 'Foto',
 };
 
 export default id;

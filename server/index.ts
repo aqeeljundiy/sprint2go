@@ -54,6 +54,7 @@ import * as autojoin from './autojoin.ts';
 import * as summaries from './summaries.ts';
 import * as chatLater from './chatLater.ts';
 import * as chatRules from './chatRules.ts';
+import * as taskFiles from './taskFiles.ts';
 import * as digest from './digest.ts';
 import * as retention from './retention.ts';
 import * as sandbox from './sandbox.ts';
@@ -553,7 +554,14 @@ function clientWrite(me: Person, coll: string, d: any): any | null {
       const approval = can(person, 'approve') && before.approval?.status === 'waiting' && d.approval && d.approval.status !== 'waiting' ? { ...before.approval, status: d.approval.status, by: email, at: new Date().toISOString(), note: d.approval.note } : before.approval;
       // Changes asked on finished work: it goes back to the company's first "in progress" stage (by kind, whatever it's called).
       const reopen = approval !== before.approval && approval?.status === 'changes' && before.done ? { done: false, status: stageIdFor(before, 'active', taskStagesOf(before, w)), doneAt: undefined, doneBy: undefined } : {};
-      return { ...before, ...reopen, approval, history: [...(before.history ?? []), ...added.map((h: any) => ({ ...h, toClient: true }))] };
+      // Files on their comments only where the project lets them add files (which files: server/taskFiles.ts).
+      const filesOk = !!access.uploads && can(person, 'upload');
+      const mine = (h: any) => {
+        if (filesOk || !('files' in h)) return { ...h, toClient: true };
+        const { files: _f, ...rest } = h;
+        return { ...rest, toClient: true };
+      };
+      return { ...before, ...reopen, approval, history: [...(before.history ?? []), ...added.map(mine)] };
     }
     case 'quotes': {
       // A guest with approval rights answers a quote that was sent: accepted with their name, or declined with a note.
@@ -1344,6 +1352,8 @@ function applySync(me: string, incoming: any, from: { conn?: string; operator?: 
     .filter((d) => d && typeof d.id === 'string' && !(isSandboxId(d.id) && !db.getDoc(coll, d.id)))
     .map((d) => ownProfile(d) ?? (ownRecord(d) || asTeam(d) ? d : (portals.map((pt) => clientWrite(pt, coll, d)).find(Boolean) ?? null)))
     .filter(Boolean)
+    // Files on a task's comments: only your own uploads on the comments you add (server/taskFiles.ts).
+    .map((d) => (coll === 'todos' && d ? taskFiles.keepCommentFiles(db.getDoc('todos', d.id) as any, d as any, me, db.fileInfo) : d))
     .map((d) => {
       // A project's picture: a small image only (like profile photos).
       if (coll === 'clients' && d && 'photo' in d && d.photo != null && !(typeof d.photo === 'string' && d.photo.startsWith('data:image/') && d.photo.length < 300_000)) return { ...d, photo: undefined };
@@ -3005,17 +3015,18 @@ createServer(async (req, res) => {
             const rows = usedOn();
             if (!rows.length) return true;
             const see = teamLens(me);
-            return rows.some((r) => !!see(r.coll, JSON.parse(r.data)));
+            return rows.some((r) => taskFiles.holdsFile(see(r.coll, JSON.parse(r.data)), f.id));
           })());
       // A guest opens their own uploads, and files on something they can see (a shared file, a message in their
-      // channel, a request): never the rest of the company's files, even with the address.
+      // channel, a request, a comment shared with them): never the rest of the company's files, even with the address.
+      // What counts is their view of it: a file on a task's internal comment stays closed though the task is shared.
       const guest =
         !team &&
         portalsOf(me).some((pt) => pt.workspaceId === f.workspaceId) &&
         (f.by === me ||
           (() => {
             const see = lens(me);
-            return usedOn().some((r) => !!see(r.coll, JSON.parse(r.data)));
+            return usedOn().some((r) => taskFiles.holdsFile(see(r.coll, JSON.parse(r.data)), f.id));
           })());
       // Support tickets: the operators who work tickets (the support permission, past the console's two-step sign-in)
       // open what customers attached (their own uploads, or what came with their email), and each opening is in the

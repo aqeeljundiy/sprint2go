@@ -147,7 +147,7 @@ try {
   put('messages', { id: 'm-4', channelId: 'ch-partner', userId: 'u-dan', text: 'Partner kiwi timeline', at: now() });
   put('todos', { id: 't-late', workspaceId: 'w-acme', title: 'Fix the banana banner', userId: 'u-bob', assignees: ['u-bob'], due: day(-2), done: false, status: 'todo', priority: 'normal', source: 'manual', createdBy: 'u-alice', supervisorId: 'u-alice', clientId: 'c-open', createdAt: now(), history: [] });
   put('todos', { id: 't-secret', workspaceId: 'w-acme', title: 'Pineapple due diligence', userId: 'u-alice', assignees: ['u-alice'], due: day(3), done: false, status: 'todo', priority: 'high', source: 'manual', createdBy: 'u-alice', clientId: 'c-secret', createdAt: now(), history: [] });
-  put('todos', { id: 't-review', workspaceId: 'w-acme', title: 'Mango poster', userId: 'u-bob', assignees: ['u-bob'], done: false, status: 'review', priority: 'normal', source: 'manual', createdBy: 'u-alice', supervisorId: 'u-alice', teamId: 't-design', createdAt: now(), history: [] });
+  put('todos', { id: 't-review', workspaceId: 'w-acme', title: 'Mango poster', userId: 'u-bob', assignees: ['u-bob'], done: false, status: 'review', priority: 'normal', source: 'manual', createdBy: 'u-alice', supervisorId: 'u-alice', teamId: 't-design', createdAt: now(), history: [{ id: 'h-rv1', at: now(), by: 'u-bob', kind: 'comment', text: 'First cut attached', files: [{ name: 'poster-v1.png', size: 2_400_000, type: 'image/png', url: '/api/files/0123456789abcdef0123456789abcdef' }] }] });
   put('todos', { id: 't-team', workspaceId: 'w-acme', title: 'Banana storyboard', userId: 'u-bob', assignees: ['u-bob'], done: false, status: 'doing', priority: 'normal', source: 'manual', createdBy: 'u-bob', supervisorId: 'u-alice', teamId: 't-design', createdAt: now(), history: [] });
   put('todos', { id: 't-other', workspaceId: 'w-other', title: 'Kiwi partner checklist', userId: 'u-dan', assignees: ['u-dan'], done: false, status: 'todo', priority: 'normal', source: 'manual', createdBy: 'u-dan', clientId: 'c-other', visibleToClient: true, createdAt: now(), history: [] });
   const msg = (id, from, to, body, at, mid) => ({ id, from, to, date: at, body, mid });
@@ -313,6 +313,8 @@ try {
   check(proj.data?.tasks?.length === 1 && proj.data.tasks[0].late === true, 'list_tasks project: by name, late work marked');
   const rt = await A('read_task', { task_id: 't-review' });
   check(rt.data?.stage === 'Review' && rt.data.supervisor === 'Alice Martin', 'read_task: stage and people');
+  const att = rt.data?.history?.find((h) => h.comment === 'First cut attached')?.attachments;
+  check(JSON.stringify(att) === JSON.stringify([{ name: 'poster-v1.png', type: 'image/png', size: '2.3 MB' }]), `read_task: a comment lists its attached files (${JSON.stringify(att)})`);
   const chans = await A('list_channels');
   check(chans.data?.channels?.length === 6 && chans.data.channels.find((c) => c.id === 'ch-group')?.name === 'Group message with Bob Stone, Carol Reed' && chans.data.channels.find((c) => c.id === 'ch-group-guest')?.guests === true && chans.data.channels.find((c) => c.id === 'ch-shared')?.guests === true && !chans.data.channels.some((c) => c.id === 'ch-partner'), 'list_channels: her channels with guests marked, nothing from the other company');
   const rc = await A('read_channel', { channel: '#open-with-client' });

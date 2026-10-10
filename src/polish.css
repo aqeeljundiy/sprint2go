@@ -569,7 +569,8 @@ details.advanced[open] summary h3::after {
 .h-body b {
   color: var(--text);
 }
-.h-comment {
+/* The bubble only: a comment row (li.h-comment) shares the name and stays plain. */
+.h-body > .h-comment {
   display: block;
   padding: 8px 12px;
   border-radius: 12px;
@@ -1951,10 +1952,6 @@ button.chip.client-chip:hover { background: color-mix(in oklab, var(--c) 14%, va
   to {
     transform: translateX(100%);
   }
-}
-/* Calendar's + menu (phones): the pills and the whitened page fade back out together. */
-.is-leaving.cal-create-menu {
-  animation: s2gFadeOut 0.14s ease-in forwards !important;
 }
 /* A drawer from the left (SideDrawer) goes back out to the left while the page under it lightens. */
 .is-leaving.side-drawer-scrim {

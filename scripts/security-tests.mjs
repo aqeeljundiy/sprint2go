@@ -20,6 +20,7 @@
 // 15. free trials: one per person and per company domain, the reason on the plan, and one more when an operator allows it
 // 16. BIMI: the logo is checked for SVG Tiny PS basics, served from a stable address in a sandbox, admins only
 // 17. a project's or team's own task stages: who sets them, only lists that work, guests' approvals use them
+// 18. files on a task's comments: only your own uploads on your comments; a guest opens only those on comments shared with her
 //   node scripts/security-tests.mjs
 import { spawn } from 'node:child_process';
 import { createHash, createHmac, randomBytes } from 'node:crypto';
@@ -570,6 +571,55 @@ try {
     // Guests see a project's own stages as ids and kinds only.
     const nadiaState = await nadia.state();
     check(!JSON.stringify(nadiaState.clients ?? []).includes('"name":"Design"'), 'guests never see the names of a project’s own stages');
+  }
+
+
+  /* ---------- 18. files on a task's comments: whose files, and who opens them ---------- */
+  {
+    const up = (who, text, name) => who.post('/api/upload', text, { 'content-type': 'text/plain', 'x-file-name': name, 'x-workspace': 'pnp' }).then((r) => r.json());
+    const inside = await up(aqeel, 'for the team only', 'internal.txt');
+    const shared = await up(aqeel, 'for the guest too', 'shared.txt');
+    const dewis = await up(dewi, 'dewi’s own', 'dewi.txt');
+    const card = (f, name = f.name) => ({ name, size: 1, type: 'text/html', url: f.url });
+    const base = { id: 'td-files', workspaceId: 'pnp', clientId: 'c-kopikita', title: 'Launch photos', userId: 'u-aqeel', assignees: ['u-aqeel', 'u-dewi'], done: false, status: 'todo', visibleToClient: true, source: 'manual', createdBy: 'u-aqeel', createdAt: now(), priority: 'normal', history: [] };
+    put('todos', base);
+    await aqeel.sync('todos', [
+      {
+        ...base,
+        history: [
+          { id: 'tf-in', at: now(), by: 'u-aqeel', kind: 'comment', text: 'internal', files: [card(inside, 'evil.html'), card(dewis)] },
+          { id: 'tf-out', at: now(), by: 'u-aqeel', kind: 'comment', text: 'have a look', toClient: true, files: [card(shared)] },
+        ],
+      },
+    ]);
+    const saved = doc('todos', 'td-files');
+    const filesOf = (id) => (doc('todos', 'td-files').history.find((h) => h.id === id)?.files ?? []).map((f) => `${f.name} ${f.type} ${f.url}`);
+    check(JSON.stringify(filesOf('tf-in')) === JSON.stringify([`internal.txt text/plain ${inside.url}`]), `a comment keeps only its writer’s own uploads, named as uploaded (${JSON.stringify(filesOf('tf-in'))})`);
+    check(filesOf('tf-out').length === 1 && saved.history.length === 2, 'the shared comment keeps its file');
+    // Saving the task again with other files under a saved comment (sessions from earlier sections are signed out by now).
+    const aditya1 = await aqeel.sync('todos', [{ ...saved, title: 'Launch photos, final', history: saved.history.map((h) => (h.id === 'tf-in' ? { ...h, files: [card(dewis)] } : h)) }]);
+    check(aditya1.saved === 1 && doc('todos', 'td-files').title === 'Launch photos, final', `the task is saved again (${JSON.stringify(aditya1)})`);
+    check(JSON.stringify(filesOf('tf-in')) === JSON.stringify([`internal.txt text/plain ${inside.url}`]), 'nobody swaps the files under someone else’s comment');
+    const seen = (await nadia.state()).todos.find((x) => x.id === 'td-files');
+    const seenFiles = JSON.stringify(seen?.history ?? []);
+    check(!!seen && seenFiles.includes(shared.url) && !seenFiles.includes(inside.url), 'a guest sees the files on comments shared with her, not on internal ones');
+    check((await nadia.get(shared.url)).status === 200, 'she opens the shared one');
+    check((await nadia.get(inside.url)).status === 404, 'not the internal one, though the task is shared with her');
+    check((await aqeel.get(inside.url)).status === 200 && (await aqeel.get(shared.url)).status === 200, 'the team opens both');
+    // The guest attaches her own upload; not a file of the company's.
+    const hers = await nadia.post('/api/upload', 'from the client', { 'content-type': 'text/plain', 'x-file-name': 'brief.txt', 'x-workspace': 'pnp' }).then((r) => r.json());
+    await nadia.sync('todos', [{ ...seen, history: [...seen.history, { id: 'tf-guest', at: now(), by: 'nadia@kopikita.co.id', kind: 'comment', text: 'ours', files: [card(hers), card(inside)] }] }]);
+    const guestFiles = filesOf('tf-guest');
+    check(guestFiles.length === 1 && guestFiles[0].includes(hers.url) && doc('todos', 'td-files').history.find((h) => h.id === 'tf-guest')?.toClient === true, `a guest’s comment carries her own upload only (${JSON.stringify(guestFiles)})`);
+    check((await aqeel.get(hers.url)).status === 200, 'and the team opens it');
+    // A project that doesn't let guests add files: her comment goes in without them.
+    const kopi = doc('clients', 'c-kopikita');
+    put('clients', { ...kopi, access: { ...(kopi.access ?? {}), uploads: false } });
+    const again = (await nadia.state()).todos.find((x) => x.id === 'td-files');
+    await nadia.sync('todos', [{ ...again, history: [...again.history, { id: 'tf-guest2', at: now(), by: 'nadia@kopikita.co.id', kind: 'comment', text: 'one more', files: [card(hers)] }] }]);
+    const second = doc('todos', 'td-files').history.find((h) => h.id === 'tf-guest2');
+    check(!!second && !second.files, 'with guest uploads off, her comment is kept without files');
+    put('clients', kopi);
   }
 
   db.close();

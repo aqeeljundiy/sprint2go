@@ -3,8 +3,8 @@
 import type { Dispatch, SetStateAction } from 'react';
 import { term } from './terms';
 import { kindOf, stageIdFor } from './stages';
-import type { Channel, ChatMessage, Client, ClientAccess, ClientPerson, DriveItem, Meeting, Notice, Team, Todo, User, Workspace } from './types';
-import { channelsFor, clientInbox, clientPeople, companyOf, filesFor, isFreemail, meetingsFor, tasksFor, thisMonth } from './clientView';
+import type { Channel, ChatMessage, Client, ClientAccess, ClientPerson, CommentFile, DriveItem, Meeting, Notice, Team, Todo, User, Workspace } from './types';
+import { can, channelsFor, clientInbox, clientPeople, companyOf, filesFor, isFreemail, meetingsFor, tasksFor, thisMonth } from './clientView';
 import { ai } from './ai';
 import type { MeetSource } from './ai/demo';
 import { uploadFile } from './sync';
@@ -48,6 +48,8 @@ export function clientActions(c: ClientCtx) {
   };
   const doers = (task: Todo) => (task.assignees?.length ? task.assignees : task.userId ? [task.userId] : []);
   const sharedChannel = () => channelsFor(c.person.email, c.client.id, c.channels).find((ch) => ch.kind === 'channel');
+  /** Files on their comments: only where they may add files (the project lets guests upload, and their role does). */
+  const canAttach = () => !!c.access.uploads && can(c.person, 'upload') && c.client.status !== 'ended';
 
   /** The folder in the project's Drive where a guest's uploads go ("From KopiKita", "From Pixel & Profits"). */
   const uploadFolder = (): { id: string; create?: DriveItem } => {
@@ -98,12 +100,17 @@ export function clientActions(c: ClientCtx) {
       tell([task.approval?.askedBy, ...doers(task), task.supervisorId, c.client.ownerId], status === 'approved' ? msg('{name} ({company}) approved “{title}”', { name: first, company: who, title: task.title }) : msg('{name} ({company}) asked for changes on “{title}”', { name: first, company: who, title: task.title }), { app: 'tasks', id: taskId });
     },
 
-    /** A comment the team sees, on a shared task or a request. */
-    comment(taskId: string, text: string) {
+    canAttach,
+    workspaceId: c.ws.id,
+
+    /** A comment the team sees, on a shared task or a request, with files they attached (the server checks they're theirs). */
+    comment(taskId: string, text: string, files?: CommentFile[]) {
       const task = c.todos.find((x) => x.id === taskId);
-      if (!task || !text.trim()) return;
-      c.setTodos((ts) => ts.map((x) => (x.id === taskId ? { ...x, history: [...(x.history ?? []), { id: uid(), at: now(), by: c.person.email, kind: 'comment', text: text.trim(), toClient: true }] } : x)));
-      tell([...doers(task), task.supervisorId, c.client.ownerId], msg('{name} ({company}) commented on “{title}”: “{text}”', { name: first, company: who, title: task.title, text: text.trim().slice(0, 80) }), { app: 'tasks', id: taskId });
+      const list = files?.length && canAttach() ? files : undefined;
+      if (!task || (!text.trim() && !list)) return;
+      c.setTodos((ts) => ts.map((x) => (x.id === taskId ? { ...x, history: [...(x.history ?? []), { id: uid(), at: now(), by: c.person.email, kind: 'comment', text: text.trim(), toClient: true, ...(list ? { files: list } : {}) }] } : x)));
+      const said = text.trim() || (list ?? []).map((f) => f.name).join(', ');
+      tell([...doers(task), task.supervisorId, c.client.ownerId], msg('{name} ({company}) commented on “{title}”: “{text}”', { name: first, company: who, title: task.title, text: said.slice(0, 80) }), { app: 'tasks', id: taskId });
     },
 
     /** A request (ticket): lands in the team's queue as a task. */

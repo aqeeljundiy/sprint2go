@@ -44,6 +44,8 @@ const no = (text: string): never => {
 
 type Doc = Record<string, any>;
 const doers = (t: Doc): string[] => (t.assignees?.length ? t.assignees : t.userId ? [t.userId] : []);
+/** "820 KB", "1.4 MB": a file's size the way people say it. */
+const fileSize = (b: number) => (b >= 1024 ** 3 ? `${(b / 1024 ** 3).toFixed(1)} GB` : b >= 1024 ** 2 ? `${(b / 1024 ** 2).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1024))} KB`);
 const clip = (s: unknown, n: number) => {
   const t = String(s ?? '').replace(/\s+/g, ' ').trim();
   return t.length > n ? `${t.slice(0, n - 1)}…` : t;
@@ -785,7 +787,7 @@ export function registerTools(server: McpServer, deps: ToolDeps, ctx: ToolCtx) {
     'read_task',
     {
       title: 'Read a task',
-      description: 'One task in full: stage, people, dates, notes, checklist, approval, its comments and history, and for a brief its tasks.',
+      description: 'One task in full: stage, people, dates, notes, checklist, approval, its comments (with the files attached to them) and history, and for a brief its tasks.',
       inputSchema: { task_id: z.string() },
       annotations: READ,
     },
@@ -805,7 +807,14 @@ export function registerTools(server: McpServer, deps: ToolDeps, ctx: ToolCtx) {
         ...(t.approval ? { approval: { status: t.approval.status, ...(t.approval.note ? { note: t.approval.note } : {}) } } : {}),
         ...(t.checklist?.length ? { checklist: t.checklist.map((c: Doc) => `${c.done ? '[x]' : '[ ]'} ${c.text}`) } : {}),
         ...(subtasks.length ? { tasks: subtasks.map((x) => taskLine(v, x)) } : {}),
-        history: (t.history ?? []).slice(-40).map((h: Doc) => ({ at: v.when(h.at), who: String(h.by).includes('@') ? `${h.by} (guest)` : v.nameOf(h.by), [h.kind === 'comment' ? 'comment' : 'did']: h.text, ...(h.toClient ? { guests_see_it: true } : {}) })),
+        history: (t.history ?? []).slice(-40).map((h: Doc) => ({
+          at: v.when(h.at),
+          who: String(h.by).includes('@') ? `${h.by} (guest)` : v.nameOf(h.by),
+          [h.kind === 'comment' ? 'comment' : 'did']: h.text,
+          ...(h.toClient ? { guests_see_it: true } : {}),
+          // Files attached to the comment: what they are (opening one needs a sign-in in the app).
+          ...(Array.isArray(h.files) && h.files.length ? { attachments: h.files.map((f: Doc) => ({ name: String(f.name ?? 'file'), type: String(f.type ?? ''), size: fileSize(Number(f.size) || 0) })) } : {}),
+        })),
       };
     },
   );
