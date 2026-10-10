@@ -102,12 +102,8 @@ export function MobileTop({
             </button>
           ) : (
             <button className="mt-ws" onClick={() => canSwitch && setWsOpen(true)} aria-haspopup="dialog" aria-label={elsewhere ? t('Workspace: {name}, new mail in another workspace', { name: current.name }) : t('Workspace: {name}', { name: current.name })}>
-              <WorkspaceLogo ws={current} size={32} />
-              {me && (
-                <span className="mt-me" aria-hidden="true">
-                  <Avatar person={me.person} size={16} />
-                </span>
-              )}
+              {/* You, as one round avatar (Gmail, Slack, Teams); the company shows in the sheet it opens. */}
+              {me ? <Avatar person={me.person} size={32} /> : <WorkspaceLogo ws={current} size={32} />}
               {elsewhere && <i className="mt-ws-dot" />}
             </button>
           )}

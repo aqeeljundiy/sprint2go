@@ -308,9 +308,12 @@
     border-radius: 12px;
     transition: background 0.15s;
   }
+  .mt-ws {
+    border-radius: 50%;
+  }
   .mt-ws .ws-logo-img,
   .mt-ws > :first-child {
-    border-radius: 8px;
+    border-radius: 50%;
   }
   .mt-back {
     color: var(--accent);
@@ -325,18 +328,6 @@
   .mt-ws:active,
   .mt-back:active {
     background: var(--hover);
-  }
-  /* You, on the company logo's corner. */
-  .mt-me {
-    position: absolute;
-    right: 1px;
-    bottom: 3px;
-    display: grid;
-    border-radius: 50%;
-    box-shadow: 0 0 0 2px var(--bg);
-  }
-  .mt-me .avatar {
-    font-size: 8px !important;
   }
   .mt-ws-dot {
     position: absolute;
