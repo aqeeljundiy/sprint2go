@@ -718,6 +718,9 @@ const id: Record<string, string> = {
   'Search in {name}': 'Cari di {name}',
   'Search messages': 'Cari pesan',
   'Words from a message, a name or a link': 'Kata dari pesan, nama, atau link',
+  'Marked read': 'Ditandai dibaca',
+  'Reply in this thread': 'Balas di thread ini',
+  Skipped: 'Dilewati',
   // (end of chat)
 };
 

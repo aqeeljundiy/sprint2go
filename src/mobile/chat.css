@@ -1489,18 +1489,105 @@
     flex: 1;
     min-height: 40px;
   }
+  /* Catch up: full screen with a close X, the card full width with a hairline, the reply box pinned at the bottom. */
   .page-catchup .push-body {
-    padding: 8px 12px calc(16px + env(safe-area-inset-bottom));
+    padding: 12px 16px 16px;
+  }
+  .cu-left {
+    padding: 0 12px;
+    font-size: 13px;
+    color: var(--text-3);
+    white-space: nowrap;
   }
   .cu-page {
     min-height: 100%;
     align-content: start;
+    gap: 16px;
+  }
+  .page-catchup .cu-card {
+    border-radius: 12px;
+    box-shadow: none;
+    padding: 14px 16px;
+  }
+  .page-catchup .cu-card.under {
+    transform: translateY(8px) scale(0.97);
+  }
+  .page-catchup .cu-msg .cm-text {
+    font-size: 16px;
+    line-height: 22px;
+  }
+  .page-catchup .cu-msg .avatar {
+    border-radius: 8px;
   }
   .cu-actions button {
     min-height: 48px;
   }
+  .page-catchup .cu-actions button {
+    max-width: none;
+  }
+  .page-catchup .push-foot {
+    padding: 0 0 env(safe-area-inset-bottom);
+    background: var(--surface);
+  }
+  .kb-open .page-catchup .push-foot {
+    padding-bottom: 0;
+  }
+  .cu-reply.is-phone {
+    gap: 8px;
+    min-height: 56px;
+    padding: 6px 12px;
+    border-top: 1px solid var(--border);
+  }
+  .cu-reply.is-phone input {
+    height: 44px;
+    padding: 0 4px;
+    border: 0;
+    border-radius: 0;
+    background: none;
+    font-size: 16px;
+    box-shadow: none;
+  }
   .cu-top .link-btn {
     min-height: var(--tap);
+  }
+  /* Threads: reply right from the list. */
+  .thread-item {
+    border-bottom: 1px solid var(--border);
+  }
+  .inline-reply {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0 8px 12px;
+    padding: 0 4px 0 12px;
+    min-height: 44px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+  }
+  .inline-reply input {
+    flex: 1;
+    min-width: 0;
+    height: 42px;
+    border: 0;
+    background: none;
+    font-size: 16px;
+    color: var(--text);
+    outline: none;
+  }
+  .ir-send {
+    display: grid;
+    place-items: center;
+    width: 36px;
+    height: 32px;
+    border-radius: 8px;
+    color: var(--text-3);
+    transition:
+      background 0.15s,
+      color 0.15s;
+  }
+  .ir-send.ready {
+    background: var(--accent);
+    color: #fff;
   }
   .draft-pill {
     font-size: 12px;

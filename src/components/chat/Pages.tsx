@@ -27,6 +27,8 @@ export interface PagesProps {
   /** Open a conversation, at a message (a reply opens its thread). */
   onOpen: (channelId: string, messageId?: string) => void;
   onSendTo: (channelId: string, text: string) => void;
+  /** Phones, Threads: reply in a thread right from the list (Slack). */
+  onReplyTo?: (channelId: string, rootId: string, text: string) => void;
   onSendNow: (id: string) => void;
   onReschedule: (id: string, at: string) => void;
   onDelete: (id: string) => void;
@@ -41,6 +43,8 @@ export function ChatPages(p: PagesProps) {
       {p.page === 'catchup' ? <CatchUp {...p} chat={chat} /> : p.page === 'threads' ? <Threads {...p} chat={chat} /> : p.page === 'drafts' ? <DraftsSent {...p} chat={chat} /> : <Saved {...p} chat={chat} />}
     </TabPane>
   );
+  // Phones: Catch up is its own full screen with a close X and the reply box at the bottom (Slack).
+  if (p.phone && p.page === 'catchup') return <CatchUp {...p} chat={chat} />;
   if (p.phone)
     return (
       <PushScreen title={title} backLabel={t('Chat')} onBack={p.onClose} className={`chat-page-push page-${p.page}`}>
@@ -115,6 +119,8 @@ function CatchUp(p: PagesProps & { chat: ChatState }) {
     setSteps((s) => [...s, { id: card.c.id, kind, before }]);
     setFly(kind === 'read' ? 1 : -1);
     haptic(10);
+    // Phones: Undo comes as a toast, like Slack.
+    if (p.phone) toast({ text: kind === 'read' ? t('Marked read') : t('Skipped'), action: { label: t('Undo'), run: undo } });
     // The card leaves, then the next one comes up from under it.
     setTimeout(
       () => {
@@ -126,8 +132,10 @@ function CatchUp(p: PagesProps & { chat: ChatState }) {
       matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 200,
     );
   };
+  const stepsNow = useRef(steps);
+  stepsNow.current = steps;
   const undo = () => {
-    const last = steps[steps.length - 1];
+    const last = stepsNow.current[stepsNow.current.length - 1];
     if (!last) return;
     if (last.kind === 'read') chat.setReadBack(last.id, last.before);
     setSteps((s) => s.slice(0, -1));
@@ -157,10 +165,17 @@ function CatchUp(p: PagesProps & { chat: ChatState }) {
     return () => window.removeEventListener('keydown', on);
   });
 
-  if (!queue.length)
-    return <EmptyState icon={<CheckCheck size={22} />} title={t('You’re caught up')} text={t('Nothing unread in your conversations. New messages show up here next time.')} action={<button className="ghost-btn" onClick={p.onClose}>{t('Done')}</button>} />;
+  const wrap = (content: ReactNode, footer?: ReactNode) =>
+    p.phone ? (
+      <PushScreen title={TILE_NAMES.catchup} closeX onBack={p.onClose} className="chat-page-push page-catchup" actions={card ? <span className="cu-left">{left === 1 ? t('Last one') : tn(left, '{n} left', '{n} left')}</span> : undefined} footer={footer}>
+        {content}
+      </PushScreen>
+    ) : (
+      <>{content}</>
+    );
+  if (!queue.length) return wrap(<EmptyState icon={<CheckCheck size={22} />} title={t('You’re caught up')} text={t('Nothing unread in your conversations. New messages show up here next time.')} action={<button className="ghost-btn" onClick={p.onClose}>{t('Done')}</button>} />);
   if (!card)
-    return (
+    return wrap(
       <div className="cu-done">
         <EmptyState icon={<CheckCheck size={22} />} title={t('That’s everything')} text={tn(queue.length, 'You went through {n} conversation.', 'You went through {n} conversations.')} action={<button className="primary-btn" onClick={p.onClose}>{t('Done')}</button>} />
         {steps.length > 0 && (
@@ -168,21 +183,46 @@ function CatchUp(p: PagesProps & { chat: ChatState }) {
             <Undo2 size={14} /> {t('Undo the last one')}
           </button>
         )}
-      </div>
+      </div>,
     );
 
   const next = queue[i + 1];
   const shown = card.unread.slice(-5);
   const width = 360;
   const tilt = fly ? fly * 12 : dx / 24;
-  return (
-    <div className="cu-page">
-      <div className="cu-top">
-        <span className="muted">{left === 1 ? t('Last one') : tn(left, '{n} left', '{n} left')}</span>
-        <button className="link-btn" onClick={undo} disabled={!steps.length}>
-          <Undo2 size={14} /> {t('Undo')}
+  const sendReply = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!reply.trim()) return;
+    p.onSendTo(card.c.id, reply.trim());
+    toast({ text: t('Sent to {name}', { name: nameOf(p, card.c.id) }) });
+    act('read');
+  };
+  const replyForm = (
+    <form className={`cu-reply${p.phone ? ' is-phone' : ''}`} onSubmit={sendReply}>
+      <input value={reply} onChange={(e) => setReply(e.target.value)} placeholder={t('Reply to {name}', { name: nameOf(p, card.c.id) })} aria-label={t('Reply to {name}', { name: nameOf(p, card.c.id) })} />
+      {p.phone ? (
+        <span className={`cmp-split single${reply.trim() ? ' ready' : ''}`}>
+          <button className="cmp-split-send" disabled={!reply.trim()} aria-label={t('Send reply')}>
+            <SendHorizontal size={18} />
+          </button>
+        </span>
+      ) : (
+        <button className="ai-send chat-send" disabled={!reply.trim()} aria-label={t('Send reply')}>
+          <ArrowUp size={16} />
         </button>
-      </div>
+      )}
+    </form>
+  );
+  return wrap(
+    <div className="cu-page">
+      {!p.phone && (
+        <div className="cu-top">
+          <span className="muted">{left === 1 ? t('Last one') : tn(left, '{n} left', '{n} left')}</span>
+          <button className="link-btn" onClick={undo} disabled={!steps.length}>
+            <Undo2 size={14} /> {t('Undo')}
+          </button>
+        </div>
+      )}
       <div className="cu-stack">
         {next && (
           <div className="cu-card under" aria-hidden="true">
@@ -235,33 +275,19 @@ function CatchUp(p: PagesProps & { chat: ChatState }) {
               const a = authorOf(m, { me: p.me, users: p.users, channel: card.c });
               return (
                 <div key={m.id} className="cu-msg">
-                  {a.person ? <Avatar person={a.person} size={28} /> : <span className="cm-gutter" />}
+                  {a.person ? <Avatar person={a.person} size={p.phone ? 32 : 28} /> : <span className="cm-gutter" />}
                   <div>
                     <div className="cu-msg-head">
                       <strong>{a.name}</strong>
                       <time>{relative(m.at)}</time>
                     </div>
-                    <div className="cm-text">{m.text ? <Text text={m.text} users={p.users} /> : preview(m)}</div>
+                    <div className="cm-text">{m.text ? <Text text={m.text} users={p.users} short={p.phone} /> : preview(m)}</div>
                   </div>
                 </div>
               );
             })}
           </div>
-          <form
-            className="cu-reply"
-            onSubmit={(e) => {
-              e.preventDefault();
-              if (!reply.trim()) return;
-              p.onSendTo(card.c.id, reply.trim());
-              toast({ text: t('Sent to {name}', { name: nameOf(p, card.c.id) }) });
-              act('read');
-            }}
-          >
-            <input value={reply} onChange={(e) => setReply(e.target.value)} placeholder={t('Reply to {name}', { name: nameOf(p, card.c.id) })} aria-label={t('Reply to {name}', { name: nameOf(p, card.c.id) })} />
-            <button className="ai-send chat-send" disabled={!reply.trim()} aria-label={t('Send reply')}>
-              <ArrowUp size={16} />
-            </button>
-          </form>
+          {!p.phone && replyForm}
         </div>
       </div>
       <div className="cu-actions">
@@ -269,12 +295,13 @@ function CatchUp(p: PagesProps & { chat: ChatState }) {
           <SkipForward size={16} /> {t('Skip')}
         </button>
         <button className="primary-btn lp" {...holdRead} onClick={() => act('read')} title={left > 1 ? t('Hold to mark everything read') : undefined}>
-          <CheckCheck size={16} /> {t('Mark read')}
+          <CheckCheck size={16} /> {p.phone ? t('Mark as read') : t('Mark read')}
         </button>
       </div>
       <p className="muted small cu-hint">{p.phone ? t('Swipe right to mark read, left to skip. Hold Mark read for all of them.') : t('Right arrow marks read, left arrow skips, Z undoes.')}</p>
       {allOpen && <ConfirmSheet title={tn(left, 'Mark all {n} read?', 'Mark all {n} read?')} text={t('Every conversation left here is marked read. You can undo it straight after.')} yes={t('Mark all read')} onYes={markAll} onClose={() => setAllOpen(false)} />}
-    </div>
+    </div>,
+    p.phone ? replyForm : undefined,
   );
 }
 
@@ -303,7 +330,8 @@ function Threads(p: PagesProps & { chat: ChatState }) {
         const ctx = { me: p.me, users: p.users, channel: c ?? ({ id: root.channelId, members: [], kind: 'channel', name: '', workspaceId: '' } as Channel) };
         const draft = p.chat.drafts[`${root.channelId}/${root.id}`];
         return (
-          <button key={root.id} className={`page-row${unread ? ' unread' : ''}`} onClick={() => p.onOpen(root.channelId, last.id)}>
+          <div key={root.id} className="thread-item">
+          <button className={`page-row${unread ? ' unread' : ''}`} onClick={() => p.onOpen(root.channelId, last.id)}>
             <span className="pr-where">
               <ChanIcon c={c} users={p.users} me={p.me} size={13} /> {nameOf(p, root.channelId)}
               <time>{relative(last.at)}</time>
@@ -320,9 +348,32 @@ function Threads(p: PagesProps & { chat: ChatState }) {
               {draft && <span className="draft-pill">{t('Draft')}</span>}
             </span>
           </button>
+          {p.phone && p.onReplyTo && <InlineReply onSend={(text) => (p.onReplyTo!(root.channelId, root.id, text), p.chat.markThreadRead(root.id), toast({ text: t('Reply sent') }))} />}
+          </div>
         );
       })}
     </div>
+  );
+}
+
+/** "Reply…" under a thread in the list: type and send without opening it. */
+function InlineReply({ onSend }: { onSend: (text: string) => void }) {
+  const [text, setText] = useState('');
+  return (
+    <form
+      className="inline-reply"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (!text.trim()) return;
+        onSend(text.trim());
+        setText('');
+      }}
+    >
+      <input value={text} onChange={(e) => setText(e.target.value)} placeholder={t('Reply…')} aria-label={t('Reply in this thread')} enterKeyHint="send" />
+      <button className={`ir-send${text.trim() ? ' ready' : ''}`} disabled={!text.trim()} aria-label={t('Send reply')}>
+        <SendHorizontal size={17} />
+      </button>
+    </form>
   );
 }
 

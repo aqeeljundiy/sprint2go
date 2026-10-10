@@ -4459,6 +4459,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             onClose={() => setChatPage(null)}
             onOpen={(id, msg) => (setChatId(id), msg && setFocusMsg(msg))}
             onSendTo={(id, text) => sendChatTo(id, { text })}
+            onReplyTo={(id, rootId, text) => sendChatTo(id, { text, parentId: rootId })}
             onSendNow={sendChatNow}
             onReschedule={(id, at) => setMessages((ms) => ms.map((m) => (m.id === id && m.sendAt ? { ...m, sendAt: at } : m)))}
             onDelete={(id) => setMessages((ms) => ms.filter((m) => m.id !== id))}
