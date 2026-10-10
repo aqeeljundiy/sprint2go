@@ -1,6 +1,6 @@
 import { type CSSProperties, useEffect, useMemo, useRef, useState } from 'react';
 import { setBrand } from '../brandInk';
-import { CreateFab } from '../mobile/BottomBar';
+import { CreateFab } from '../mobile/AppBar';
 import { SmoothHeight } from './ui/Smooth';
 import { setTermWord, term, brand as product } from '../terms';
 import {

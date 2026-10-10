@@ -47,6 +47,9 @@ interface Props {
 const byName = (a: DriveItem, b: DriveItem) => a.name.localeCompare(b.name, undefined, { numeric: true });
 const byDate = (a: DriveItem, b: DriveItem) => b.modified.localeCompare(a.modified);
 
+/** Drive's Shared (phones): files that came from others, in a chat, by email or from a guest. */
+const sharedWithMe = (i: DriveItem) => i.kind !== 'folder' && (!!i.channelId || !!i.uploadedBy || !!i.sharedWithClient || i.id.startsWith('att:'));
+
 export function DriveView(props: Props) {
   const { items, section, folderId } = props;
   const phone = usePhone();
@@ -87,6 +90,8 @@ export function DriveView(props: Props) {
         return live.filter((i) => i.id.startsWith('att:')).sort(byDate);
       case 'starred':
         return live.filter((i) => i.starred).sort(byName);
+      case 'shared':
+        return live.filter(sharedWithMe).sort(byDate);
       case 'trash':
         return items.filter((i) => i.trashed).sort(byDate);
     }
@@ -530,6 +535,8 @@ function DrivePhone(props: Props & { live: DriveItem[]; q: string; query: string
         return live.filter((i) => i.id.startsWith('att:')).sort(byDate);
       case 'starred':
         return live.filter((i) => i.starred).sort(sorter(sort));
+      case 'shared':
+        return live.filter(sharedWithMe).sort(byDate);
       case 'trash':
         return items.filter((i) => i.trashed).sort(byDate);
     }

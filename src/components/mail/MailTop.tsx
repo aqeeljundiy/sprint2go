@@ -27,6 +27,17 @@ export function MailSearchPill({ me, elsewhere, onMenu, onSearch, onAccounts }: 
   );
 }
 
+/** Mail's top on phones with the launcher: your picture on the right of the bar (the launcher button and the mailbox
+ * switcher, "Inbox", are the shell's). It opens your account and companies, with a dot when another has new mail. */
+export function MailAvatar({ me, elsewhere, onAccounts }: { me: Person; elsewhere?: boolean; onAccounts: () => void }) {
+  return (
+    <button type="button" className="gm-avatar mt-avatar" onClick={onAccounts} aria-haspopup="dialog" aria-label={elsewhere ? t('Your account and companies, new mail in another company') : t('Your account and companies')}>
+      <Avatar person={me} size={32} />
+      {elsewhere && <i className="gm-avatar-dot" aria-hidden="true" />}
+    </button>
+  );
+}
+
 /** Selecting emails on phones: Gmail's contextual bar in place of the search pill. */
 export const MailSelectBar = forwardRef<HTMLButtonElement, { count: number; inInbox: boolean; unread: boolean; onClose: () => void; onDone: () => void; onTrash: () => void; onRead: () => void; onMore: () => void }>(function MailSelectBar(p, moreRef) {
   return (

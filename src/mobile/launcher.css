@@ -1,0 +1,540 @@
+/* ==========================================================================
+   The launcher on phones (research/launcher/plan.md): the start screen with Needs you and the apps in four columns,
+   the launcher button top left in every app, Edit apps, and each app's colour. src/mobile/Launcher.tsx,
+   EditApps.tsx, launchMotion.ts. Desktop never shows any of it.
+   ========================================================================== */
+
+.launcher {
+  display: none;
+}
+
+/* Each app in its own colour: the launcher's tiles, Edit apps, the recents row. */
+[data-app='home'] { --c: #e8590c; }
+[data-app='mail'] { --c: #d93636; }
+[data-app='chat'] { --c: #8e44ad; }
+[data-app='tasks'] { --c: #2b8a3e; }
+[data-app='calendar'] { --c: #2f6fe0; }
+[data-app='projects'] { --c: #c2255c; }
+[data-app='notes'] { --c: #d29a00; }
+[data-app='tables'] { --c: #e8590c; }
+[data-app='drive'] { --c: #12957a; }
+[data-app='meet'] { --c: #0b8fb3; }
+[data-app='vault'] { --c: #6b5bd6; }
+[data-app='teams'] { --c: #4263eb; }
+[data-app='settings'] { --c: #5c6270; }
+
+/* The tiles (also Apps on phones in Settings on a computer). */
+.ln-tile {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  align-content: start;
+  gap: 8px;
+  min-width: 0;
+  padding: 8px 0 4px;
+  border-radius: var(--r-card);
+  color: var(--text);
+  -webkit-tap-highlight-color: transparent;
+}
+.ln-sq {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 60px;
+  height: 60px; /* system: the launcher's tile (plan: 60 x 60) */
+  border-radius: var(--r-card);
+  background: color-mix(in srgb, var(--c) 14%, transparent);
+  color: var(--c);
+  transition:
+    transform 0.15s var(--ease),
+    background 0.15s;
+}
+:root[data-theme='dark'] .ln-sq {
+  background: color-mix(in srgb, var(--c) 22%, transparent);
+  color: color-mix(in srgb, var(--c) 70%, white);
+}
+.ln-tile:active .ln-sq,
+.ln-tile.lp-lifted .ln-sq {
+  transform: scale(0.94);
+}
+.ln-tile.dim {
+  opacity: 0.25;
+}
+.ln-name {
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font: var(--t-chip);
+  color: var(--text);
+}
+.ln-badge {
+  position: absolute;
+  top: -4px;
+  right: -8px;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 4px;
+  border-radius: var(--r-pill);
+  background: var(--badge);
+  box-shadow: 0 0 0 2px var(--bg);
+  color: #fff;
+  font: var(--t-chip);
+  font-style: normal;
+  line-height: 20px;
+  text-align: center;
+}
+.ln-live {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  width: 12px;
+  height: 12px; /* system: the live dot (plan: 12) */
+  border-radius: var(--r-round);
+  background: var(--ok-solid);
+  box-shadow: 0 0 0 2px var(--bg);
+}
+
+@media (max-width: 767px) {
+  /* ---------- The layer: under the app, shown when the app steps aside ---------- */
+
+  .app {
+    position: relative;
+    z-index: 1;
+    background: var(--bg);
+  }
+  :root.launcher-on .app {
+    visibility: hidden;
+    transition: visibility 0s linear 0.22s;
+  }
+  .launcher {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    background: var(--bg);
+    opacity: 0;
+    transform: scale(0.96);
+    visibility: hidden;
+    transition:
+      opacity 0.24s ease-out,
+      transform 0.24s var(--ease),
+      visibility 0s linear 0.24s;
+  }
+  .launcher.on {
+    opacity: 1;
+    transform: none;
+    visibility: visible;
+    transition:
+      opacity 0.22s ease-in,
+      transform 0.22s ease-in,
+      visibility 0s;
+  }
+  .ln-scroll {
+    height: 100%;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: env(safe-area-inset-top) 0 calc(env(safe-area-inset-bottom) + var(--fab-space));
+  }
+
+  /* ---------- Top bar: logo, search, Ask AI, bell, you ---------- */
+
+  .ln-top {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    min-height: var(--topbar-h);
+    padding: 0 4px 0 8px;
+  }
+  .ln-logo,
+  .ln-me {
+    display: grid;
+    place-items: center;
+    flex: none;
+    width: var(--tap);
+    height: var(--tap);
+    border-radius: var(--r-pill);
+  }
+  .ln-logo .ws-logo {
+    border-radius: var(--r-tile);
+  }
+  .ln-search {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: var(--tap);
+    margin: 0 4px;
+    padding: 0 16px;
+    border-radius: var(--r-pill);
+    background: var(--hover);
+    color: var(--text-3);
+    font: var(--t-body);
+    transition: background 0.15s;
+  }
+  .ln-search:active {
+    background: var(--border);
+  }
+  .ln-fit {
+    position: relative;
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    text-align: left;
+  }
+  .ln-search svg {
+    flex: none;
+  }
+  .ln-ib {
+    position: relative;
+    flex: none;
+    width: var(--tap);
+    height: var(--tap);
+    color: var(--text);
+  }
+  .ln-dot,
+  .mt-launch-dot {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 10px;
+    height: 10px;
+    border-radius: var(--r-round);
+    background: var(--badge);
+    box-shadow: 0 0 0 2px var(--bg);
+  }
+
+  /* ---------- Hello: the day, the greeting on one line, what needs you ---------- */
+
+  .ln-hello {
+    padding: 12px var(--gutter) 0;
+  }
+  .ln-date {
+    margin: 0;
+    font: var(--t-secondary);
+    color: var(--text-3);
+  }
+  .ln-greet {
+    position: relative;
+    margin: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    font: var(--t-display);
+    letter-spacing: var(--ls-display);
+  }
+  .ln-probe {
+    position: absolute;
+    left: 0;
+    top: 0;
+    visibility: hidden;
+    white-space: nowrap;
+  }
+  .ln-lede {
+    margin: 4px 0 0;
+    font: var(--t-secondary);
+    color: var(--text-2);
+  }
+
+  /* ---------- Sections: Needs you, Continue, Apps ---------- */
+
+  .ln-sec {
+    padding: 24px var(--gutter) 0;
+  }
+  .ln-h {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    min-height: 20px;
+    margin: 0 0 8px;
+    font: var(--t-heading);
+  }
+  .ln-h .link-btn {
+    min-height: var(--tap);
+    margin: -12px 0;
+    font: var(--t-segment);
+    color: var(--accent-text);
+    text-decoration: none;
+  }
+  /* Needs you: three rows in a card, 64 tall, a 40 circle in the source app's colour. */
+  .ln-card {
+    border-radius: var(--r-card);
+    background: var(--surface);
+    box-shadow: 0 0 0 1px var(--line);
+    overflow: hidden;
+  }
+  :root[data-theme='dark'] .ln-card {
+    box-shadow: none;
+  }
+  .launcher .ny-swipe .swipe-face,
+  .launcher .ny-row {
+    background: var(--surface);
+  }
+  .launcher .ny-row {
+    padding: 12px 16px;
+  }
+  .launcher .ny-swipe + .ny-swipe .ny-row {
+    box-shadow: inset 68px 0 0 var(--surface), inset 0 1px 0 var(--line);
+  }
+  .launcher .ny-icon {
+    background: color-mix(in srgb, var(--c, var(--accent)) 13%, transparent);
+    color: var(--c, var(--accent));
+  }
+  .launcher .ny-icon svg {
+    width: 20px;
+    height: 20px;
+  }
+  .launcher .k-mention,
+  .launcher .k-guest {
+    --c: #8e44ad;
+  }
+  .launcher .k-mail {
+    --c: #d93636;
+  }
+  .launcher .k-assigned,
+  .launcher .k-today,
+  .launcher .k-review,
+  .launcher .k-request,
+  .launcher .k-changes,
+  .launcher .k-brief {
+    --c: #2b8a3e;
+  }
+  .launcher .k-late,
+  .launcher .k-delegated {
+    --c: var(--danger);
+  }
+  .launcher .k-queue {
+    --c: #4263eb;
+  }
+  .launcher .k-meeting {
+    --c: #0b8fb3;
+  }
+
+  /* Continue where you left off: one row of up to three pills. */
+  .ln-recents {
+    display: flex;
+    gap: 8px;
+    min-width: 0;
+  }
+  .ln-recent {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    max-width: 50%;
+    height: 32px;
+    padding: 0 12px;
+    border-radius: var(--r-pill);
+    background: var(--surface);
+    box-shadow: inset 0 0 0 1px var(--line);
+    font: var(--t-chip);
+    color: var(--text);
+    transition: background 0.15s;
+  }
+  .ln-recent:active {
+    background: var(--hover);
+  }
+  .ln-recent svg {
+    flex: none;
+    color: var(--c);
+  }
+  .ln-recent span {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  /* Apps: four columns, about 88 x 100 each. */
+  .ln-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    row-gap: 4px;
+    margin: 0 -4px;
+  }
+
+  /* New, bottom right (the same create button as in every app; no bar under it). */
+  .ln-fab.fab {
+    bottom: calc(env(safe-area-inset-bottom) + 16px);
+  }
+
+  /* ---------- The launcher button in every app's top bar ---------- */
+
+  .mt-launch {
+    position: relative;
+    flex: none;
+    width: var(--tap);
+    height: var(--tap);
+    margin-left: -8px;
+    color: var(--text);
+  }
+}
+
+/* ---------- Edit apps (phones) and Apps on phones (Settings, any width) ---------- */
+
+.ea-body {
+  display: grid;
+  gap: 0;
+  padding: 0 var(--gutter) 24px;
+}
+.ea-lede {
+  margin: 0;
+  font: var(--t-secondary);
+  color: var(--text-2);
+}
+.ea-sec {
+  padding-top: 24px;
+}
+.ea-h {
+  margin: 0 0 8px;
+  font: var(--t-heading);
+}
+.ea-well {
+  padding: 12px 0;
+  border-radius: var(--r-card);
+  background: var(--surface-2);
+}
+.ea-admin .ea-well {
+  margin-top: 16px;
+}
+.ea-grid {
+  position: relative;
+  transition: height 0.2s var(--ease);
+}
+.ea-cell {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 25%;
+  height: 104px; /* system: a tile and its name, the drag grid's row */
+  touch-action: pan-y;
+  transition: transform 0.2s var(--ease);
+}
+.ea-cell:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -4px;
+  border-radius: var(--r-card);
+}
+.ea-cell .ln-tile {
+  width: 100%;
+}
+.ea-cell.lifted {
+  z-index: 2;
+  transition: none;
+}
+.ea-cell.lifted .ln-sq {
+  transform: rotate(-4deg) scale(1.08);
+  box-shadow: 0 12px 24px -8px rgb(0 0 0 / 0.28);
+}
+.ea-hide {
+  position: absolute;
+  top: 0;
+  left: calc(50% - 40px);
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--r-round);
+  background: var(--surface);
+  box-shadow: 0 0 0 1px var(--border);
+  color: var(--text-2);
+  transition:
+    transform 0.15s var(--ease),
+    background 0.15s;
+}
+.ea-hide::after {
+  content: '';
+  position: absolute;
+  inset: -12px; /* a 44 target around the small badge */
+}
+.ea-hide:active {
+  transform: scale(0.9);
+  background: var(--hover);
+}
+.ea-card {
+  border-radius: var(--r-card);
+  background: var(--surface);
+  box-shadow: 0 0 0 1px var(--line);
+  overflow: hidden;
+}
+.ea-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: var(--row-2);
+  padding: 0 16px;
+  animation: fadeIn 0.2s ease-out backwards;
+}
+.ea-row + .ea-row {
+  box-shadow: inset 68px 0 0 var(--surface), inset 0 1px 0 var(--line);
+}
+.ea-row-icon {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--r-tile);
+  background: color-mix(in srgb, var(--c) 14%, transparent);
+  color: var(--c);
+}
+.ea-row-name {
+  flex: 1;
+  min-width: 0;
+  font: var(--t-body);
+}
+.ea-row .link-btn,
+.ea-foot .link-btn,
+.ea-done {
+  min-height: var(--tap);
+  font: var(--t-label);
+  color: var(--accent-text);
+  text-decoration: none;
+}
+.ea-foot .link-btn {
+  min-height: 0;
+  font: var(--t-segment);
+}
+.ea-note,
+.ea-foot {
+  margin: 0;
+  padding-top: 16px;
+  font: var(--t-secondary);
+  color: var(--text-3);
+}
+.ea-note {
+  padding-top: 0;
+}
+.ea-reset {
+  justify-self: center;
+  min-height: var(--tap);
+  margin-top: 8px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .launcher,
+  .launcher.on {
+    transform: none;
+    transition:
+      opacity 0.15s linear,
+      visibility 0s linear 0.15s;
+  }
+  .launcher.on {
+    transition:
+      opacity 0.15s linear,
+      visibility 0s;
+  }
+  .ln-sq,
+  .ea-cell,
+  .ea-grid,
+  .ea-hide,
+  .ln-search,
+  .ln-recent {
+    transition: none;
+  }
+  .ea-row {
+    animation: none;
+  }
+}

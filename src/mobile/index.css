@@ -15,4 +15,5 @@
 @import './meet.css';
 @import './drive.css';
 @import './misc.css';
+@import './launcher.css';
 @import './system.css'; /* the shared roles: last, so no app drifts from them */

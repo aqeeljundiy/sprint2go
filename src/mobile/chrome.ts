@@ -11,6 +11,7 @@ import type { SheetAction } from '../components/ui/ActionSheet';
  *   useCreateAction('mail', { label: 'Compose', icon: PenLine, run: compose, extended: true })   the floating button
  *   useTitleMenu('tasks', { label, value, options, onChange })                   the screen title as a switcher
  *   useAppSettings('tasks', { id, label, hint, render })                         a row at the bottom of that switcher
+ *   useAppSections('tasks', { sections, current, onChange })                     the app's own bottom bar of sections
  *   useFocusedScreen(open, back?)                                                 the tab bar steps aside
  *   useSidebarDrawer(on)                                                          the app's Sidebar opens as a left drawer
  *   <TopBar lead={…} title={…} actions={…} search={false} />  (src/mobile/TopBar.tsx)  the app owns parts of the top bar
@@ -75,7 +76,25 @@ function slot<T>() {
   };
 }
 
+export interface AppSection {
+  id: string; // the URL's part (src/route.ts SECTIONS): 'upcoming' in /tasks/upcoming
+  label: string;
+  icon: LucideIcon;
+  badge?: number; // a count for you (99+ cap); nothing else
+  /** A section that does something instead of showing a list (Search opens the app's search). */
+  run?: () => void;
+}
+
+export interface AppSections {
+  sections: AppSection[];
+  current: string;
+  onChange: (id: string) => void;
+  /** The selected section tapped again: scroll to the top, then back to the section's root. */
+  onReselect?: (id: string) => void;
+}
+
 const creates = slot<CreateAction>();
+const sectionBars = slot<AppSections>();
 const titles = slot<TitleMenu>();
 const settings = slot<SettingsEntry>();
 const focused = slot<{ back?: () => void }>();
@@ -99,6 +118,27 @@ export function useCreateAction(app: AppId, action: CreateAction | null | false 
     const more = ref.current?.more?.map((m, i) => ({ ...m, run: () => ref.current?.more?.[i]?.run() }));
     return creates.add(app, { label, icon, run: () => ref.current?.run(), more, extended, hidden });
   }, [app, on, label, icon, moreKey, extended, hidden]);
+}
+
+/**
+ * The app's own bottom bar on phones (research/launcher/plan.md, section 3): two to four sections with labels and
+ * badges, like Gmail's and Zoho's. Pass null for an app with no bar (Tables, Vault, Settings). The shell writes the
+ * section into the URL (`/tasks/upcoming`) and calls onChange when the URL names another one (Back, a link).
+ */
+export function useAppSections(app: AppId, bar: AppSections | null | false | undefined) {
+  const ref = useRef(bar || null);
+  ref.current = bar || null;
+  const key = bar ? JSON.stringify([bar.current, bar.sections.map((s) => [s.id, s.label, s.badge ?? 0, !!s.run])]) : '';
+  useEffect(() => {
+    const b = ref.current;
+    if (!b) return;
+    return sectionBars.add(app, {
+      current: b.current,
+      sections: b.sections.map((s, i) => ({ ...s, run: s.run ? () => ref.current?.sections[i]?.run?.() : undefined })),
+      onChange: (id) => ref.current?.onChange(id),
+      onReselect: (id) => ref.current?.onReselect?.(id),
+    });
+  }, [app, key]);
 }
 
 /** The screen title as a switcher (mailbox in Mail, scope in Tasks…). Pass null for a plain title. */
@@ -232,6 +272,7 @@ export function useChrome(app: AppId | 'settings') {
   const s = useSlot(settings);
   const f = useSlot(focused);
   const b = useSlot(bars);
+  const sb = useSlot(sectionBars);
   const isApp = app !== 'settings';
   const top = f.latest('*');
   return {
@@ -241,5 +282,6 @@ export function useChrome(app: AppId | 'settings') {
     focused: !!top,
     back: top?.back,
     bar: isApp ? b.latest(app) : null,
+    sections: isApp ? sb.latest(app) : null,
   };
 }

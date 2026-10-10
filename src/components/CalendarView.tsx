@@ -1,13 +1,12 @@
 import { cloneElement, isValidElement, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactElement, type ReactNode } from 'react';
 import { flushSync } from 'react-dom';
-import { CalendarDays, CalendarPlus, CalendarX, Check, ChevronDown, ChevronLeft, ChevronRight, CircleCheck, Copy, CopyPlus, Link2, Mail, Menu, Pencil, Plus, SkipForward, Trash2, Video, X } from 'lucide-react';
+import { CalendarDays, CalendarPlus, CalendarX, Check, ChevronDown, ChevronLeft, ChevronRight, CircleCheck, Copy, CopyPlus, Link2, Layers, Mail, Pencil, Plus, SkipForward, Trash2, Video, X } from 'lucide-react';
 import type { CalEvent, CalendarDef, Person, RsvpStatus, User, Workspace } from '../types';
 import { addDays, eventsOn, monthGrid, sameDay, startOfDay } from '../calendarUtils';
 import { expandEvents, findEvent, type Scope } from '../repeat';
 import { askScope, type ScopeAt } from './calendar/RepeatScope';
 import { useCreateAction } from '../mobile/chrome';
 import { TopBar, TopBarButton } from '../mobile/TopBar';
-import { useEdgeSwipe } from './ui/SideDrawer';
 import type { CalDrawer } from './CalendarSidebar';
 import { EventEditor, type EditorKind } from './EventEditor';
 import type { Draft } from './calendar/EventForm';
@@ -189,12 +188,12 @@ export function CalendarView(props: Props) {
       : { label: t('New event'), icon: CalendarPlus, run: () => create(nextSlot(cursor)) },
   );
 
-  /* ---------- phones: the drawer (views, calendars, settings) from ☰ or the left edge ---------- */
+  /* ---------- phones: the drawer (views, calendars, settings) from the Calendars button (the launcher button and the
+     left edge go back to the launcher, research/launcher/plan.md) ---------- */
   const [drawer, setDrawer] = useState(false);
   useEffect(() => {
     if (props.dialogOpen) setDrawer(false);
   }, [props.dialogOpen]);
-  useEdgeSwipe(() => setDrawer(true), phone && !selected && !quick && !editor);
 
   /* ---------- the month title folds a mini month down ---------- */
   const [drop, setDrop] = useState(false);
@@ -350,7 +349,6 @@ export function CalendarView(props: Props) {
       {phone && (
         <TopBar
           app="calendar"
-          lead={<TopBarButton icon={Menu} label={t('Menu')} onClick={() => setDrawer(true)} />}
           title={
             <button type="button" className={`cal-title mt-cal-title${drop ? ' open' : ''}`} onClick={() => setDrop((o) => !o)} aria-expanded={drop} aria-label={t('{title}. Pick a date', { title: barTitle })}>
               <span className="mt-cal-text">{barTitle}</span>
@@ -358,9 +356,12 @@ export function CalendarView(props: Props) {
             </button>
           }
           actions={
-            <button type="button" className="cal-today mt-cal-today" onClick={toToday} aria-label={t('Today, {date}', { date: fmtWeekdayLong(today) })}>
-              <span>{today.getDate()}</span>
-            </button>
+            <>
+              <button type="button" className="cal-today mt-cal-today" onClick={toToday} aria-label={t('Today, {date}', { date: fmtWeekdayLong(today) })}>
+                <span>{today.getDate()}</span>
+              </button>
+              <TopBarButton icon={Layers} label={t('Calendars and views')} onClick={() => setDrawer(true)} />
+            </>
           }
         />
       )}

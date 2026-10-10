@@ -13,9 +13,9 @@ import { ProjectsCtx } from './components/ProjectPicker';
 import { ProjectsSidebar } from './components/ProjectsSidebar';
 import { ProjectsHome } from './components/ProjectsHome';
 import { Popover } from './components/ui/Popover';
-import { Brain, Briefcase, Building2, CalendarPlus, Copy, FileText, Hash, ListChecks, Mail, PenLine, Send, Sparkles, Timer, Trash2, Undo2, Upload, User as UserIcon, Video, Table2, MessagesSquare, AlertTriangle, Menu } from 'lucide-react';
+import { Brain, Briefcase, Building2, CalendarPlus, Copy, FileText, Hash, ListChecks, Mail, PenLine, Send, Sparkles, Timer, Trash2, Undo2, Upload, User as UserIcon, Video, Table2, MessagesSquare, AlertTriangle, Menu, Inbox, Search as SearchIcon, Paperclip, Contact, House, MessageCircle, Bell, Sun, CalendarRange, CircleCheck, Layers, List, CalendarDays, NotebookPen, Users, Star, Folder, UserRound, Archive, UsersRound, NotebookText } from 'lucide-react';
 import { DEFAULT_PERMISSIONS } from './types';
-import type { Quote, Team, Note, Account, AppId, Attachment, BlockRule, CalEvent, Channel, ChannelCategory, Client, ClientPerson, ChatFile, ChatMessage, CommentFile, Meeting, Message, Notice, RsvpStatus, TaskEvent, TaskStatus, Todo, DriveItem, DriveSection, Location, Person, Thread, User, View, Workspace } from './types';
+import type { Quote, Team, Note, Account, AppId, Attachment, BlockRule, CalEvent, Channel, ChannelCategory, Client, ClientPerson, ChatFile, ChatMessage, CommentFile, Meeting, Message, Notice, RsvpStatus, TaskEvent, TaskStatus, Todo, DriveItem, DriveSection, Location, Person, Thread, User, View, Workspace, FolderId } from './types';
 import { useMailOrganize } from './components/mail/Organize';
 import { CALENDARS, externalEvents } from './data/calendar';
 import { JOBS, costPer100 } from './data/aiCatalog';
@@ -33,7 +33,7 @@ import { askScope as askRepeatScope, ScopeHost, type ScopeAt } from './component
 import { botJoins, callKey, meetingLinkOf, notetakerJoins, MEETING_NAME } from './meetingLinks';
 import { setHolidayDays } from './holidayDays';
 import { holidayCalendarId, holidayCountry } from './data/holidays';
-import { useSettings, usePersisted, usePrefsSync } from './settings';
+import { lsKey, useSettings, usePersisted, usePrefsSync } from './settings';
 import { DEFAULT_TRACK_OPTIONS, REPLY_TRACK_OPTIONS, isTeam } from './tracking';
 import { isMine, setIdentity } from './identity';
 import { scanned, session, store, useStored } from './store';
@@ -105,19 +105,25 @@ import { chanName } from './components/chat/Sheets';
 import { preview as msgPreview } from './components/chat/Message';
 import { ChannelDialog, CATEGORY_ONE, categoryText } from './components/ChannelDialog';
 import { CompanySheet, MobileTop } from './components/MobileTop';
-import { MailSearchPill } from './components/mail/MailTop';
+import { MailAvatar } from './components/mail/MailTop';
 import { TopBar } from './mobile/TopBar';
 import { openSettingsList } from './components/settingsList';
 import { PushScreen } from './components/ui/PushScreen';
 import { Sheet } from './components/ui/Sheet';
 import { offerInstall } from './components/InstallPrompt';
-import { BottomBar, CreateFab } from './mobile/BottomBar';
-import { MoreSheet } from './mobile/MoreSheet';
+import { AppBar, CreateFab } from './mobile/AppBar';
+import { Launcher, type LauncherApp, type Recent } from './mobile/Launcher';
+import { EditApps } from './mobile/EditApps';
+import { launchGrow, launchShrink } from './mobile/launchMotion';
 import { duplicateOf } from './components/tasks/taskOps';
-import { needsCount, needsYou } from './needsYou';
-import { DEFAULT_BAR, MORE_ORDER, companyBar } from './mobile/BarDefaults';
-import { useChrome, useFocusedScreen, useSidebarDrawer, useTitleTucked } from './mobile/chrome';
-import { PHONE, TABLET, useMedia } from './mobile/media';
+import { needsYou } from './needsYou';
+import { plainTiles } from './mobile/BarDefaults';
+import { companyApps as companyAppOrder, launcherApps, migrateBar, normalize as normalizeApps, type AppOrder, type LauncherId } from './mobile/launcherApps';
+import { historySteps, parseRoute, routePath, startPath, RESUME_MS, SECTIONS as SECTIONS_OF, type Route } from './route';
+import { setVaultUnlocked } from './vaultCrypto';
+import { useEdgeSwipe } from './components/ui/SideDrawer';
+import { openCompanySheet, useAppSections, useChrome, useFocusedScreen, useTitleMenu, useTitleTucked, type AppSection, type AppSections } from './mobile/chrome';
+import { PHONE, TABLET, isPhone, useMedia } from './mobile/media';
 import { usePullToSearch } from './mobile/usePullToSearch';
 import { useKeyboard } from './mobile/keyboard';
 import { SEARCHABLE } from './components/CommandPalette';
@@ -136,7 +142,7 @@ import { usePushBridge } from './pushBridge';
 import { routeBase } from './tryOut';
 import { useAppLanguage, useLang } from './i18n/useLang';
 import { mark, msg, phrase, t, textOf, tn, type Msg } from './i18n';
-import { fmtDay, fmtList, fmtWeekday } from './i18n/format';
+import { fmtDay, fmtList, fmtNumber, fmtWeekday } from './i18n/format';
 import { setBrand } from './brandInk';
 
 /** For words saved in a msg(): "today", "tomorrow", "overdue" lower-case mid-sentence (each reader's language), a date as "Thu 8 Oct". */
@@ -155,20 +161,46 @@ const repeatPhrase = (r: Todo['repeat']) => phrase(r === 'weekdays' ? 'every wee
 const APP_IDS = APPS.map((a) => a.id) as string[];
 // app.sprint2go.com/mail, /chat… on a real server; #/mail when opened as a local file.
 const hashRouting = !location.protocol.startsWith('http');
-function readRoute(): Mode {
-  const raw = hashRouting ? location.hash.replace(/^#\/?/, '') : location.pathname.slice(routeBase.length).replace(/^\//, '');
-  const first = raw.split('/')[0];
-  return APP_IDS.includes(first) ? (first as AppId) : first === 'settings' ? 'settings' : 'home';
-}
-function writeRoute(m: Mode) {
+/** The path after the app's base: "/tasks/upcoming" (src/route.ts), or the hash's when opened as a local file. */
+const pathNow = () => (hashRouting ? location.hash.replace(/^#/, '') : location.pathname.slice(routeBase.length)) || '/';
+function setPath(path: string, how: 'push' | 'replace') {
   try {
-    if (hashRouting) {
-      if (location.hash !== `#/${m}`) history.replaceState(null, '', `#/${m}`);
-    } else if (location.pathname !== `${routeBase}/${m}`) history.pushState(null, '', `${routeBase}/${m}`);
+    if (hashRouting) history.replaceState(null, '', `#${path}`); // a local file: no history entries
+    else if (how === 'push') history.pushState(null, '', `${routeBase}${path}`);
+    else history.replaceState(null, '', `${routeBase}${path}${pathNow() === path ? location.search : ''}`);
   } catch {
     /* some previews forbid history changes */
   }
 }
+/** Where the phone was last (the app and section), for "back within 10 minutes reopens it". */
+const LAST_PLACE = 's2g-last-place';
+const readLastPlace = (): { path: string; at: number } | null => {
+  try {
+    return JSON.parse(localStorage.getItem(LAST_PLACE) ?? 'null');
+  } catch {
+    return null;
+  }
+};
+/** Where the app opens, read once before the first render. Phones: the URL's app, else the last app when it was under
+ * 10 minutes ago, else the launcher. A phone that opens straight into an app gets the launcher under it in history, so
+ * Back leads there before leaving. */
+let bootStack: string[] = []; // the history entries bootRoute made, oldest first
+function bootRoute(): Route {
+  const phone = isPhone();
+  const url = pathNow();
+  if (!phone) return parseRoute(url, false);
+  const to = startPath(url, readLastPlace(), Date.now());
+  const r = parseRoute(to, true);
+  if (!r.launcher && !hashRouting) {
+    setPath('/', 'replace');
+    bootStack = ['/'];
+    for (const step of historySteps('/', to, true)) (setPath(step, 'push'), bootStack.push(step));
+  } else if (to !== url) setPath(to, 'replace');
+  return r;
+}
+
+/** A mailbox in the URL (/mail/starred, /mail/label/<id>); the inbox is /mail itself. */
+const mailId = (v: View) => (v.kind === 'folder' ? (v.id === 'inbox' ? undefined : v.id) : v.kind === 'label' || v.kind === 'category' || v.kind === 'project' ? `${v.kind}/${v.id}` : v.kind === 'todos' || v.kind === 'tracking' ? v.kind : undefined);
 
 const fromMe = (t: Thread) => t.messages.some((m) => isMine(m.from.email));
 
@@ -362,16 +394,13 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const mobile = useMedia(PHONE);
 
   // Shell
-  const [mode, setMode] = useState<Mode>(readRoute);
-  const [lastMode, setLastMode] = useState<AppId>(() => (readRoute() === 'settings' ? 'home' : (readRoute() as AppId)));
-  useEffect(() => {
-    writeRoute(mode);
-  }, [mode]);
-  useEffect(() => {
-    const back = () => setMode(readRoute());
-    addEventListener('popstate', back);
-    return () => removeEventListener('popstate', back);
-  }, []);
+  // Where the app opened (src/route.ts): the URL names the app, its section and the thing open in it. The rest of the
+  // routing (Back, sections, the launcher) is with the phone shell further down.
+  const [boot] = useState(bootRoute);
+  const [mode, setMode] = useState<Mode>(() => (APP_IDS.includes(boot.mode) || boot.mode === 'settings' ? (boot.mode as Mode) : 'home'));
+  const [lastMode, setLastMode] = useState<AppId>(() => (boot.mode === 'settings' || !APP_IDS.includes(boot.mode) ? 'home' : (boot.mode as AppId)));
+  // Phones: the launcher is on screen (research/launcher/plan.md). The app under it stays as it was.
+  const [launcher, setLauncherState] = useState(boot.launcher);
   // Tablets (iPad portrait, small landscape): the sidebar starts folded to icons so the page gets the room.
   // Each size keeps its own choice, so opening it on the iPad doesn't change the laptop.
   const tablet = useMedia(TABLET);
@@ -573,11 +602,18 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const [shareFor, setShareFor] = useState<string | null>(null);
   const [sharedPreview, setSharedPreview] = useState<string | null>(null);
   const [askScope, setAskScope] = useState<AskScope | null>(null);
-  // The phone's bottom bar: the person's own, else their team's or company's (Settings, Apps & chat), else the usual.
-  // A bar saved before company bars existed counts as their own when it isn't the usual one.
-  const [savedBar, setSavedBar] = usePersisted<AppId[]>(`s2g-tabbar:${user.id}`, DEFAULT_BAR);
-  const [ownBar, setOwnBar] = usePersisted<boolean>(`s2g-tabbar:own:${user.id}`, false);
-  const [editingBar, setEditingBar] = useState(false);
+  // The launcher's apps on phones: the person's own order (Edit apps), else their team's or company's (Settings, Apps
+  // on phones), else the usual one. A phone bar saved before the launcher moves over: its apps first.
+  const [oldBar] = useState(() => {
+    try {
+      const bar = JSON.parse(localStorage.getItem(lsKey(`s2g-tabbar:${user.id}`)) ?? 'null') as string[] | null;
+      return migrateBar(bar, JSON.parse(localStorage.getItem(lsKey(`s2g-tabbar:own:${user.id}`)) ?? 'false') === true);
+    } catch {
+      return null;
+    }
+  });
+  const [ownApps, setOwnApps] = usePersisted<AppOrder | null>(`s2g-launcher:${user.id}`, oldBar);
+  const [editingApps, setEditingApps] = useState(false);
   const [askChats, setAskChats] = usePersisted<AskChat[]>(`s2g-ask-chats:${user.id}`, []);
   const [joinOverrides, setJoinOverrides] = usePersisted<Record<string, boolean>>(`s2g-join:${user.id}`, {});
   const [sentEvents, setSentEvents] = useState<Record<string, string>>({});
@@ -590,7 +626,6 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const meetingsRef = useRef<Meeting[]>([]);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [noticesOpen, setNoticesOpen] = useState(false);
-  const [moreOpen, setMoreOpen] = useState(false);
   const [dump, setDump] = useState<string | null>(null); // null = closed
   // Chat's read markers and mutes (the conversation marks itself read: src/components/chat/Conversation.tsx).
   const [lastRead] = usePersisted<Record<string, string>>(`s2g-read:${user.id}`, {});
@@ -626,10 +661,10 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     if (m !== 'settings') setLastMode(m);
     if (m !== mode) window.dispatchEvent(new CustomEvent('s2g:app', { detail: m })); // a calm moment (the install prompt waits for one)
     setMode(m);
+    setLauncherState(false);
     setSidebarOpen(false);
     setAccountOpen(false);
     setNoticesOpen(false);
-    setMoreOpen(false);
   };
 
   /* ---------------- Mail ---------------- */
@@ -2258,7 +2293,9 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   /** Opens a task or brief in the detail panel, on a task page where it shows up. */
   const openTask = (id: string) => {
     const t = todos.find((x) => x.id === id);
-    if (mode !== 'tasks' && mode !== 'home') openTasks(t?.userId === user.id ? { kind: 'mine' } : t?.clientId ? { kind: 'client', id: t.clientId } : { kind: 'all' });
+    // From the launcher (phones) it opens in Tasks, so Back goes to Tasks, then the launcher.
+    if (mode !== 'tasks' && (mode !== 'home' || launcher)) openTasks(t?.userId === user.id ? { kind: 'mine' } : t?.clientId ? { kind: 'client', id: t.clientId } : { kind: 'all' });
+    setLauncherState(false);
     setTaskOpen(id);
   };
 
@@ -3786,7 +3823,18 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     return r;
   }, [scoped, clients]); // eslint-disable-line react-hooks/exhaustive-deps
   // Mail on phones: the folders open as Gmail's drawer from the left; your picture in the search pill opens this.
-  useSidebarDrawer(mobile && mode === 'mail');
+  // Phones: the folders, labels and projects are the title switcher ("Inbox"), the launcher button is where ☰ was.
+  useTitleMenu('mail', mobile && mode === 'mail' && (view.kind === 'folder' || view.kind === 'label' || view.kind === 'category' || view.kind === 'project' || view.kind === 'todos') && {
+    label: t('Mailbox and folder'),
+    value: mailId(view) ?? 'inbox',
+    options: [
+      ...(['inbox', 'starred', 'snoozed', 'sent', 'scheduled', 'drafts', 'assigned', 'archive', 'spam', 'trash'] as FolderId[]).map((id) => ({ value: id, label: folderName(id), group: t('Mail'), hint: (counts as Record<string, number>)[id] ? fmtNumber((counts as Record<string, number>)[id]) : undefined })),
+      { value: 'todos', label: t('To-do'), group: t('Mail') },
+      ...organize.chipLabels.map((l) => ({ value: `label/${l.id}`, label: l.name, group: t('Labels') })),
+      ...wsClients.filter((c) => c.domain).map((c) => ({ value: `project/${c.id}`, label: c.name, group: term.Many })),
+    ],
+    onChange: (v: string) => selectView(v.startsWith('label/') ? { kind: 'label', id: v.slice(6) } : v.startsWith('project/') ? { kind: 'project', id: v.slice(8) } : v === 'todos' ? { kind: 'todos', id: 'todos' } : { kind: 'folder', id: v as FolderId }),
+  });
   const [mailAccounts, setMailAccounts] = useState(false);
   /** Mail settings on phones: Mail & signature over the app, scrolled to the part that was tapped. */
   const pushMailSection = (heading?: string) => {
@@ -3836,10 +3884,13 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const kb = useKeyboard();
   const [statusOpen, setStatusOpen] = useState(false);
   const [newOpen, setNewOpen] = useState(false); // Home's create button: New, with Brain dump first
-  const ownBarOn = ownBar || savedBar.join() !== DEFAULT_BAR.join();
-  const teamBar = companyBar(ws, myTeamIds);
-  const tabApps: AppId[] = (ownBarOn ? savedBar : (teamBar ?? DEFAULT_BAR)).filter((id) => enabled.has(id)).slice(0, 4);
-  const setTabApps = (bar: string[]) => (setSavedBar(bar as AppId[]), setOwnBar(true));
+  // The launcher's apps: your own order, else your team's or the company's (src/mobile/launcherApps.ts).
+  const companyOrder = companyAppOrder(ws, myTeamIds);
+  const appsOrder = normalizeApps(ownApps ?? companyOrder);
+  const myApps = launcherApps(ownApps, companyOrder, (id) => enabled.has(id));
+  // Tablets pin the first four of the same order in the rail.
+  const tabApps: AppId[] = myApps.shown.filter((id): id is AppId => id !== 'settings').slice(0, 4);
+  const setTabApps = (bar: string[]) => setOwnApps({ order: [...bar, ...appsOrder.order.filter((id) => !bar.includes(id))], hidden: appsOrder.hidden.filter((id) => !bar.includes(id)) });
   // Focused screens that live in this file: an open mail on a phone, and a project's page (its Back goes in the top bar).
   // Not while the guest view takes over the screen ("View as guest", a shared space): its own bar shows then.
   const guestView = !!viewAs || portalKey === '*' || myPortals.some((pt) => pt.key === portalKey);
@@ -3884,7 +3935,6 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         }),
     [wsTasks, wsTeams, wsClients, scoped, myNotices, user.id, ws.members], // eslint-disable-line react-hooks/exhaustive-deps
   );
-  const needsBadge = needsCount(needsNow);
   // Home's tab has no number (its list is on screen when you open it): a dot when something in Needs you is new since
   // you last looked at Home.
   const [needsSeen, setNeedsSeen] = usePersisted<string[]>(`s2g-needs-seen:${user.id}:${ws.id}`, []);
@@ -3892,8 +3942,6 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   useEffect(() => {
     if (mode === 'home' && needKeys.some((k) => !needsSeen.includes(k))) setNeedsSeen(needKeys.slice(0, 200));
   }, [mode, needKeys.join('|')]); // eslint-disable-line react-hooks/exhaustive-deps
-  const homeDot = mode !== 'home' && needKeys.some((k) => !needsSeen.includes(k));
-  const barBadge = (id: AppId) => (id === 'home' ? needsBadge : id === 'mail' ? (accountUnread.all ?? 0) : id === 'chat' ? chatForMe : 0);
   // Search: inside the app on screen when it has things to search, with "All apps" one tap away.
   const [searchScope, setSearchScope] = useState<AppId | null>(null);
   const openSearch = (scope: AppId | null) => (setSearchScope(scope), setPaletteOpen(true));
@@ -3906,6 +3954,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     mode === 'settings'
       ? []
       : [
+          // Mail's own settings screen (it was at the bottom of the folders drawer).
+          ...(mode === 'mail' ? [{ id: 'mail-settings', label: t('Mail settings'), hint: t('Signature, undo send, out of office'), run: () => setMailSettingsOpen(true) }] : []),
           ...chrome.settings.map((e) => ({ id: `own:${e.id}`, label: e.label, hint: e.hint, run: () => setPushed({ kind: 'own', id: e.id, label: e.label }) })),
           ...appSettingsLinks(mode, { admin: isAdmin, perms }).map((l) => ({ id: l.id, label: l.name, hint: l.hint, run: () => (setSettingsSection(l.id), setPushed({ kind: 'section', id: l.id, label: l.name })) })),
         ];
@@ -3922,12 +3972,438 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     ...(enabled.has('drive') ? [{ id: 'upload', label: t('Upload'), icon: Upload, run: () => (go('drive'), fileInput.current?.click()) }] : []),
   ];
   const meetLive = wsMeetings.some((m) => m.status === 'joining' || m.status === 'waiting_room' || m.status === 'recording');
-  const moreApps = MORE_ORDER.filter((id) => enabled.has(id) && !tabApps.includes(id)).map((id) => {
-    const a = APPS.find((x) => x.id === id)!;
-    return { id, name: a.name, icon: a.icon, badge: barBadge(id), live: id === 'meet' && meetLive ? t('Recording') : undefined };
+
+  /* ---------------- The launcher and each app's own bar (research/launcher/plan.md) ---------------- */
+
+  // What Needs you's one action per row does (the same as Home's, src/components/home/HomeParts.tsx).
+  const nudgeTask = (id: string) => {
+    const task = todos.find((x) => x.id === id);
+    if (!task) return;
+    doersOf(task).filter((x) => x !== user.id).forEach((x) => notify(x, 'task', task.due ? msg('{name} is checking on “{title}”, it was due {due}', { name: myFirst, title: task.title, due: phrase(dueWords(task.due)) }) : msg('{name} is checking on “{title}”', { name: myFirst, title: task.title }), { app: 'tasks', id }));
+    logTask(id, 'comment', msg('sent a reminder'));
+    showToast({ text: t('Reminded {names}', { names: fmtList(doersOf(task).map(firstOf)) }) });
+  };
+  const needActions = {
+    me: user.id,
+    users: members,
+    teams: wsTeams,
+    tasks: wsTasks,
+    notices: myNotices,
+    today: localDay(),
+    onDone: toggleTodo,
+    onStart: (id: string) => {
+      const tk = todos.find((x) => x.id === id);
+      if (tk) setTaskStatus(id, stageIdFor(tk, 'active'));
+    },
+    onAssign: (id: string, uid2: string) => patchTask(id, { userId: uid2 }),
+    onNudge: nudgeTask,
+    onReschedule: (id: string, day: string) => patchTask(id, { due: day || undefined }),
+    onOpenTask: openTask,
+    onOpenThread: openThread,
+    onNotice: openNotice,
+    onRead: (ids: string[]) => setNotices((ns) => ns.map((n) => (ids.includes(n.id) ? { ...n, read: true } : n))),
+  };
+
+  // Counts only for what's yours to act on: unread mail, DMs and mentions, your tasks due today or late, table replies
+  // and rows given to you. Calendar, Drive, Notes, Teams, Vault and Settings never show a number.
+  const tasksDue = wsTasks.filter((tk) => !tk.done && tk.kind !== 'brief' && !!tk.due && tk.due <= localDay() && doersOf(tk).includes(user.id)).length;
+  const tablesForMe = myNotices.filter((n) => !n.read && n.link?.app === 'tables').length;
+  const badgeOf = (id: string) => (id === 'mail' ? (accountUnread.all ?? 0) : id === 'chat' ? chatForMe : id === 'tasks' ? tasksDue : id === 'tables' ? tablesForMe : 0);
+  const dmUnread = wsChannels.filter((c) => c.kind === 'dm').reduce((n, c) => n + (chatUnread[c.id] ?? 0), 0);
+  const chatActivity = myNotices.filter((n) => !n.read && n.link?.app === 'chat').length;
+  const createFor = (id: string): LauncherApp['create'] => {
+    const link = (k: string) => makeLinks.find((m) => m.id === k);
+    const of = (k: string, label: string) => (link(k) ? { label, run: link(k)!.run } : undefined);
+    if (id === 'mail') return of('email', t('New email'));
+    if (id === 'chat') return of('message', t('New message'));
+    if (id === 'tasks') return of('task', t('New task'));
+    if (id === 'calendar') return of('event', t('New event'));
+    if (id === 'notes') return of('note', t('New note'));
+    if (id === 'drive') return of('upload', t('Upload'));
+    if (id === 'projects' && canCreateProjects) return { label: t('New {project}', { project: term.one }), run: newProjectFlow };
+    if (id === 'meet' && botOn) return { label: t('Take notes'), run: openSendBot };
+    if (id === 'tables') return { label: t('New table'), run: () => (go('tables'), setNewTableFor({})) };
+    if (id === 'teams' && canCreateTeams) return { label: t('New team'), run: () => (go('teams'), setNewTeam(true)) };
+    return undefined;
+  };
+  const tileFor = (id: LauncherId): LauncherApp => {
+    const base = plainTiles(() => true).find((x) => x.id === id)!;
+    return { ...base, badge: badgeOf(id) || undefined, live: id === 'meet' && meetLive, create: createFor(id) };
+  };
+  const launcherTiles = myApps.shown.map(tileFor);
+  const allTiles = [...myApps.shown, ...myApps.hidden].map(tileFor);
+
+  // "Continue where you left off": the last few projects, notes, tables and channels opened, newest first.
+  const [recentOpen, setRecentOpen] = usePersisted<{ kind: 'project' | 'note' | 'table' | 'channel'; id: string }[]>(`s2g-recent:${user.id}:${ws.id}`, []);
+  const visit = (kind: 'project' | 'note' | 'table' | 'channel', id: string | null | undefined) => {
+    if (!id) return;
+    setRecentOpen((l) => (l[0]?.kind === kind && l[0].id === id ? l : [{ kind, id }, ...l.filter((x) => !(x.kind === kind && x.id === id))].slice(0, 8)));
+  };
+  const openProjectId = mode === 'projects' && projScope.kind === 'client' ? projScope.id : null;
+  useEffect(() => visit('project', openProjectId), [openProjectId]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => visit('note', mode === 'notes' ? noteId : null), [mode, noteId]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => visit('table', mode === 'tables' ? tableId : null), [mode, tableId]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => visit('channel', mode === 'chat' ? chatId : null), [mode, chatId]); // eslint-disable-line react-hooks/exhaustive-deps
+  const recents: Recent[] = recentOpen.flatMap((r): Recent[] => {
+    if (r.kind === 'project') {
+      const c = wsClients.find((x) => x.id === r.id);
+      return c && enabled.has('projects') ? [{ key: 'p' + r.id, title: c.name, icon: Briefcase, app: 'projects', run: () => openClient(r.id) }] : [];
+    }
+    if (r.kind === 'note') {
+      const n = wsNotesAll.find((x) => x.id === r.id && !x.deletedAt);
+      return n && enabled.has('notes') ? [{ key: 'n' + r.id, title: n.title || t('Untitled'), icon: NotebookText, app: 'notes', run: () => openNote(r.id) }] : [];
+    }
+    if (r.kind === 'table') {
+      const tb = wsTables.find((x) => x.id === r.id);
+      return tb && enabled.has('tables') ? [{ key: 't' + r.id, title: tb.name, icon: Table2, app: 'tables', run: () => openTable(r.id) }] : [];
+    }
+    const c = wsChannels.find((x) => x.id === r.id);
+    return c && enabled.has('chat') ? [{ key: 'c' + r.id, title: c.kind === 'dm' ? chanName(c, allUsers, user.id) : c.name, icon: c.kind === 'dm' ? MessageCircle : Hash, app: 'chat', run: () => openChannel(r.id) }] : [];
   });
-  // Edit the bar lists the apps in More's order (Calendar first), after the ones on the bar.
-  const enabledForBar = MORE_ORDER.filter((id) => enabled.has(id)).map((id) => APPS.find((a) => a.id === id)!).map((a) => ({ id: a.id, name: a.name, icon: a.icon }));
+
+  // The launcher button's dot: another app got something new since you left the launcher.
+  const [leftWith, setLeftWith] = useState<Record<string, number> | null>(null);
+  const launcherDot = !launcher && !!leftWith && myApps.shown.some((id) => id !== mode && badgeOf(id) > (leftWith[id] ?? 0));
+
+  // Each app's sections on phones: what's selected now, and how to get to one (from its bar, the URL or Back).
+  const [chatPart, setChatPart] = useState<'home' | 'dms' | 'activity'>('home');
+  const [calMeetings, setCalMeetings] = useState(false);
+  const [projMine, setProjMine] = useState(false);
+  const [meetPart, setMeetPart] = useState<'meetings' | 'notes'>('meetings');
+  const [teamsPart, setTeamsPart] = useState<'teams' | 'people'>('teams');
+  const sectionNow = (app: Mode): string | undefined => {
+    switch (app) {
+      case 'mail':
+        return view.kind === 'files' ? 'files' : view.kind === 'contacts' ? 'contacts' : 'inbox';
+      case 'chat':
+        return chatPart;
+      case 'tasks':
+        return taskBrowse || !['today', 'upcoming', 'mine'].includes(taskScope.kind) ? 'browse' : taskScope.kind;
+      case 'calendar':
+        return calMeetings ? 'meetings' : calView === 'month' ? 'month' : 'schedule';
+      case 'notes':
+        return notesFilter === 'shared' ? 'shared' : 'notes';
+      case 'drive':
+        return driveSection === 'recent' ? 'home' : driveSection === 'starred' ? 'starred' : driveSection === 'shared' ? 'shared' : driveSection === 'my' ? 'files' : undefined;
+      case 'projects':
+        return projScope.kind === 'past' ? 'past' : projMine ? 'mine' : 'active';
+      case 'meet':
+        return meetPage.kind === 'folders' || meetPage.kind === 'folder' || meetPage.kind === 'unfiled' || meetPage.kind === 'tasks' ? 'folders' : meetPage.kind === 'meeting' ? undefined : meetPart;
+      case 'teams':
+        return teamId ? 'teams' : teamsPart;
+      default:
+        return undefined;
+    }
+  };
+  const setSectionFor = (app: Mode, id: string) => {
+    switch (app) {
+      case 'mail':
+        return selectView(id === 'files' ? { kind: 'files', id: 'files' } : id === 'contacts' ? { kind: 'contacts', id: 'contacts' } : { kind: 'folder', id: 'inbox' });
+      case 'chat':
+        setChatId(null);
+        setChatPage(null);
+        return setChatPart(id as typeof chatPart);
+      case 'tasks':
+        setTaskOpen(null);
+        if (id === 'browse') return setTaskBrowse(true);
+        setTaskBrowse(false);
+        return setTaskScope({ kind: id as 'today' | 'upcoming' | 'mine' });
+      case 'calendar':
+        setSelectedEventId(null);
+        if (id === 'meetings') return setCalMeetings(true);
+        setCalMeetings(false);
+        return setCalView(id === 'month' ? 'month' : calViewPhone === 'month' ? 'schedule' : calViewPhone);
+      case 'notes':
+        setNoteId(null);
+        return setNotesFilter(id === 'shared' ? 'shared' : 'all');
+      case 'drive':
+        setDriveFolder(null);
+        return setDriveSection(id === 'home' ? 'recent' : id === 'starred' ? 'starred' : id === 'shared' ? 'shared' : 'my');
+      case 'projects':
+        setProjMine(id === 'mine');
+        return setProjScope(id === 'past' ? { kind: 'past' } : { kind: 'projects' });
+      case 'meet':
+        if (id !== 'folders') setMeetPart(id as typeof meetPart);
+        return setMeetPage(id === 'folders' ? { kind: 'folders' } : { kind: 'list' });
+      case 'teams':
+        setTeamId(null);
+        return setTeamsPart(id as typeof teamsPart);
+    }
+  };
+  // The thing open in the app (a task, a channel, a note…), for the URL.
+  const itemNow = (app: Mode): string | undefined => {
+    switch (app) {
+      case 'tasks':
+        return taskOpen ?? undefined;
+      case 'chat':
+        return chatId ?? undefined;
+      case 'mail':
+        return mailId(view);
+      case 'notes':
+        return noteId ?? undefined;
+      case 'projects':
+        return projScope.kind === 'client' ? projScope.id : undefined;
+      case 'tables':
+        return tableId ?? undefined;
+      case 'meet':
+        return meetPage.kind === 'meeting' ? meetPage.id : meetPage.kind === 'folder' ? `folder/${meetPage.clientId}` : meetPage.kind === 'unfiled' || meetPage.kind === 'tasks' ? meetPage.kind : undefined;
+      case 'teams':
+        return teamId ?? undefined;
+      case 'settings':
+        return settingsSection;
+      default:
+        return undefined;
+    }
+  };
+  /** Opens what a URL names in an app; false while it isn't loaded yet (a link opened before the data came). */
+  const setItemFor = (app: Mode, id: string | undefined, clear: boolean): boolean => {
+    if (!id) {
+      if (!clear) return true;
+      if (app === 'tasks') setTaskOpen(null);
+      if (app === 'chat') setChatId(null);
+      if (app === 'notes') setNoteId(null);
+      if (app === 'projects' && projScope.kind === 'client') setProjScope({ kind: 'projects' });
+      if (app === 'meet' && (meetPage.kind === 'meeting' || meetPage.kind === 'folder' || meetPage.kind === 'unfiled' || meetPage.kind === 'tasks')) setMeetPage(meetPage.kind === 'meeting' ? { kind: 'list' } : { kind: 'folders' });
+      if (app === 'teams') setTeamId(null);
+      if (app === 'mail') setReaderOpen(false);
+      return true;
+    }
+    switch (app) {
+      case 'tasks':
+        if (!todos.some((x) => x.id === id)) return false;
+        return (setTaskOpen(id), true);
+      case 'chat':
+        if (!channels.some((c) => c.id === id)) return false;
+        return (setChatId(id), setChatPage(null), true);
+      case 'mail': {
+        const [kind, rest] = id.includes('/') ? [id.slice(0, id.indexOf('/')), id.slice(id.indexOf('/') + 1)] : ['folder', id];
+        setView((kind === 'label' || kind === 'category' || kind === 'project' ? { kind, id: rest } : kind === 'folder' && (rest === 'todos' || rest === 'tracking') ? { kind: rest, id: rest } : { kind: 'folder', id: rest }) as View);
+        return true;
+      }
+      case 'notes':
+        if (id === 'new') return true;
+        if (!notes.some((n) => n.id === id)) return false;
+        return (setNoteId(id), true);
+      case 'projects':
+        if (!clients.some((c) => c.id === id)) return false;
+        return (setProjScope({ kind: 'client', id }), true);
+      case 'tables':
+        if (!tables.some((x) => x.id === id)) return false;
+        return (setTableId(id), true);
+      case 'meet':
+        if (id === 'unfiled' || id === 'tasks') return (setMeetPage({ kind: id }), true);
+        if (id.startsWith('folder/')) return (setMeetPage({ kind: 'folder', clientId: id.slice(7) }), true);
+        if (!meetings.some((m) => m.id === id)) return false;
+        return (setMeetPage({ kind: 'meeting', id }), true);
+      case 'teams':
+        if (!teams.some((x) => x.id === id)) return false;
+        return (setTeamId(id), true);
+      case 'settings':
+        return (setSettingsSection(id as SettingsSection), true);
+      default:
+        return true;
+    }
+  };
+  const SEARCH_SECTIONS: Record<string, AppId> = { mail: 'mail', chat: 'chat', notes: 'notes' };
+  /** Mail's Search tab: Gmail's search screen over the list (MessageList), from the inbox when another part is open. */
+  const mailSearch = () => {
+    if (view.kind === 'files' || view.kind === 'contacts' || view.kind === 'tracking') {
+      selectView({ kind: 'folder', id: 'inbox' });
+      return void setTimeout(() => dispatchEvent(new Event('s2g:mail-search')), 60);
+    }
+    dispatchEvent(new Event('s2g:mail-search'));
+  };
+  /** Shows what a route names: the launcher, or the app, its section and the thing open in it. */
+  const applyRoute = (r: Route, clear: boolean): boolean => {
+    if (r.launcher) return (setLauncherState(true), true);
+    const m = (r.mode === 'settings' || APP_IDS.includes(r.mode) ? r.mode : 'home') as Mode;
+    if (m !== 'settings' && m !== 'home' && !enabled.has(m)) return true;
+    if (m !== mode) setMode(m);
+    if (m !== 'settings') setLastMode(m as AppId);
+    setLauncherState(false);
+    const sec = r.section ?? (SECTIONS_OF[m]?.[0] as string | undefined);
+    if (sec === 'search' && m === 'mail') setTimeout(mailSearch, 300);
+    else if (sec === 'search' && SEARCH_SECTIONS[m]) openSearch(SEARCH_SECTIONS[m]);
+    else if (sec && sec !== sectionNow(m)) setSectionFor(m, sec);
+    return setItemFor(m, r.id, clear);
+  };
+  const appBar: AppSections | null = (() => {
+    const cur = sectionNow(mode) ?? '';
+    const bar = (sections: AppSection[]): AppSections => ({ sections, current: cur, onChange: (id) => setSectionFor(mode, id), onReselect: (id) => setSectionFor(mode, id) });
+    switch (mode) {
+      case 'mail':
+        return bar([
+          { id: 'inbox', label: t('Inbox'), icon: Inbox, badge: accountUnread.all ?? 0 },
+          { id: 'search', label: t('Search'), icon: SearchIcon, run: mailSearch },
+          { id: 'files', label: t('Files'), icon: Paperclip },
+          { id: 'contacts', label: t('Contacts'), icon: Contact },
+        ]);
+      case 'chat':
+        return bar([
+          { id: 'home', label: t('Home'), icon: House },
+          { id: 'dms', label: t('DMs'), icon: MessageCircle, badge: dmUnread },
+          { id: 'activity', label: t('Activity'), icon: Bell, badge: chatActivity },
+          { id: 'search', label: t('Search'), icon: SearchIcon, run: () => openSearch('chat') },
+        ]);
+      case 'tasks':
+        return bar([
+          { id: 'today', label: t('Today'), icon: Sun, badge: tasksDue },
+          { id: 'upcoming', label: t('Upcoming'), icon: CalendarRange },
+          { id: 'mine', label: t('My tasks'), icon: CircleCheck },
+          { id: 'browse', label: t('Browse'), icon: Layers },
+        ]);
+      case 'calendar':
+        return bar([
+          { id: 'schedule', label: t('Schedule'), icon: List },
+          { id: 'month', label: t('Month'), icon: CalendarDays },
+          { id: 'meetings', label: t('Meetings'), icon: Video },
+        ]);
+      case 'notes':
+        return bar([
+          { id: 'notes', label: t('Notes'), icon: NotebookPen },
+          { id: 'shared', label: t('Shared'), icon: Users },
+          { id: 'search', label: t('Search'), icon: SearchIcon, run: () => openSearch('notes') },
+        ]);
+      case 'drive':
+        return bar([
+          { id: 'home', label: t('Home'), icon: House },
+          { id: 'starred', label: t('Starred'), icon: Star },
+          { id: 'shared', label: t('Shared'), icon: Users },
+          { id: 'files', label: t('Files'), icon: Folder },
+        ]);
+      case 'projects':
+        return bar([
+          { id: 'active', label: t('Active'), icon: Briefcase },
+          { id: 'mine', label: t('Mine'), icon: UserRound },
+          { id: 'past', label: t('Past'), icon: Archive },
+        ]);
+      case 'meet':
+        return bar([
+          { id: 'meetings', label: t('Meetings'), icon: Video },
+          { id: 'notes', label: t('Notes'), icon: FileText },
+          { id: 'folders', label: t('Folders'), icon: Folder },
+        ]);
+      case 'teams':
+        return bar([
+          { id: 'teams', label: t('Teams'), icon: UsersRound },
+          { id: 'people', label: t('People'), icon: Contact },
+        ]);
+      default:
+        return null; // Home, Tables, Vault, Settings: no bar
+    }
+  })();
+  useAppSections(mode === 'settings' ? 'home' : mode, mobile && mode !== 'settings' && appBar);
+  const showAppBar = mobile && !launcher && !!chrome.sections && mode !== 'settings' && !guestView;
+  useEffect(() => {
+    const root = document.documentElement;
+    const off = mobile && !showAppBar;
+    if (root.classList.contains('no-app-bar') !== off) root.classList.toggle('no-app-bar', off);
+  }, [mobile, showAppBar]);
+
+  // The URL follows the screen: the launcher is "/", an app "/tasks", a section "/tasks/upcoming", the thing open in it
+  // "/tasks/upcoming/<id>". Moving forward adds history (a thing opened from elsewhere gets its app under it); going
+  // back to where we just were steps back instead, so Back walks the same way (src/route.ts).
+  const routeNow: Route = launcher ? { launcher: true, mode: 'home' } : { launcher: false, mode, section: sectionNow(mode), id: itemNow(mode) };
+  const pathWanted = routePath(routeNow);
+  const stack = useRef<string[]>(bootStack.length ? bootStack : [pathNow()]);
+  const ignorePops = useRef(0);
+  const fromPop = useRef(false);
+  const bootPending = useRef<Route | null>(boot.launcher ? null : boot);
+  // A link opened before its data came: try again as things load, for a few seconds.
+  useEffect(() => {
+    const r = bootPending.current;
+    if (!r) return;
+    if (applyRoute(r, false)) bootPending.current = null;
+  }, [todos.length, notes.length, channels.length, clients.length, tables.length, meetings.length, teams.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const t = setTimeout(() => (bootPending.current = null), 5000);
+    return () => clearTimeout(t);
+  }, []);
+  useEffect(() => {
+    if (bootPending.current) return;
+    const cur = pathNow();
+    if (pathWanted === cur.replace(/\/$/, '') || (pathWanted === '/' && cur === '/')) return;
+    if (fromPop.current) return void ((fromPop.current = false), setPath(pathWanted, 'replace'));
+    const st = stack.current;
+    if (st.length > 1 && st[st.length - 2] === pathWanted && !hashRouting) {
+      st.pop();
+      ignorePops.current++;
+      history.back();
+      return;
+    }
+    for (const step of historySteps(cur, pathWanted, mobile)) {
+      setPath(step, 'push');
+      st.push(step);
+    }
+  }, [pathWanted]); // eslint-disable-line react-hooks/exhaustive-deps
+  const applyRef = useRef(applyRoute);
+  applyRef.current = applyRoute;
+  useEffect(() => {
+    const pop = () => {
+      if (ignorePops.current > 0) return void ignorePops.current--;
+      const path = pathNow();
+      const st = stack.current;
+      const at = st.lastIndexOf(path);
+      if (at >= 0) st.length = at + 1;
+      else st.push(path);
+      fromPop.current = true;
+      bootPending.current = null;
+      applyRef.current(parseRoute(path, isPhone()), true);
+      setTimeout(() => (fromPop.current = false), 0);
+    };
+    addEventListener('popstate', pop);
+    return () => removeEventListener('popstate', pop);
+  }, []);
+  // Where you were, for "back within 10 minutes reopens it"; after longer away, a phone opens on the launcher.
+  const hiddenAt = useRef(0);
+  useEffect(() => {
+    const save = () => {
+      try {
+        localStorage.setItem(LAST_PLACE, JSON.stringify({ path: pathWanted, at: Date.now() }));
+      } catch {
+        /* private mode */
+      }
+    };
+    save();
+    const vis = () => {
+      if (document.visibilityState === 'hidden') return (save(), void (hiddenAt.current = Date.now()));
+      if (hiddenAt.current && Date.now() - hiddenAt.current > RESUME_MS && isPhone()) setLauncherState(true);
+      hiddenAt.current = 0;
+    };
+    document.addEventListener('visibilitychange', vis);
+    addEventListener('pagehide', save);
+    return () => (document.removeEventListener('visibilitychange', vis), removeEventListener('pagehide', save));
+  }, [pathWanted]);
+
+  /** Back to the launcher: the app shrinks into its own tile. Each app keeps its section and scroll meanwhile. */
+  const toLauncher = () => {
+    if (launcher) return;
+    launchShrink(document.querySelector<HTMLElement>(`.launcher [data-tile="${mode}"]`));
+    setNoticesOpen(false);
+    setSidebarOpen(false);
+    setLauncherState(true);
+  };
+  /** An app from its tile: it grows out of the tile into the whole screen. */
+  const fromLauncher = (id: LauncherId, tile: HTMLElement | null) => {
+    setLeftWith(Object.fromEntries(myApps.shown.map((x) => [x, badgeOf(x)])));
+    launchGrow(tile);
+    if (id === 'settings') return (openSettingsList(), go('settings'));
+    if (id === mode) return setLauncherState(false);
+    go(id);
+  };
+  // The vault locks when you leave it for the launcher.
+  useEffect(() => {
+    if (launcher && mode === 'vault') setVaultUnlocked(user.id, null);
+  }, [launcher]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const root = document.documentElement;
+    const on = mobile && launcher;
+    if (root.classList.contains('launcher-on') !== on) root.classList.toggle('launcher-on', on);
+  }, [mobile, launcher]);
+  // From the left edge on an app's first screen of a section: back to the launcher (inside a pushed screen the same
+  // swipe is that screen's Back).
+  const subScreen = (mode === 'tasks' && !taskBrowse && !['today', 'upcoming', 'mine'].includes(taskScope.kind)) || (mode === 'drive' && !!driveFolder) || (mode === 'teams' && !!teamId) || (mode === 'meet' && meetPage.kind !== 'list') || (mode === 'mail' && readerOpen);
+  useEdgeSwipe(toLauncher, mobile && !launcher && !chrome.focused && !subScreen && !guestView);
 
   // ⌘K: everything you can jump to
   const today0 = localDay();
@@ -4037,6 +4513,69 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     );
   }
 
+  /** Meet's screens (the Meet app, and Calendar's Meetings section on phones). */
+  const renderMeet = (extra: { part?: 'meetings' | 'notes'; embedded?: boolean }) => (
+          <MeetView
+            page={meetPage}
+            meetings={wsMeetings}
+            clients={wsClients}
+            tasks={wsTasks}
+            users={members}
+            me={user.id}
+            myRole={myRole}
+            events={myNear}
+            settings={meetSettings}
+            overrides={joinOverrides}
+            sentEvents={sentFor}
+            autoJoin={autoJoin}
+            onPage={setMeetPage}
+            onStop={stopBot}
+            onRegenerate={(id) => finishMeeting(id, true)}
+            onTranscribeAgain={
+              recorderOn && real
+                ? (id, language) =>
+                    void fetch(`/api/meet/again/${id}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ language }) }).then(async (r) =>
+                      showToast({ text: r.ok ? 'Transcribing again. The notes update when it’s done.' : (((await r.json().catch(() => ({}))) as { error?: string }).error ?? 'Couldn’t transcribe again') }),
+                    )
+                : undefined
+            }
+            onDelete={deleteMeeting}
+            onFolder={setMeetingFolder}
+            onPatch={patchMeeting}
+            onShare={setShareFor}
+            onToggleTask={toggleTodo}
+            onPatchTask={patchTask}
+            onBulk={(ids, action) =>
+              action === 'delete'
+                ? setTodos((ts) => ts.filter((t) => !ids.includes(t.id)))
+                : setTodos((ts) => ts.map((t) => (ids.includes(t.id) ? { ...t, done: action === 'done', status: stageIdFor(t, action === 'done' ? 'done' : 'open'), doneAt: action === 'done' ? nowIso() : undefined, doneBy: action === 'done' ? user.id : undefined } : t)))
+            }
+            onAddTask={(t) => createTask({ ...t, source: t.meetingId ? 'meeting' : 'manual' }, { chat: true })}
+            onOpenTask={openTask}
+            onOpenClient={openClient}
+            onWriteOverview={writeOverview}
+            onJoinMode={(jm) => patchWorkspace(ws.id, { meetings: { ...meetSettings, joinMode: jm } })}
+            onOverride={setBotJoin}
+            onSendNow={(e) => sendNotetakerTo(e)}
+            demo={demoOk}
+            calendarsSyncedAt={linkCals.reduce<string | undefined>((a, c) => (c.syncedAt && (!a || c.syncedAt > a) ? c.syncedAt : a), undefined)}
+            onSyncCalendars={real && linkCals.some((c) => c.source === 'ics') ? refreshLinks : demoOk ? () => showToast({ text: 'Synced' }) : undefined}
+            onAsk={setAskScope}
+            onSend={() => openSendBot()}
+            canSendBot={botOn}
+            onMenu={() => setSidebarOpen(true)}
+            toast={(text) => showToast({ text })}
+            company={ws}
+            appSettings={settingsRows}
+            onOpenEvent={(id) => {
+              const e = findEvent(calEvents, id);
+              go('calendar');
+              if (e) setCalCursor(new Date(e.start));
+              setSelectedEventId(id);
+            }}
+            {...extra}
+          />
+  );
   // "View as client": the whole app becomes exactly what this client person sees.
   if (viewAs) {
     const vc = wsClients.find((c) => c.id === viewAs.clientId);
@@ -4333,7 +4872,9 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             title={mode === 'settings' ? t('Settings') : (APPS.find((a) => a.id === mode)?.name ?? '')}
             menu={chrome.title ?? mobileSwitcher}
             settings={settingsRows}
-            back={chrome.back}
+            back={chrome.back ?? (mode === 'home' ? toLauncher : undefined)}
+            onLauncher={toLauncher}
+            launcherDot={launcherDot}
             workspaces={workspaces}
             current={ws}
             unreadByWs={wsUnread}
@@ -4356,6 +4897,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
           <section className="mobile-list chat-list view-enter">
             <ChatSidebar
               variant="phone"
+              part={chatPart}
               channels={visibleChannels}
               messages={wsMessages}
               users={members}
@@ -4409,7 +4951,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
           </section>
         )}
         {mobile && mode === 'mail' && (view.kind === 'tracking' || view.kind === 'files') && (
-          <TopBar app="mail" replace={<MailSearchPill me={ME} elsewhere={workspaces.some((w) => w.id !== ws.id && (wsUnread[w.id] ?? 0) > 0)} onMenu={() => setSidebarOpen(true)} onSearch={searchHere} onAccounts={() => setMailAccounts(true)} />} />
+          <TopBar app="mail" search={false} actions={<MailAvatar me={ME} elsewhere={workspaces.some((w) => w.id !== ws.id && (wsUnread[w.id] ?? 0) > 0)} onAccounts={() => setMailAccounts(true)} />} />
         )}
         {mobile && mailSettingsOpen && (
           <MailSettingsScreen
@@ -4592,11 +5134,11 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
           <ProjectsHome
             key={projNew}
             startAdding={projNew > 0}
-            projects={seesAllProjects ? wsClientsAll : wsClientsAll.filter((c) => myClientIds.includes(c.id))}
+            projects={seesAllProjects && !(mobile && projMine) ? wsClientsAll : wsClientsAll.filter((c) => myClientIds.includes(c.id))}
             tasks={wsTasks}
             users={members}
             onOpen={(id) => (setClientTab(undefined), setProjScope({ kind: 'client', id }))}
-            onPast={() => setProjScope({ kind: 'past' })}
+            onPast={mobile ? undefined : () => setProjScope({ kind: 'past' })}
             onCreate={
               canCreateProjects
                 ? (name, type) => {
@@ -4802,65 +5344,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         )}
 
         {mode === 'meet' && (
-          <MeetView
-            page={meetPage}
-            meetings={wsMeetings}
-            clients={wsClients}
-            tasks={wsTasks}
-            users={members}
-            me={user.id}
-            myRole={myRole}
-            events={myNear}
-            settings={meetSettings}
-            overrides={joinOverrides}
-            sentEvents={sentFor}
-            autoJoin={autoJoin}
-            onPage={setMeetPage}
-            onStop={stopBot}
-            onRegenerate={(id) => finishMeeting(id, true)}
-            onTranscribeAgain={
-              recorderOn && real
-                ? (id, language) =>
-                    void fetch(`/api/meet/again/${id}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ language }) }).then(async (r) =>
-                      showToast({ text: r.ok ? 'Transcribing again. The notes update when it’s done.' : (((await r.json().catch(() => ({}))) as { error?: string }).error ?? 'Couldn’t transcribe again') }),
-                    )
-                : undefined
-            }
-            onDelete={deleteMeeting}
-            onFolder={setMeetingFolder}
-            onPatch={patchMeeting}
-            onShare={setShareFor}
-            onToggleTask={toggleTodo}
-            onPatchTask={patchTask}
-            onBulk={(ids, action) =>
-              action === 'delete'
-                ? setTodos((ts) => ts.filter((t) => !ids.includes(t.id)))
-                : setTodos((ts) => ts.map((t) => (ids.includes(t.id) ? { ...t, done: action === 'done', status: stageIdFor(t, action === 'done' ? 'done' : 'open'), doneAt: action === 'done' ? nowIso() : undefined, doneBy: action === 'done' ? user.id : undefined } : t)))
-            }
-            onAddTask={(t) => createTask({ ...t, source: t.meetingId ? 'meeting' : 'manual' }, { chat: true })}
-            onOpenTask={openTask}
-            onOpenClient={openClient}
-            onWriteOverview={writeOverview}
-            onJoinMode={(jm) => patchWorkspace(ws.id, { meetings: { ...meetSettings, joinMode: jm } })}
-            onOverride={setBotJoin}
-            onSendNow={(e) => sendNotetakerTo(e)}
-            demo={demoOk}
-            calendarsSyncedAt={linkCals.reduce<string | undefined>((a, c) => (c.syncedAt && (!a || c.syncedAt > a) ? c.syncedAt : a), undefined)}
-            onSyncCalendars={real && linkCals.some((c) => c.source === 'ics') ? refreshLinks : demoOk ? () => showToast({ text: 'Synced' }) : undefined}
-            onAsk={setAskScope}
-            onSend={() => openSendBot()}
-            canSendBot={botOn}
-            onMenu={() => setSidebarOpen(true)}
-            toast={(text) => showToast({ text })}
-            company={ws}
-            appSettings={settingsRows}
-            onOpenEvent={(id) => {
-              const e = findEvent(calEvents, id);
-              go('calendar');
-              if (e) setCalCursor(new Date(e.start));
-              setSelectedEventId(id);
-            }}
-          />
+          renderMeet({ part: meetPart })
         )}
 
         {mode === 'mail' && myAccounts.length === 0 && (
@@ -5082,7 +5566,13 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
           </div>
         )}
 
-        {mode === 'calendar' && (
+        {mode === 'calendar' && mobile && calMeetings && (
+          <>
+            <TopBar app="calendar" title={<h1 className="mt-title plain"><span className="mt-title-text">{t('Meetings')}</span></h1>} />
+            {renderMeet({ embedded: true })}
+          </>
+        )}
+        {mode === 'calendar' && !(mobile && calMeetings) && (
           <CalendarView
             events={calEvents}
             calendars={allCals}
@@ -5232,7 +5722,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
                 }}
               />
             ) : (
-              <TeamsHome teams={wsTeams} users={members} tasks={wsTasks} me={user.id} canCreate={canCreateTeams} actions={teamActions} onOpen={setTeamId} onNew={() => setNewTeam(true)} onMenu={() => setSidebarOpen(true)} />
+              <TeamsHome teams={wsTeams} users={members} tasks={wsTasks} me={user.id} canCreate={canCreateTeams} actions={teamActions} onOpen={setTeamId} onNew={() => setNewTeam(true)} onMenu={() => setSidebarOpen(true)} part={teamsPart} />
             );
           })()}
         {newTeam && (
@@ -5346,7 +5836,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             me={user.id}
             onPhoto={(photo) => onUpdateUser({ photo })}
             onPreviewOnboarding={() => setPreviewOnboarding(true)}
-            myApps={{ hidden: myHidden, asked: askedApps, onHidden: setMyHidden, onAsk: askForApp }}
+            myApps={{ hidden: myHidden, asked: askedApps, onHidden: setMyHidden, onAsk: askForApp, onEdit: mobile ? () => setEditingApps(true) : undefined }}
             myRole={role}
             onInvite={() => openInvite()}
             onRole={(uid2, r) => patchWorkspace(ws.id, { members: ws.members.map((m) => (m.userId === uid2 ? { ...m, role: r } : m)) })}
@@ -5434,37 +5924,43 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         )}
       </main>
 
-      {/* Phones: the bottom bar with the app's create button, More, and the sheets they open (src/mobile/) */}
+      {/* Phones (src/mobile/, research/launcher/plan.md): the app's own bar of sections and its create button, and the
+          launcher over the app when it's open. */}
+      {showAppBar && <AppBar bar={chrome.sections!} label={APPS.find((a) => a.id === mode)?.name ?? ''} />}
+      {mobile && <CreateFab create={mode === 'settings' || launcher ? null : chrome.create} off={newOpen} />}
       {mobile && (
-        <BottomBar
-          apps={tabApps.map((id) => {
-            const a = APPS.find((x) => x.id === id)!;
-            return { id, name: a.name, icon: a.icon, badge: id === 'home' ? 0 : barBadge(id), dot: id === 'home' && homeDot };
-          })}
-          current={mode}
-          moreOn={moreOpen || !tabApps.includes(mode as AppId)}
-          onApp={(id) => (setMoreOpen(false), id === 'tasks' && mode === 'tasks' && setTaskBrowse(true), go(id as AppId))}
-          onMore={() => (setEditingBar(false), setMoreOpen((o) => !o))}
-          onEdit={() => (setEditingBar(true), setMoreOpen(true))}
+        <Launcher
+          open={launcher}
+          ws={ws}
+          me={ME}
+          firstName={myFirst}
+          needs={needsNow}
+          needActions={needActions}
+          next={myNear.filter((e) => !e.allDay && new Date(e.start) > new Date() && new Date(e.start).toDateString() === new Date().toDateString()).sort((x, y) => x.start.localeCompare(y.start))[0]}
+          recents={recents}
+          apps={launcherTiles}
+          unreadNotices={myNotices.filter((n) => !n.read).length}
+          ai={aiOn}
+          onCompany={openCompanySheet}
+          onSearch={() => openSearch(null)}
+          onAsk={toggleAsk}
+          onBell={() => setNoticesOpen(true)}
+          onAccount={() => (setSettingsSection('account'), go('settings'))}
+          onSeeAll={() => (setLeftWith(Object.fromEntries(myApps.shown.map((x) => [x, badgeOf(x)]))), go('home'))}
+          onApp={fromLauncher}
+          onHide={(id) => setOwnApps({ order: appsOrder.order, hidden: [...appsOrder.hidden, id] })}
+          onEdit={() => setEditingApps(true)}
+          onNew={() => setNewOpen(true)}
         />
       )}
-      {mobile && <CreateFab create={mode === 'settings' ? null : chrome.create} off={moreOpen || newOpen} />}
-      {moreOpen && (
-        <MoreSheet
-          onClose={() => (setMoreOpen(false), setEditingBar(false))}
-          apps={moreApps}
-          onApp={(id) => (setMoreOpen(false), go(id as AppId))}
-          current={mode}
-          onAsk={toggleAsk}
-          onSettings={() => (setMoreOpen(false), mode !== 'settings' && openSettingsList(), go('settings'))}
-          editing={editingBar}
-          onEditing={setEditingBar}
-          edit={{
-            apps: enabledForBar,
-            bar: tabApps,
-            onChange: setTabApps,
-            reset: ownBarOn ? { label: teamBar ? t('Use the company’s bar') : t('Back to the usual bar'), run: () => (setSavedBar(DEFAULT_BAR), setOwnBar(false)) } : undefined,
-          }}
+      {editingApps && (
+        <EditApps
+          apps={allTiles}
+          value={appsOrder}
+          own={!!ownApps}
+          onChange={setOwnApps}
+          onReset={() => setOwnApps(null)}
+          onDone={() => setEditingApps(false)}
         />
       )}
       {noticesOpen && mobile && (

@@ -1,15 +1,17 @@
-import { Clock, FolderPlus, HardDrive, Image, Paperclip, Star, Trash2, Upload, type LucideIcon } from 'lucide-react';
+import { Clock, FolderPlus, HardDrive, Image, Paperclip, Star, Trash2, Upload, Users, type LucideIcon } from 'lucide-react';
 import type { DriveSection } from '../types';
 import { fmtSize } from '../data/drive';
 import { mark, t } from '../i18n';
 
 /** Drive's sections. The names are English: show them with t(name). */
-export const DRIVE_SECTIONS: { id: DriveSection; name: string; icon: LucideIcon }[] = [
+/** `phone`: only in the phone's bar (Shared: what came from others, in chat, by email or from guests). */
+export const DRIVE_SECTIONS: { id: DriveSection; name: string; icon: LucideIcon; phone?: boolean }[] = [
   { id: 'my', name: mark('My Drive'), icon: HardDrive },
   { id: 'recent', name: mark('Recent'), icon: Clock },
   { id: 'media', name: mark('Photos & videos'), icon: Image },
   { id: 'email', name: mark('From email'), icon: Paperclip },
   { id: 'starred', name: mark('Starred'), icon: Star },
+  { id: 'shared', name: mark('Shared'), icon: Users, phone: true },
   { id: 'trash', name: mark('Trash'), icon: Trash2 },
 ];
 
@@ -37,7 +39,7 @@ export function DriveSidebar({ section, used, quota, onSection, onUpload, onNewF
       </nav>
       <div className="nav-heading sb-label">{t('Drive')}</div>
       <nav className="nav">
-        {DRIVE_SECTIONS.map(({ id, name, icon: Icon }) => (
+        {DRIVE_SECTIONS.filter((s) => !s.phone).map(({ id, name, icon: Icon }) => (
           <button key={id} className={`nav-item ${section === id ? 'active' : ''}`} onClick={() => onSection(id)} title={t(name)}>
             <Icon size={17} />
             <span className="sb-label">{t(name)}</span>

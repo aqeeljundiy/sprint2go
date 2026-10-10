@@ -121,7 +121,7 @@ function teamState(tm: Team, tasks: Todo[]) {
 
 /* ---------- all teams ---------- */
 
-export function TeamsHome({ teams, users, tasks, me, canCreate, actions, onOpen, onNew, onMenu }: { teams: Team[]; users: User[]; tasks: Todo[]; me: string; canCreate: boolean; actions: TeamActions; onOpen: (id: string) => void; onNew: () => void; onMenu: () => void }) {
+export function TeamsHome({ teams, users, tasks, me, canCreate, actions, onOpen, onNew, onMenu, part = 'teams' }: { teams: Team[]; users: User[]; tasks: Todo[]; me: string; canCreate: boolean; actions: TeamActions; onOpen: (id: string) => void; onNew: () => void; onMenu: () => void; part?: 'teams' | 'people' }) {
   const sorted = [...teams].sort((a, b) => Number(b.members.includes(me)) - Number(a.members.includes(me)) || a.name.localeCompare(b.name));
   useCreateAction('teams', canCreate && { label: t('New team'), icon: Plus, run: onNew });
   const phone = usePhone();
@@ -129,7 +129,7 @@ export function TeamsHome({ teams, users, tasks, me, canCreate, actions, onOpen,
     return (
       <section className="tasks-pane view-enter tdir-pane">
         <div className="tracking-scroll">
-          <TeamsPhone teams={teams} users={users} tasks={tasks} me={me} actions={actions} onOpen={onOpen} />
+          <TeamsPhone key={part} teams={teams} users={users} tasks={tasks} me={me} actions={actions} onOpen={onOpen} people={part === 'people'} />
         </div>
       </section>
     );
@@ -213,14 +213,15 @@ export function TeamsHome({ teams, users, tasks, me, canCreate, actions, onOpen,
  * Teams on a phone: Slack's people directory. Search on top, then Your teams and Other teams as plain rows (a status
  * word only when something needs a look), and the people who match while searching.
  */
-function TeamsPhone({ teams, users, tasks, me, actions, onOpen }: { teams: Team[]; users: User[]; tasks: Todo[]; me: string; actions: TeamActions; onOpen: (id: string) => void }) {
+function TeamsPhone({ teams, users, tasks, me, actions, onOpen, people: everyone }: { teams: Team[]; users: User[]; tasks: Todo[]; me: string; actions: TeamActions; onOpen: (id: string) => void; people?: boolean }) {
   const [q, setQ] = useState('');
   const query = q.trim().toLowerCase();
   const hit = (s?: string) => !!s && s.toLowerCase().includes(query);
   const shown = teams.filter((tm) => !query || hit(tm.name) || hit(tm.about)).sort((a, b) => a.name.localeCompare(b.name));
   const mine = shown.filter((tm) => tm.members.includes(me));
   const others = shown.filter((tm) => !tm.members.includes(me));
-  const people = query ? users.filter((u) => hit(u.name) || hit(u.title) || hit(u.email)).slice(0, 20) : [];
+  // People (the bar's second section): everyone, A to Z; Teams: the people who match while searching.
+  const people = everyone ? users.filter((u) => !query || hit(u.name) || hit(u.title) || hit(u.email)).sort((a, b) => a.name.localeCompare(b.name)) : query ? users.filter((u) => hit(u.name) || hit(u.title) || hit(u.email)).slice(0, 20) : [];
   const row = (tm: Team, other: boolean) => {
     const lead = users.find((u) => u.id === tm.leadId);
     const s = teamState(tm, tasks);
@@ -252,15 +253,15 @@ function TeamsPhone({ teams, users, tasks, me, actions, onOpen }: { teams: Team[
     <div className="tdir">
       <label className="tdir-search">
         <Search size={17} />
-        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t('Search teams and people')} aria-label={t('Search teams and people')} enterKeyHint="search" />
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={everyone ? t('Search people') : t('Search teams and people')} aria-label={everyone ? t('Search people') : t('Search teams and people')} enterKeyHint="search" />
         {q && (
           <button type="button" onClick={() => setQ('')} aria-label={t('Clear the search')}>
             <X size={15} />
           </button>
         )}
       </label>
-      {section(t('Your teams'), mine, false)}
-      {section(t('Other teams'), others, true)}
+      {!everyone && section(t('Your teams'), mine, false)}
+      {!everyone && section(t('Other teams'), others, true)}
       {people.length > 0 && (
         <section className="tdir-sec">
           <h2 className="tdir-head">{t('People')}</h2>
@@ -280,7 +281,7 @@ function TeamsPhone({ teams, users, tasks, me, actions, onOpen }: { teams: Team[
           </div>
         </section>
       )}
-      {query && !shown.length && !people.length && <p className="tdir-none">{t('Nothing matches “{q}”.', { q: q.trim() })}</p>}
+      {query && (everyone || !shown.length) && !people.length && <p className="tdir-none">{t('Nothing matches “{q}”.', { q: q.trim() })}</p>}
     </div>
   );
 }

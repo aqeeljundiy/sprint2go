@@ -51,7 +51,7 @@ export interface NeedActions {
  * Needs you: what to act on now, across apps, most urgent first, each with its one action right on the row. On phones
  * the rows swipe too: right does the action, left moves a task to tomorrow or puts a notification away.
  */
-export function NeedsList({ items, a, limit = 6 }: { items: Need[]; a: NeedActions; limit?: number }) {
+export function NeedsList({ items, a, limit = 6, more = true }: { items: Need[]; a: NeedActions; limit?: number; more?: boolean }) {
   const [all, setAll] = useState(false);
   const shown = all ? items : items.slice(0, limit);
   const rows = useLeaving(shown, (x) => x.key);
@@ -146,7 +146,7 @@ export function NeedsList({ items, a, limit = 6 }: { items: Need[]; a: NeedActio
           </SwipeRow>
         );
       })}
-      {items.length > limit && (
+      {more && items.length > limit && (
         <button type="button" className="link-btn small ny-more" onClick={() => setAll((v) => !v)}>
           {all ? t('Show fewer') : tn(items.length - limit, 'Show {n} more', 'Show {n} more')}
         </button>

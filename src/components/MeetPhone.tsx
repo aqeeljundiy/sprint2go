@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { ChevronRight, Folder, Home, Inbox, ListChecks, Mic, MicOff, Search, Settings, Video, X } from 'lucide-react';
 import type { CalEvent, Client, Meeting, MeetingSettings, Role, Todo, Workspace } from '../types';
 import { JOIN_MODES, MEETING_NAME, joinsByRule, meetingLinkOf, notetakerJoins, type MeetingKind } from '../meetingLinks';
@@ -104,6 +104,8 @@ interface HomeProps {
   autoJoin: 'live' | 'demo' | 'off';
   demo?: boolean;
   unfiled?: boolean;
+  /** Phones with the app's own bar: Notes shows the past meetings only (Meetings has what's coming). */
+  notesOnly?: boolean;
   onPage: (p: MeetPage) => void;
   onFolder: (id: string, clientId: string | null, remember: boolean) => void;
   onOverride: (eventId: string, join: boolean | null) => void;
@@ -207,7 +209,7 @@ export function MeetHome(p: HomeProps) {
           ))}
         </div>
 
-        {!p.unfiled && !q && filter === 'all' && coming.length > 0 && (
+        {!p.unfiled && !p.notesOnly && !q && filter === 'all' && coming.length > 0 && (
           <>
             <h2 className="mh-head">{t('Coming up')}</h2>
             <div className="mh-card">
@@ -276,12 +278,55 @@ export function MeetHome(p: HomeProps) {
 
 /** Everything coming up in the next 7 days (from "See all"): the same rows, by day. */
 export function MeetUpcomingScreen(p: HomeProps & { onBack: () => void; onSendNow: (e: CalEvent) => void }) {
+  return (
+    <PushScreen title={t('Coming up')} onBack={p.onBack} className="meet-upcoming">
+      <MeetComingList {...p} />
+    </PushScreen>
+  );
+}
+
+/**
+ * Meetings (Meet's first section, and Calendar's Meetings on phones): what's live and coming up in the next 7 days,
+ * by day, each with whether the notetaker joins.
+ */
+export function MeetComing(p: HomeProps) {
+  const live = p.meetings.filter((m) => LIVE.has(m.status ?? 'done'));
+  return (
+    <section className="meet-pane meet-home view-enter">
+      <div className="tracking-scroll meet-list">
+        {live.length > 0 && (
+          <>
+            <h2 className="mh-head">{t('Now')}</h2>
+            <div className="mh-card">
+              {live.map((m) => (
+                <div className="mh-row" key={m.id}>
+                  <button type="button" className="mh-main" onClick={() => p.onPage({ kind: 'meeting', id: m.id })}>
+                    <CallMark kind={m.platform ?? 'meet'} />
+                    <span className="mh-text">
+                      <strong>{m.title}</strong>
+                      <small>{t('The notetaker is in this meeting')}</small>
+                    </span>
+                    <span className="mh-status live">
+                      <i /> {t(STATUS_LABEL[m.status ?? 'done'])}
+                    </span>
+                  </button>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+        <MeetComingList {...p} />
+      </div>
+    </section>
+  );
+}
+
+function MeetComingList(p: HomeProps) {
   const j = useJoins(p);
   const now = Date.now();
   const soon = p.events.filter((e) => !e.allDay && new Date(e.end).getTime() > now && new Date(e.start).getTime() < now + 7 * 86_400_000).sort((a, b) => a.start.localeCompare(b.start));
   const days = [...new Set(soon.map((e) => new Date(e.start).toDateString()))];
   return (
-    <PushScreen title={t('Coming up')} onBack={p.onBack} className="meet-upcoming">
       <div className="mh-up">
         {days.map((d) => (
           <div key={d}>
@@ -297,6 +342,56 @@ export function MeetUpcomingScreen(p: HomeProps & { onBack: () => void; onSendNo
         ))}
         {!soon.length && <EmptyState compact text={t('No meetings in the next 7 days. Connect a calendar in Calendar, or send the bot to a meeting link.')} />}
       </div>
-    </PushScreen>
+  );
+}
+
+/** Meet's Folders on phones: tasks from meetings, the unfiled ones, then a folder per project. */
+export function MeetFolders({ clients, meetings, onPage, onSettings }: { clients: Client[]; meetings: Meeting[]; onPage: (p: MeetPage) => void; onSettings: () => void }) {
+  const unfiled = meetings.filter((m) => !m.clientId).length;
+  const row = (key: string, icon: ReactNode, label: string, sub: string | undefined, go: MeetPage) => (
+    <div className="mh-row" key={key}>
+      <button type="button" className="mh-main" onClick={() => onPage(go)}>
+        {icon}
+        <span className="mh-text">
+          <strong>{label}</strong>
+          {sub && <small>{sub}</small>}
+        </span>
+        <ChevronRight size={20} className="mh-chev" />
+      </button>
+    </div>
+  );
+  return (
+    <section className="meet-pane meet-home view-enter">
+      <div className="tracking-scroll meet-list">
+        <div className="mh-card mh-first">
+          {row('tasks', <span className="mh-ficon"><ListChecks size={20} /></span>, t('Tasks from meetings'), undefined, { kind: 'tasks' })}
+          {row('unfiled', <span className="mh-ficon"><Inbox size={20} /></span>, t('Unfiled'), unfiled ? tn(unfiled, '{n} to file', '{n} to file') : undefined, { kind: 'unfiled' })}
+        </div>
+        {clients.length > 0 && (
+          <>
+            <h2 className="mh-head">{term.Many}</h2>
+            <div className="mh-card">
+              {clients.map((c) => {
+                const n = meetings.filter((m) => m.clientId === c.id).length;
+                return row(c.id, <ProjectBadge p={c} kind="client-dot" />, c.name, n ? tn(n, '{n} meeting', '{n} meetings') : t('No meetings yet'), { kind: 'folder', clientId: c.id });
+              })}
+            </div>
+          </>
+        )}
+        <div className="mh-card mh-last">
+          <div className="mh-row">
+            <button type="button" className="mh-main" onClick={onSettings}>
+              <span className="mh-ficon">
+                <Settings size={20} />
+              </span>
+              <span className="mh-text">
+                <strong>{t('Meet settings')}</strong>
+              </span>
+              <ChevronRight size={20} className="mh-chev" />
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
   );
 }

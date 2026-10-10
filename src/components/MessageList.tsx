@@ -17,7 +17,7 @@ import { SnoozePicker } from './mail/MailPickers';
 import { useMailSwipes, type SwipeKind } from './mail/MailSettings';
 import { whenWords } from '../mailRules';
 import { TopBar } from '../mobile/TopBar';
-import { MailSearchPill, MailSelectBar } from './mail/MailTop';
+import { MailAvatar, MailSelectBar } from './mail/MailTop';
 import { MailSearch } from './mail/MailSearch';
 import { mark, t, tn } from '../i18n';
 // Search options and chips, the Important marker, Move to, mute (components/mail/Sorting.tsx, sorting.ts).
@@ -137,6 +137,13 @@ export const MessageList = forwardRef<HTMLInputElement, Props>(function MessageL
     flushSync(() => setSearching(true));
     document.querySelector<HTMLInputElement>('.mail-search .gm-input')?.focus(); // in the tap itself, so iPhone opens the keyboard
   };
+  // The Search tab in Mail's own bar (App's useAppSections) opens the same screen.
+  useEffect(() => {
+    if (!phone) return;
+    const on = () => openSearch();
+    addEventListener('s2g:mail-search', on);
+    return () => removeEventListener('s2g:mail-search', on);
+  }, [phone]); // eslint-disable-line react-hooks/exhaustive-deps
   const selMore = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     if (!selecting) return;
@@ -322,9 +329,11 @@ export const MessageList = forwardRef<HTMLInputElement, Props>(function MessageL
                 onMore={() => setMenuFor({ ids: [...sel], anchor: selMore, title: tn(sel.size, '{n} selected', '{n} selected'), menu: true })}
               />
             ) : (
-              <MailSearchPill key="pill" me={me} elsewhere={props.elsewhere} onMenu={props.onMenu} onSearch={openSearch} onAccounts={props.onAccounts} />
+              undefined
             )
           }
+          actions={!selecting && props.onAccounts ? <MailAvatar me={me} elsewhere={props.elsewhere} onAccounts={props.onAccounts} /> : undefined}
+          search={selecting ? undefined : false}
         />
       )}
       <header className="list-header">

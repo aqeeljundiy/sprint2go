@@ -48,6 +48,8 @@ export function MobileTop({
   onSettings,
   claim,
   large,
+  onLauncher,
+  launcherDot,
 }: {
   title: string;
   menu?: TitleMenu | null;
@@ -72,6 +74,8 @@ export function MobileTop({
   onSettings?: () => void; // last row of the panel
   claim?: TopBarClaim | null; // what the app on screen took over (<TopBar>)
   large?: { large: boolean; tucked: boolean }; // a large title in the page (<LargeTitle>)
+  onLauncher?: () => void; // phones with the launcher: the left button goes back to it (research/launcher/plan.md)
+  launcherDot?: boolean; // another app has something new since you left the launcher
 }) {
   const [wsOpen, setWsOpen] = useState(false);
   const [titleOpen, setTitleOpen] = useState(false);
@@ -100,6 +104,8 @@ export function MobileTop({
             <button className="mt-back" onClick={back} aria-label={t('Back')}>
               <ChevronLeft size={24} />
             </button>
+          ) : onLauncher ? (
+            <LauncherButton onClick={onLauncher} dot={launcherDot} />
           ) : (
             <button className="mt-ws" onClick={() => canSwitch && setWsOpen(true)} aria-haspopup="dialog" aria-label={elsewhere ? t('Workspace: {name}, new mail in another workspace', { name: current.name }) : t('Workspace: {name}', { name: current.name })}>
               <WorkspaceLogo ws={current} size={32} />
@@ -141,6 +147,17 @@ export function MobileTop({
         />
       )}
     </header>
+  );
+}
+
+/** The launcher button, top left in every app on phones (Gojek's fixed corner): back to your apps. A red dot when
+ * another app has something new since you left the launcher. */
+export function LauncherButton({ onClick, dot }: { onClick: () => void; dot?: boolean }) {
+  return (
+    <button type="button" className="icon-btn mt-launch" onClick={onClick} aria-label={dot ? t('Apps, something new') : t('Apps')} title={t('Apps')}>
+      <LayoutGrid size={24} />
+      {dot && <i className="mt-launch-dot" aria-hidden="true" />}
+    </button>
   );
 }
 

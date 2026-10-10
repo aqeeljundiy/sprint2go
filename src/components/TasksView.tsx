@@ -211,28 +211,6 @@ function BarTitle({ text }: { text: string }) {
   );
 }
 
-type SwitchId = 'today' | 'upcoming' | 'mine' | 'browse';
-/** Phones: Today, Upcoming, My tasks and Browse under the top bar, like Chat's Home, DMs and Activity. */
-function TasksSwitch({ on, onPick }: { on: SwitchId; onPick: (id: SwitchId) => void }) {
-  const items: [SwitchId, string][] = [
-    ['today', t('Today')],
-    ['upcoming', t('Upcoming')],
-    ['mine', t('My tasks')],
-    ['browse', t('Browse')],
-  ];
-  return (
-    <div className="tasks-switch-row">
-      <div className="segmented tasks-switch" role="tablist" aria-label={t('Tasks')}>
-        {items.map(([id, label]) => (
-          <button key={id} type="button" role="tab" aria-selected={on === id} className={on === id ? 'on' : ''} onClick={() => on !== id && onPick(id)}>
-            {label}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 export function TasksView(p: Props) {
   const [briefsOpen, setBriefsOpen] = usePersisted('s2g-briefs-open', true);
   const [views, setViews] = usePersisted<SavedTaskView[]>('s2g-task-views', []);
@@ -675,11 +653,10 @@ export function TasksView(p: Props) {
   const people = proj && (
     <ProjectPeople compact client={proj} users={p.users} me={p.me} canEdit={projManage} canInvite={projManage || !!p.canInviteGuests} onPatch={(x) => p.onPatchClient(proj.id, x)} onGuests={() => openPart('portal')} />
   );
-  // Today, Upcoming, My tasks and Browse have the switch and the bar's own "Tasks"; anything opened from Browse is a
-  // sub-screen: the back arrow and its name at 17/600.
-  const switchOn: SwitchId | null = phone && app === 'tasks' && p.onBrowse ? (showBrowse ? 'browse' : scope.kind === 'today' || scope.kind === 'upcoming' || scope.kind === 'mine' ? scope.kind : null) : null;
-  const tasksSwitch = switchOn && <TasksSwitch on={switchOn} onPick={(id) => (id === 'browse' ? p.onBrowse!(true) : go({ kind: id }))} />;
-  const sub = phone && !switchOn;
+  // Phones: Today, Upcoming, My tasks and Browse are the app's own bar (App's useAppSections) with the bar's own
+  // "Tasks"; anything opened from Browse is a sub-screen: the back arrow and its name at 17/600.
+  const root = phone && app === 'tasks' && !!p.onBrowse && (showBrowse || scope.kind === 'today' || scope.kind === 'upcoming' || scope.kind === 'mine');
+  const sub = phone && !root;
   const backToBrowse = sub && app === 'tasks' && p.onBrowse ? <TopBarBack onClick={() => p.onBrowse!(true)} /> : undefined;
   const partName = client && clientTab !== 'tasks' ? (clientTab === 'overview' ? client.name : (tabItems.find((x) => x.id === clientTab)?.name ?? client.name)) : '';
   const phoneBar: PhoneBar | undefined = phone ? { app, lead: backToBrowse, title: sub ? <BarTitle text={heading} /> : undefined, people: people || undefined, more: [...projectMenu, ...teamMenu], stages: client && projectManage ? () => setStagesOpen(true) : undefined } : undefined;
@@ -687,7 +664,7 @@ export function TasksView(p: Props) {
   if (showBrowse)
     return (
       <>
-        <TasksBrowse groups={browseGroups.filter((g) => g.id !== 'mine')} top={tasksSwitch} />
+        <TasksBrowse groups={browseGroups.filter((g) => g.id !== 'mine')} />
         {browseAdd && <QuickAdd ops={ops} defaults={{}} mode="sheet" where={t('My tasks')} inputRef={browseField} onClose={() => setBrowseAdd(false)} />}
       </>
     );
@@ -839,7 +816,6 @@ export function TasksView(p: Props) {
       )}
 
       <div className="tracking-scroll" key={`${JSON.stringify(scope)}:${clientTab}`}>
-        {tasksSwitch}
         {team && !phone && (
           <div className="workload">
             {workload.map((w) => (

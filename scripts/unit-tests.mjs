@@ -2227,6 +2227,33 @@ await test('Email layout: every system email renders through the shared layout, 
     assert.equal(startPath('/', { path: '/', at: now - 1000 }, now), '/');
     assert.equal(startPath('/', null, now), '/');
   });
+  const { DEFAULT_APPS, normalize, companyApps, migrateBar, launcherApps } = await import('../src/mobile/launcherApps.ts');
+  await test('Launcher apps: one order (Mail first, Settings last); the company’s, a team’s, your own, hidden apps', () => {
+    assert.equal(DEFAULT_APPS[0], 'mail');
+    assert.equal(DEFAULT_APPS.at(-1), 'settings');
+    assert.deepEqual(normalize({ order: ['tasks', 'tasks', 'home', 'nope'], hidden: ['settings', 'vault'] }).order.slice(0, 2), ['tasks', 'mail']);
+    assert.deepEqual(normalize({ hidden: ['settings', 'vault'] }).hidden, ['vault']); // Settings can't be hidden
+    const ws = { tabDefaults: { bar: { order: ['chat', 'mail'], hidden: ['vault'] }, 'bar:tm-1': { order: ['calendar'], hidden: [] } } };
+    assert.equal(companyApps(ws, ['tm-1']).order[0], 'calendar');
+    assert.equal(companyApps(ws, ['tm-2']).order[0], 'chat');
+    assert.equal(companyApps({}, []), null);
+    // An old four-app bar (with Home) becomes its apps first.
+    assert.deepEqual(companyApps({ tabDefaults: { bar: { order: ['home', 'calendar', 'chat', 'mail'], hidden: [] } } }, []).order.slice(0, 3), ['calendar', 'chat', 'mail']);
+    const all = () => true;
+    const r = launcherApps(null, normalize(ws.tabDefaults.bar), all);
+    assert.deepEqual(r.shown.slice(0, 2), ['chat', 'mail']);
+    assert.deepEqual(r.hidden, ['vault']);
+    // Your own wins over the company's; switched-off apps aren't there; Settings always is.
+    const mine = launcherApps({ order: ['notes'], hidden: [] }, normalize(ws.tabDefaults.bar), (id) => id !== 'drive');
+    assert.equal(mine.shown[0], 'notes');
+    assert.ok(!mine.shown.includes('drive'));
+    assert.ok(launcherApps(null, null, () => false).shown.includes('settings'));
+  });
+  await test('Launcher apps: a saved phone bar moves over (the old four first, then More’s order)', () => {
+    assert.equal(migrateBar(['home', 'mail', 'chat', 'tasks'], false), null);
+    assert.deepEqual(migrateBar(['home', 'calendar', 'chat', 'tasks'], true).order.slice(0, 4), ['calendar', 'chat', 'tasks', 'projects']);
+    assert.equal(migrateBar(null, false), null);
+  });
 }
 
 db.db.close();

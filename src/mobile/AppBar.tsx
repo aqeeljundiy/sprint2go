@@ -1,53 +1,49 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
-import { MoreHorizontal, type LucideIcon } from 'lucide-react';
 import { useLongPress } from '../components/ui/useLongPress';
 import { ActionSheet } from '../components/ui/ActionSheet';
-import type { CreateAction } from './chrome';
-import { t, tn } from '../i18n';
-
-export interface BarApp {
-  id: string;
-  name: string;
-  icon: LucideIcon;
-  badge?: number;
-  dot?: boolean; // something new without a number (Home: new in Needs you since you last looked)
-}
+import type { AppSections, CreateAction } from './chrome';
+import { tn } from '../i18n';
 
 const count = (n: number) => (n > 99 ? '99+' : String(n));
 
 /**
- * The phone's bottom bar (Teams' plain full-width bar with Gmail's selected pill): four apps and More, always
- * labelled, a pill behind the selected icon that slides between tabs. Long-press the bar to edit it. The bar steps
- * aside on focused screens and while the keyboard is open (the `.bar-away` class on <html>, set by App). The app's
- * create button floats above it (<CreateFab>).
+ * An app's own bottom bar on phones (research/launcher/plan.md, section 3; Gmail's and Zoho's in-app bar): the app's
+ * two to four sections, always labelled, a pill behind the selected icon that slides between them, a red count where
+ * something is for you. Other apps are on the launcher, not here. The bar steps aside on focused screens and while the
+ * keyboard is open (the `.bar-away` class on <html>, set by App). The app's create button floats above it (<CreateFab>).
+ * Tapping the selected section again scrolls to the top, then goes back to the section's root.
  */
-export function BottomBar({ apps, current, moreOn, onApp, onMore, onEdit }: { apps: BarApp[]; current: string; moreOn: boolean; onApp: (id: string) => void; onMore: () => void; onEdit: () => void }) {
-  const edit = useLongPress(() => onEdit());
-  const at = moreOn ? apps.length : apps.findIndex((a) => a.id === current);
+export function AppBar({ bar, label }: { bar: AppSections; label: string }) {
+  const { sections, current } = bar;
+  const at = sections.findIndex((s) => s.id === current);
   return (
-    <nav className="tabbar" aria-label={t('Apps')}>
-      <div className="tabbar-tabs lp" {...edit} style={{ '--tabs': apps.length + 1, '--at': at } as CSSProperties}>
+    <nav className="tabbar app-bar" aria-label={label}>
+      <div className="tabbar-tabs" style={{ '--tabs': sections.length, '--at': at } as CSSProperties}>
         <span className={`tabbar-ink${at < 0 ? ' off' : ''}`} aria-hidden="true">
           <i />
         </span>
-        {apps.map(({ id, name, icon: AppIcon, badge, dot }) => (
-          <button key={id} type="button" className={current === id && !moreOn ? 'on' : ''} aria-current={current === id && !moreOn ? 'page' : undefined} onClick={() => onApp(id)}>
-            <span className="tab-icon">
-              <AppIcon size={24} strokeWidth={current === id && !moreOn ? 2.25 : 1.75} />
-              {badge ? <i aria-label={tn(badge, '{n} new', '{n} new')}>{count(badge)}</i> : dot ? <i className="dot" aria-label={t('New')} /> : null}
-            </span>
-            <span className="tab-label">{name}</span>
-          </button>
-        ))}
-        <button type="button" className={moreOn ? 'on' : ''} onClick={onMore} aria-haspopup="dialog" aria-expanded={moreOn}>
-          <span className="tab-icon">
-            <MoreHorizontal size={24} strokeWidth={moreOn ? 2.25 : 1.75} />
-          </span>
-          <span className="tab-label">{t('More')}</span>
-        </button>
+        {sections.map(({ id, label: name, icon: Icon, badge, run }) => {
+          const on = current === id;
+          return (
+            <button key={id} type="button" className={on ? 'on' : ''} aria-current={on ? 'page' : undefined} onClick={() => (run ? run() : on ? reselect(bar, id) : bar.onChange(id))}>
+              <span className="tab-icon">
+                <Icon size={24} strokeWidth={on ? 2.25 : 1.75} />
+                {badge ? <i aria-label={tn(badge, '{n} new', '{n} new')}>{count(badge)}</i> : null}
+              </span>
+              <span className="tab-label">{name}</span>
+            </button>
+          );
+        })}
       </div>
     </nav>
   );
+}
+
+/** The selected section tapped again: to the top of its list first; already there, back to the section's root. */
+function reselect(bar: AppSections, id: string) {
+  const list = [...document.querySelectorAll<HTMLElement>('.main *')].find((el) => el.scrollTop > 0 && el.scrollHeight > el.clientHeight && getComputedStyle(el).overflowY !== 'visible');
+  if (list) return list.scrollTo({ top: 0, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+  bar.onReselect?.(id);
 }
 
 /**

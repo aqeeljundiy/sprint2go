@@ -294,7 +294,7 @@ export interface DriveItem {
 }
 
 /** Which part of Drive is showing. */
-export type DriveSection = 'my' | 'recent' | 'media' | 'email' | 'starred' | 'trash';
+export type DriveSection = 'my' | 'recent' | 'media' | 'email' | 'starred' | 'shared' | 'trash';
 
 export interface Account {
   id: string;

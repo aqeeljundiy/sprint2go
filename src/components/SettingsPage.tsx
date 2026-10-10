@@ -130,7 +130,7 @@ interface Props {
   me: string; // current user id
   onPhoto?: (photo: string | undefined) => void;
   onPreviewOnboarding?: () => void;
-  myApps?: { hidden: AppId[]; asked: AppId[]; onHidden: (l: AppId[]) => void; onAsk: (id: AppId) => void };
+  myApps?: { hidden: AppId[]; asked: AppId[]; onHidden: (l: AppId[]) => void; onAsk: (id: AppId) => void; onEdit?: () => void }; // onEdit: phones, Edit apps (the launcher's order)
   myRole: Role;
   onInvite: () => void;
   onRole: (userId: string, role: Role) => void;
@@ -915,6 +915,11 @@ export function SettingsPage({ email, settings: s, update, section, onSection, u
           {section === 'stages' && <TaskStagesSection ws={ws} canManage={canManage} tasks={admin.tasks} teams={admin.teams} me={me} onWorkspace={onWorkspace} onMoveTasks={admin.onMoveTasks} />}
           {section === 'apps' && <AppsSection ws={ws} canManage={canManage} onWorkspace={onWorkspace} projects={admin.projects} />}
           {section === 'apps' && <BarDefaults ws={ws} teams={admin.teams} canManage={canManage} onWorkspace={onWorkspace} />}
+          {section === 'myapps' && myApps?.onEdit && (
+            <Group footer={t('The order of the apps on your launcher, and the ones you hide.')}>
+              <GRow label={t('Edit apps')} chevron onClick={myApps.onEdit} />
+            </Group>
+          )}
           {section === 'myapps' && myApps && demo && demo.state !== 'on' && <DemoCompanyBlock d={demo} />}
           {section === 'myapps' && myApps && (
             <MyAppsSection

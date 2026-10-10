@@ -49,7 +49,7 @@ import { Avatar } from './Avatar';
 import { Select } from './ui/Select';
 import { Popover } from './ui/Popover';
 
-export type MeetPage = { kind: 'list' } | { kind: 'unfiled' } | { kind: 'upcoming' } | { kind: 'tasks' } | { kind: 'folder'; clientId: string } | { kind: 'meeting'; id: string };
+export type MeetPage = { kind: 'list' } | { kind: 'folders' } | { kind: 'unfiled' } | { kind: 'upcoming' } | { kind: 'tasks' } | { kind: 'folder'; clientId: string } | { kind: 'meeting'; id: string };
 
 /** A meeting's status. Show it with t(). */
 export const STATUS_LABEL: Record<NonNullable<Meeting['status']>, string> = {
@@ -211,41 +211,51 @@ import { useCreateAction, useFocusedScreen } from '../mobile/chrome';
 import { useActionMenu } from './ui/ActionSheet';
 import { usePhone } from '../mobile/media';
 import { TopBar, TopBarBack, TopBarButton } from '../mobile/TopBar';
-import { useEdgeSwipe } from './ui/SideDrawer';
-import { CallMark, callOf, MeetDrawer, MeetHome, MeetSettingsScreen, MeetUpcomingScreen } from './MeetPhone';
+import { CallMark, callOf, MeetComing, MeetFolders, MeetHome, MeetSettingsScreen, MeetUpcomingScreen } from './MeetPhone';
 import { Sheet } from './ui/Sheet';
 
-export function MeetView(p: MeetProps) {
+export function MeetView(p: MeetProps & { part?: 'meetings' | 'notes'; embedded?: boolean }) {
   const pg = p.page;
   const phone = usePhone();
-  // Phones: Google Meet's "Take notes" (send the notetaker to a call), and Calendar's drawer for Meet's pages.
-  useCreateAction('meet', p.canSendBot !== false && (phone ? { label: t('Take notes'), icon: Mic, run: p.onSend } : { label: t('Send the notetaker'), icon: Bot, run: p.onSend }));
-  const [drawer, setDrawer] = useState(false);
+  // Phones: Google Meet's "Take notes" (send the notetaker to a call). Embedded (Calendar's Meetings) leaves Calendar's own.
+  useCreateAction(p.embedded ? 'calendar' : 'meet', !p.embedded && p.canSendBot !== false && (phone ? { label: t('Take notes'), icon: Mic, run: p.onSend } : { label: t('Send the notetaker'), icon: Bot, run: p.onSend }));
+  // Calendar's Meetings section: the same list as Meet's Meetings.
+  if (p.embedded) return <MeetComing {...p} />;
+  // Phones: Meetings, Notes and Folders are the app's own bar (App's useAppSections); a folder is a sub-screen.
+  const sub = phone && (pg.kind === 'folder' || pg.kind === 'unfiled' || pg.kind === 'tasks');
   const [settingsOpen, setSettingsOpen] = useState(false);
-  useEdgeSwipe(() => setDrawer(true), phone && pg.kind !== 'meeting');
-  const phoneChrome = phone && (
-    <>
-      {pg.kind !== 'meeting' && (
-        <TopBar
-          app="meet"
-          lead={<TopBarButton icon={Menu} label={t('Menu')} onClick={() => setDrawer(true)} />}
-          title={
-            <h1 className="mt-title plain">
-              <span className="mt-title-text">{t('Meet')}</span>
-            </h1>
-          }
-        />
-      )}
-      {drawer && <MeetDrawer page={pg} clients={p.clients} meetings={p.meetings} company={p.company} onPage={p.onPage} onClose={() => setDrawer(false)} onSettings={() => setSettingsOpen(true)} />}
-      {settingsOpen && <MeetSettingsScreen settings={p.settings} rows={p.appSettings ?? []} myRole={p.myRole} autoJoin={p.autoJoin} onJoinMode={p.onJoinMode} onBack={() => setSettingsOpen(false)} />}
-    </>
+  const phoneChrome = phone && pg.kind !== 'meeting' && (
+    <TopBar
+      app="meet"
+      lead={sub ? <TopBarBack onClick={() => p.onPage({ kind: 'folders' })} /> : undefined}
+      title={
+        <h1 className={`mt-title plain${sub ? ' small' : ''}`}>
+          <span className="mt-title-text">{pg.kind === 'folder' ? (p.clients.find((c) => c.id === pg.clientId)?.name ?? t('Folder')) : pg.kind === 'unfiled' ? t('Unfiled') : pg.kind === 'tasks' ? t('Tasks from meetings') : t('Meet')}</span>
+        </h1>
+      }
+    />
   );
-  if (phone && (pg.kind === 'list' || pg.kind === 'unfiled' || pg.kind === 'upcoming'))
+  if (phone && (pg.kind === 'list' || pg.kind === 'upcoming'))
     return (
       <>
         {phoneChrome}
-        <MeetHome {...p} unfiled={pg.kind === 'unfiled'} />
+        {p.part === 'notes' ? <MeetHome {...p} notesOnly /> : <MeetComing {...p} />}
         {pg.kind === 'upcoming' && <MeetUpcomingScreen {...p} onBack={() => p.onPage({ kind: 'list' })} />}
+      </>
+    );
+  if (phone && pg.kind === 'folders')
+    return (
+      <>
+        {phoneChrome}
+        <MeetFolders clients={p.clients} meetings={p.meetings} onPage={p.onPage} onSettings={() => setSettingsOpen(true)} />
+        {settingsOpen && <MeetSettingsScreen settings={p.settings} rows={p.appSettings ?? []} myRole={p.myRole} autoJoin={p.autoJoin} onJoinMode={p.onJoinMode} onBack={() => setSettingsOpen(false)} />}
+      </>
+    );
+  if (phone && pg.kind === 'unfiled')
+    return (
+      <>
+        {phoneChrome}
+        <MeetHome {...p} unfiled />
       </>
     );
   if (phone && pg.kind !== 'meeting')

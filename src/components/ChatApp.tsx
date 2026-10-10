@@ -20,6 +20,7 @@ import { ChatActivity } from './chat/Activity';
 import { useLongPress } from './ui/useLongPress';
 import { SquarePen } from 'lucide-react';
 import { useAppSettings, useCreateAction, useTitleMenu } from '../mobile/chrome';
+import { TopBar } from '../mobile/TopBar';
 import { routeBase } from '../tryOut';
 import { toast } from '../toast';
 import { dmOther, followedThreads, isMutedValue, readFallback, shortTime, STATUS_PRESETS, statusText, TILE_NAMES, useChatState, whenText, type ChatState, type TileId } from './chat/chatPrefs';
@@ -129,6 +130,8 @@ interface SidebarProps {
   dmIdFor?: (userId: string) => string;
   /** Follow or unfollow a thread (Activity). */
   onFollow?: (rootId: string, on: boolean) => void;
+  /** Phones: Home, DMs or Activity, picked in the app's own bottom bar (App's useAppSections). */
+  part?: ChatPart;
 }
 
 export function ChatSidebar(p: SidebarProps) {
@@ -156,7 +159,9 @@ export function ChatSidebar(p: SidebarProps) {
   const [statusOpen, setStatusOpen] = useState(false);
   const statusBtn = useRef<HTMLButtonElement>(null);
   // Phones: Slack's three places (Home, DMs, Activity) as a switch under the top bar; the suite keeps the one bottom bar.
-  const [part, setPart] = useState<ChatPart>('home');
+  const [ownPart, setPart] = useState<ChatPart>('home');
+  const part = p.part ?? ownPart;
+  const inBar = p.part !== undefined; // the parts are in the app's bottom bar: no switch up here
   const [dmFilter, setDmFilter] = useState<'all' | 'unread' | 'guests'>('all');
   const [filterOpen, setFilterOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
@@ -384,6 +389,12 @@ export function ChatSidebar(p: SidebarProps) {
   const homeUnread = rooms.some((c) => info[c.id]?.unread && !info[c.id].muted) || topDms.length > 0;
   const dmUnread = dms.some((c) => info[c.id]?.unread && !info[c.id].muted);
   const activityUnread = (p.notices ?? []).some((n) => !n.read);
+  // Filter (DMs) or Mark all as read (Activity): next to the switch, or in the top bar when the parts are in the bar.
+  const filterBtn = (
+    <button type="button" className="icon-btn chat-filter-btn" onClick={() => (part === 'activity' ? (p.onReadNotices?.((p.notices ?? []).filter((n) => !n.read).map((n) => n.id), true), toast({ text: t('All marked as read') })) : setFilterOpen(true))} aria-label={part === 'activity' ? t('Mark all as read') : t('Filter')} title={part === 'activity' ? t('Mark all as read') : t('Filter')} disabled={part === 'activity' && !activityUnread}>
+      {part === 'activity' ? <CheckCheck size={20} /> : <ListFilter size={20} />}
+    </button>
+  );
   const dmsShown = [...dms].filter((c) => (dmFilter === 'unread' ? info[c.id]?.unread : dmFilter === 'guests' ? !!c.guests?.length : true)).sort((a, b) => recency(b).localeCompare(recency(a)));
   const banner = phone ? live.find((c) => !c.huddle!.members.includes(p.me) && !hiddenBanners.includes(c.id + c.huddle!.at)) : undefined;
   const menuChannel = p.channels.find((c) => c.id === rowMenu?.id);
@@ -444,7 +455,8 @@ export function ChatSidebar(p: SidebarProps) {
         </>
       )}
 
-      {phone && (
+      {phone && inBar && <TopBar app="chat" actions={filterBtn} />}
+      {phone && !inBar && (
         <div className="chat-switch-row" ref={switchRow}>
           <div className="segmented chat-switch" role="tablist" aria-label={t('Chat')}>
             {(
@@ -468,9 +480,7 @@ export function ChatSidebar(p: SidebarProps) {
               </button>
             ))}
           </div>
-          <button type="button" className="icon-btn chat-filter-btn" onClick={() => (part === 'activity' ? (p.onReadNotices?.((p.notices ?? []).filter((n) => !n.read).map((n) => n.id), true), toast({ text: t('All marked as read') })) : setFilterOpen(true))} aria-label={part === 'activity' ? t('Mark all as read') : t('Filter')} title={part === 'activity' ? t('Mark all as read') : t('Filter')} disabled={part === 'activity' && !activityUnread}>
-            {part === 'activity' ? <CheckCheck size={20} /> : <ListFilter size={20} />}
-          </button>
+          {filterBtn}
         </div>
       )}
       {phone ? (
