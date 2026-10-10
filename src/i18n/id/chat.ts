@@ -714,6 +714,10 @@ const id: Record<string, string> = {
   'Make the message box smaller': 'Perkecil kotak pesan',
   'Schedule for later': 'Jadwalkan untuk nanti',
   'Schedule message': 'Jadwalkan pesan',
+  'Nothing here says “{q}”': 'Tidak ada pesan berisi “{q}”',
+  'Search in {name}': 'Cari di {name}',
+  'Search messages': 'Cari pesan',
+  'Words from a message, a name or a link': 'Kata dari pesan, nama, atau link',
   // (end of chat)
 };
 

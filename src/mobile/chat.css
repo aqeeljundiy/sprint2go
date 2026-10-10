@@ -794,6 +794,10 @@
   .chat-foot .sched-line {
     margin: 0 0 6px;
   }
+  .react-row button {
+    font-size: 24px;
+    background: var(--hover);
+  }
   .chat-foot .chat-locked {
     margin: 0;
   }
@@ -1180,62 +1184,84 @@
     display: grid;
     justify-items: center;
     gap: 4px;
-    padding: 24px 16px 12px;
+    padding: 24px 16px 8px;
     text-align: center;
   }
+  .cd-hero .avatar {
+    border-radius: 16px;
+    margin-bottom: 6px;
+  }
   .cd-hero strong {
-    font-size: 19px;
+    font-size: 20px;
+    font-weight: 700;
   }
-  .cd-hero .muted {
+  .cd-topic {
     font-size: 14px;
+    color: var(--text-3);
   }
-  .cd-icon {
-    display: grid;
-    place-items: center;
-    width: 56px;
-    height: 56px;
-    border-radius: 18px;
-    background: var(--surface-2);
-    color: var(--text-2);
-  }
+  /* Slack's details actions: an icon over a word, no boxes. */
   .cdt-actions {
     display: flex;
     justify-content: center;
-    gap: 10px;
-    padding: 8px 16px 12px;
+    gap: 4px;
+    padding: 8px 16px 16px;
   }
   .cdt-actions button {
     display: grid;
     justify-items: center;
     align-content: center;
-    gap: 4px;
-    min-width: 88px;
+    gap: 6px;
+    width: 72px;
     min-height: 64px;
-    padding: 8px;
-    border-radius: 16px;
-    background: var(--surface-2);
+    border-radius: 12px;
     color: var(--text);
     font-size: 12.5px;
     font-weight: 500;
-    transition: background 0.15s;
+    transition:
+      background 0.15s,
+      color 0.15s;
+  }
+  .cdt-actions button:active {
+    background: var(--hover);
   }
   .cdt-actions button.on {
-    background: var(--accent-soft);
     color: var(--accent-text, var(--accent));
   }
-  .cd-mute {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: center;
-    gap: 8px;
-    padding: 0 16px 14px;
+  /* Search in this conversation. */
+  .cf-field {
+    margin: 12px 16px 4px;
   }
-  .cd-mute .chip {
-    min-height: 40px;
-    padding: 0 14px;
+  .cf-list {
+    display: grid;
+  }
+  .cf-row {
+    display: grid;
+    gap: 2px;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border);
+    text-align: left;
+    transition: background 0.15s;
+  }
+  .cf-row:active {
+    background: var(--hover);
+  }
+  .cf-meta {
+    font-size: 12.5px;
+    color: var(--text-3);
+  }
+  .cf-text {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    font-size: 15px;
+    line-height: 21px;
+  }
+  .cf-text b {
+    font-weight: 700;
   }
   .cd-rows {
-    border-top: 1px solid var(--line, var(--border));
+    border-top: 1px solid var(--border);
   }
   .cd-row {
     display: flex;
@@ -1478,12 +1504,6 @@
   }
   .draft-pill {
     font-size: 12px;
-  }
-}
-
-@media (max-width: 359px) {
-  .cdt-actions button {
-    min-width: 76px;
   }
 }
 
