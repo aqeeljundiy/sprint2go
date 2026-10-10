@@ -20,16 +20,72 @@
     min-height: 0;
   }
 
-  /* ---------- The list ---------- */
+  /* ---------- The list: Slack's Home, DMs and Activity under one switch ---------- */
 
   .chat-list {
     padding: 0 0 calc(24px + var(--fab-space));
   }
+  /* The switch: Slack's three tabs as one segmented control right under the top bar (the suite keeps the one bar). */
+  .chat-switch-row {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 8px 4px 8px 16px;
+    background: var(--surface);
+  }
+  .chat-switch.segmented {
+    flex: 1;
+    display: flex;
+    min-width: 0;
+    height: 36px;
+  }
+  .chat-switch.segmented > button {
+    flex: 1;
+    min-width: 0;
+    height: 32px;
+    gap: 6px;
+    font-size: 14px;
+  }
+  .cs-dot {
+    flex: none;
+    width: 8px;
+    height: 8px;
+    margin-right: -14px; /* the dot doesn't push the label off centre */
+    border-radius: 50%;
+    background: var(--accent);
+    opacity: 0;
+    transform: scale(0.4);
+    transition:
+      opacity 0.2s,
+      transform 0.2s;
+  }
+  .cs-dot.on {
+    opacity: 1;
+    transform: none;
+  }
+  .chat-switch > button.on .cs-dot {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+  .chat-filter-btn {
+    flex: none;
+    width: var(--tap);
+    height: var(--tap);
+    color: var(--text-2);
+  }
+  .chat-filter-btn:disabled {
+    opacity: 0.4;
+  }
+
+  /* Tiles (Slack's Catch up, Threads, Huddles): white with a hairline, the hot one says so in its icon and weight. */
   .chat-tiles {
     display: flex;
     gap: 8px;
     overflow-x: auto;
-    padding: 12px 16px 6px;
+    padding: 4px 16px 12px;
     scroll-snap-type: x proximity;
     scroll-padding: 0 16px;
     scrollbar-width: none;
@@ -42,14 +98,14 @@
     flex: none;
     display: grid;
     align-content: start;
-    gap: 2px;
-    min-width: 112px;
-    max-width: 176px;
-    min-height: 84px;
+    gap: 1px;
+    min-width: 104px;
+    max-width: 168px;
+    min-height: 88px;
     padding: 10px 12px;
-    border-radius: 16px;
-    background: var(--surface-2);
-    border: 1px solid var(--line, var(--border));
+    border-radius: 12px;
+    background: var(--surface);
+    border: 1px solid var(--border);
     text-align: left;
     scroll-snap-align: start;
     transition:
@@ -63,74 +119,289 @@
   }
   .ct-icon {
     color: var(--text-2);
-    margin-bottom: 4px;
+    margin-bottom: 6px;
   }
   .ct-label {
-    font-size: 14px;
-    font-weight: 650;
+    font-size: 15px;
+    font-weight: 600;
     color: var(--text);
     white-space: nowrap;
   }
   .ct-line {
-    font-size: 12.5px;
+    font-size: 13px;
     color: var(--text-3);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  .chat-tile.hot .ct-icon,
-  .chat-tile.hot .ct-line {
+  .chat-tile.hot .ct-icon {
     color: var(--accent-text, var(--accent));
-    font-weight: 600;
   }
-  .chat-tile.tile-live {
-    background: var(--ok-soft, rgba(15, 157, 107, 0.12));
+  .chat-tile.hot .ct-line {
+    color: var(--text-2);
+    font-weight: 600;
   }
   .chat-tile.tile-live .ct-icon,
   .chat-tile.tile-live .ct-line {
     color: var(--ok, #0f9d6b);
   }
 
+  /* "Tap to join the huddle": a huddle you're not in, in a conversation of yours. */
+  .huddle-banner {
+    display: flex;
+    align-items: center;
+    min-height: 56px;
+    margin: 0 16px 12px;
+    padding: 0 4px 0 0;
+    border-radius: 12px;
+    background: var(--ok-soft, rgba(15, 157, 107, 0.12));
+    animation: fade-in 0.2s ease-out backwards;
+  }
+  .hbn-main {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-height: 56px;
+    padding: 0 0 0 16px;
+    text-align: left;
+  }
+  .hbn-icon {
+    flex: none;
+    color: var(--ok, #0f9d6b);
+  }
+  .hbn-text {
+    display: grid;
+    min-width: 0;
+    line-height: 1.3;
+  }
+  .hbn-text strong,
+  .hbn-text small {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .hbn-text strong {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--ok, #0f9d6b);
+  }
+  .hbn-text small {
+    font-size: 13px;
+    color: var(--text-2);
+  }
+  .hbn-x {
+    flex: none;
+    width: var(--tap);
+    height: var(--tap);
+    color: var(--text-2);
+  }
+
+  /* Sections: a hairline between them, a small icon tile, the name in sentence case, the fold chevron at the right. */
   .chat-list .chat-section {
     margin: 0;
+    padding: 4px 0;
+    border-top: 1px solid var(--border);
   }
   .chat-list .sec-head-row {
-    padding: 0 8px;
+    padding: 0;
   }
   .chat-list .nav-heading.sec-head {
-    min-height: 40px;
-    padding: 14px 8px 6px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    min-height: 44px;
+    padding: 0 12px 0 16px;
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: 0;
+    text-transform: none;
+    color: var(--text-2);
+    opacity: 1;
+    transition: background 0.15s;
+  }
+  .chat-list .nav-heading.sec-head:active {
+    background: var(--hover);
+  }
+  .sec-ico {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 24px;
+    height: 24px;
+    border-radius: 6px;
+    background: var(--hover);
+    color: var(--text-2);
+  }
+  .sec-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .chat-list .sec-count.unread {
+    display: inline-grid;
+    place-items: center;
+    min-width: 22px;
+    height: 18px;
+    padding: 0 6px;
+    border-radius: 9px;
+    background: var(--accent);
+    color: #fff;
+    font-size: 12px;
+  }
+  .sec-fold {
+    flex: none;
+    margin-left: auto;
+    color: var(--text-3);
   }
   .chat-list .nav {
     gap: 0;
   }
+
+  /* Home rows: one line, 44 px (Slack 46 pt). Unread is weight, not colour; mentions and DMs get a count pill. */
   .cl-row {
     display: flex;
     align-items: center;
     gap: 12px;
     width: 100%;
-    min-height: 64px;
-    padding: 8px 16px;
+    min-height: 44px;
+    padding: 0 16px;
     text-align: left;
-    color: var(--text);
+    color: var(--text-2);
     transition: background 0.15s;
   }
   .cl-row:active,
   .cl-row.active {
     background: var(--hover);
   }
-  .cl-icon {
+  .cl-glyph {
     display: grid;
     place-items: center;
     flex: none;
-    width: 40px;
-    height: 40px;
-    border-radius: 12px;
-    background: var(--surface-2);
+    width: 20px;
+    height: 20px;
     color: var(--text-2);
   }
-  .cl-icon.is-dm {
-    background: none;
+  .cl-glyph .avatar {
+    border-radius: 5px;
+    font-size: 9px !important;
+  }
+  .cl-glyph .presence {
+    width: 8px;
+    height: 8px;
+    right: -3px;
+    bottom: -3px;
+  }
+  .cl-name {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    overflow: hidden;
+    white-space: nowrap;
+    font-size: 16px;
+    font-weight: 400;
+  }
+  .cl-name > :first-child {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .cl-row.unread {
+    color: var(--text);
+  }
+  .cl-row.unread .cl-name {
+    font-weight: 700;
+  }
+  .cl-row.unread .cl-glyph {
+    color: var(--text);
+  }
+  .cl-row.muted,
+  .cl-row.muted .cl-glyph {
+    color: var(--text-3);
+  }
+  .cl-draft-icon {
+    flex: none;
+    color: var(--text-2);
+  }
+  .cl-star,
+  .cl-muted {
+    flex: none;
+    color: var(--text-3);
+  }
+  .cl-row .count {
+    flex: none;
+    display: inline-grid;
+    place-items: center;
+    min-width: 22px;
+    height: 18px;
+    padding: 0 6px;
+    border-radius: 9px;
+    background: var(--accent);
+    color: #fff;
+    font-size: 12px;
+    font-weight: 700;
+  }
+  /* A huddle on now: the headphones pill and who's in it. */
+  .cl-huddle {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+  }
+  .clh-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    height: 20px;
+    padding: 0 7px;
+    border-radius: 10px;
+    background: var(--ok-soft, rgba(15, 157, 107, 0.12));
+    color: var(--ok, #0f9d6b);
+    font-size: 12px;
+    font-weight: 700;
+  }
+  .clh-avs {
+    display: flex;
+  }
+  .clh-avs .avatar {
+    border-radius: 5px;
+    box-shadow: 0 0 0 1.5px var(--surface);
+  }
+  .clh-avs .avatar + .avatar {
+    margin-left: -6px;
+  }
+  .cl-add {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    min-height: var(--tap);
+    padding: 0 16px;
+    border-top: 1px solid var(--border);
+    color: var(--text-2);
+    font-size: 16px;
+    transition: background 0.15s;
+  }
+  .cl-add:active {
+    background: var(--hover);
+  }
+
+  /* DMs: Slack's two-line rows, newest first. */
+  .dm-list {
+    display: grid;
+    padding-bottom: 8px;
+  }
+  .cl-row.dm-row {
+    align-items: flex-start;
+    min-height: 72px;
+    padding: 10px 16px;
+  }
+  .dm-row-av .avatar {
+    border-radius: 10px;
   }
   .cl-main {
     flex: 1;
@@ -145,104 +416,259 @@
     gap: 8px;
     min-width: 0;
   }
-  .cl-name {
-    flex: 1;
-    min-width: 0;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    overflow: hidden;
-    white-space: nowrap;
-    font-size: 15.5px;
-    font-weight: 500;
+  .cl-bottom {
+    align-items: flex-start;
   }
-  .cl-name > :first-child {
-    overflow: hidden;
-    text-overflow: ellipsis;
+  .dm-row .cl-name {
+    font-weight: 600;
+    color: var(--text);
   }
-  .cl-row.unread .cl-name {
-    font-weight: 700;
-  }
-  .cl-top time {
+  .dm-row .cl-top time {
     flex: none;
-    font-size: 12px;
+    font-size: 12.5px;
     color: var(--text-3);
   }
-  .cl-row.unread .cl-top time {
-    color: var(--accent-text, var(--accent));
+  .dm-row.unread .cl-top time {
+    color: var(--text-2);
     font-weight: 600;
   }
   .cl-preview {
     flex: 1;
     min-width: 0;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
     overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    font-size: 13.5px;
+    font-size: 14px;
+    line-height: 19px;
     color: var(--text-3);
   }
-  .cl-row.unread .cl-preview {
+  .dm-row.unread .cl-preview {
     color: var(--text-2);
   }
-  .cl-draft,
-  .cl-draft-icon {
-    color: var(--accent-text, var(--accent));
+  .cl-draft {
     font-style: normal;
     font-weight: 600;
+    color: var(--text-2);
   }
-  .cl-draft-icon {
+  .cl-preview .cl-draft-icon {
     vertical-align: -1px;
     margin-right: 3px;
   }
-  .cl-star {
-    flex: none;
-    color: var(--text-3);
+  .dm-empty {
+    margin-top: 48px;
   }
-  .cl-live {
-    flex: none;
-    color: var(--ok, #0f9d6b);
+
+  /* Activity: what happened, where and when on top; who said what under it. Swipe left to clear. */
+  .act-chips {
+    display: flex;
+    gap: 8px;
+    padding: 0 16px 8px;
+    overflow-x: auto;
+    scrollbar-width: none;
   }
-  .cl-muted {
-    flex: none;
-    color: var(--text-3);
+  .act-chips::-webkit-scrollbar {
+    display: none;
   }
-  .cl-row.muted .cl-name {
+  .act-chip {
+    flex: none;
+    height: 32px;
+    padding: 0 14px;
+    border-radius: 16px;
+    border: 1px solid var(--border);
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-2);
+    transition:
+      background 0.15s,
+      color 0.15s,
+      border-color 0.15s;
+  }
+  .act-chip.on {
+    border-color: transparent;
+    background: var(--accent-soft);
+    color: var(--accent-text, var(--accent));
+  }
+  .act-list {
+    display: grid;
+    border-top: 1px solid var(--border);
+  }
+  .act-swipe {
+    border-bottom: 1px solid var(--border);
+  }
+  .act-row {
+    display: grid;
+    gap: 8px;
+    width: 100%;
+    padding: 12px 16px 14px;
+    text-align: left;
+    color: var(--text);
+    background: var(--surface);
+    transition: background 0.15s;
+  }
+  .act-row:active {
+    background: var(--hover);
+  }
+  .act-context {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    font-size: 12.5px;
+    font-weight: 600;
     color: var(--text-2);
   }
-  .cl-row .count {
-    flex: none;
-    display: inline-grid;
-    place-items: center;
-    min-width: 20px;
-    height: 20px;
-    padding: 0 6px;
-    border-radius: 10px;
-    background: var(--badge);
-    color: #fff;
-    font-size: 12px;
-    font-weight: 700;
+  .act-where {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
-  .cl-dot {
+  .act-context time {
     flex: none;
-    width: 9px;
-    height: 9px;
+    margin-left: auto;
+    font-weight: 400;
+    color: var(--text-3);
+  }
+  .act-dot {
+    flex: none;
+    width: 8px;
+    height: 8px;
     border-radius: 50%;
     background: var(--accent);
+    opacity: 0;
+    transition: opacity 0.2s;
   }
-  .cl-browse {
+  .act-row.unread .act-dot {
+    opacity: 1;
+  }
+  .act-main {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    min-width: 0;
+  }
+  .act-main .avatar {
+    flex: none;
+    border-radius: 9px;
+  }
+  .act-ico {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 9px;
+    background: var(--hover);
+    color: var(--text-2);
+  }
+  .act-body {
+    display: grid;
+    gap: 1px;
+    min-width: 0;
+  }
+  .act-name {
+    font-size: 15px;
+    font-weight: 700;
+  }
+  .act-quote {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 13px;
+    color: var(--text-3);
+  }
+  .act-text {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    font-size: 15px;
+    line-height: 22px;
+    color: var(--text);
+  }
+  .act-me {
+    padding: 0 2px;
+    border-radius: 4px;
+    background: var(--accent-soft);
+    color: var(--accent-text, var(--accent));
+    font-weight: 600;
+  }
+  .act-empty {
+    margin-top: 40px;
+  }
+
+  /* New message (and Start a huddle): "To:" on top, people then channels. */
+  .nm-to {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 48px;
+    padding: 0 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  .nm-to span {
+    font-size: 16px;
+    color: var(--text-3);
+  }
+  .nm-to input {
+    flex: 1;
+    min-width: 0;
+    height: 44px;
+    border: 0;
+    background: none;
+    font-size: 16px;
+    color: var(--text);
+    outline: none;
+    box-shadow: none;
+  }
+  .nm-list {
+    display: grid;
+    padding-bottom: 24px;
+  }
+  .nm-group {
+    padding: 16px 16px 4px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-3);
+  }
+  .nm-row {
     display: flex;
     align-items: center;
     gap: 12px;
-    width: 100%;
-    min-height: 52px;
-    margin-top: 8px;
-    padding: 0 16px 0 26px;
-    color: var(--accent-text, var(--accent));
-    font-weight: 600;
+    min-height: 48px;
+    padding: 0 16px;
+    text-align: left;
     transition: background 0.15s;
   }
-  .cl-browse:active {
+  .nm-row:active {
     background: var(--hover);
+  }
+  .nm-row .avatar {
+    border-radius: 7px;
+  }
+  .nm-glyph {
+    display: grid;
+    place-items: center;
+    width: 28px;
+    flex: none;
+    color: var(--text-2);
+  }
+  .nm-name {
+    flex: none;
+    max-width: 60%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 16px;
+  }
+  .nm-sub {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 13px;
+    color: var(--text-3);
   }
   .sheet-field {
     margin: 0 8px 8px;
@@ -791,9 +1217,6 @@
 }
 
 @media (max-width: 359px) {
-  .chat-tile {
-    min-width: 104px;
-  }
   .cdt-actions button {
     min-width: 76px;
   }
@@ -801,7 +1224,11 @@
 
 @media (prefers-reduced-motion: reduce) {
   .chat-tile,
-  .huddle-bar {
+  .huddle-bar,
+  .huddle-banner {
     animation: none;
+  }
+  .cs-dot {
+    transition: none;
   }
 }

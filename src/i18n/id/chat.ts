@@ -685,6 +685,30 @@ const id: Record<string, string> = {
   'Archive channel': 'Arsipkan channel',
   'Create channel': 'Buat channel',
 
+  // Phones, Chat as Slack (10 Oct): the Home / DMs / Activity switch, Activity, New message, the huddle banner
+  'A person or channel': 'Orang atau channel',
+  'Add channels': 'Tambah channel',
+  'All direct messages': 'Semua pesan langsung',
+  'All marked as read': 'Semua ditandai dibaca',
+  Cleared: 'Dihapus dari daftar',
+  DMs: 'DM',
+  'Mark all as read': 'Tandai semua dibaca',
+  'Mention in {where}': 'Disebut di {where}',
+  'Mentions of you, replies in your threads and direct messages show up here.': 'Sebutan untuk Anda, balasan di thread Anda, dan pesan langsung muncul di sini.',
+  'Mute conversation…': 'Bisukan percakapan…',
+  'No direct messages with guests': 'Belum ada pesan langsung dengan tamu',
+  'No direct messages yet': 'Belum ada pesan langsung',
+  'Nothing unread': 'Tidak ada yang belum dibaca',
+  'Tap to join the huddle': 'Ketuk untuk ikut huddle',
+  'Thread in {where}': 'Thread di {where}',
+  'To:': 'Ke:',
+  'Unmute conversation': 'Bunyikan percakapan',
+  'Where: a person or channel': 'Di mana: orang atau channel',
+  'With guests': 'Dengan tamu',
+  'replied to: {text}': 'membalas: {text}',
+  '{name}, something new': '{name}, ada yang baru',
+  '{n} you can join': '{n} bisa Anda ikuti',
+
   // (end of chat)
 };
 

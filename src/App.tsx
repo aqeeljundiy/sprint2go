@@ -4173,6 +4173,18 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
               }}
               onNewChannel={canStartChannels ? () => setChanDialog({}) : undefined}
               onNewDm={(uidOther) => setChatId(dmWith(uidOther))}
+              dmIdFor={dmWith}
+              notices={myNotices.filter((n) => n.link?.app === 'chat')}
+              onOpenNotice={openNotice}
+              onReadNotices={(ids, read) => setNotices((ns) => ns.map((n) => (ids.includes(n.id) ? { ...n, read } : n)))}
+              onHuddle={(id) => {
+                if (!server.on) return setChatId(id);
+                tried('voice');
+                if (huddleId && huddleId !== id) leaveHuddle();
+                setChannels((cs) => cs.map((c) => (c.id === id ? { ...c, huddle: { by: c.huddle?.by ?? user.id, at: c.huddle?.at ?? nowIso(), members: [...new Set([...(c.huddle?.members ?? []), user.id])] } } : c)));
+                setHuddleId(id);
+                setChatId(id);
+              }}
               canManage={canManageChannel}
               onMove={moveChannel}
               onSettings={(id) => setChanDialog({ id })}
