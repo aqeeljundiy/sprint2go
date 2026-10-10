@@ -514,8 +514,8 @@ export function Reader(props: Props) {
       <article key={m.id} className={`message ${open ? 'open' : ''}`}>
         {open && (
           <span className="msg-acts">
-            <button type="button" className="icon-btn" onClick={() => startReply()} aria-label={t('Reply')} title={t('Reply')} disabled={!!props.replyOff}>
-              <Reply size={16} />
+            <button type="button" className="icon-btn" onClick={() => startReply(undefined, props.defaultReply === 'all' && canAllDesk)} aria-label={props.defaultReply === 'all' && canAllDesk ? t('Reply all') : t('Reply')} title={props.defaultReply === 'all' && canAllDesk ? t('Reply all') : t('Reply')} disabled={!!props.replyOff}>
+              {props.defaultReply === 'all' && canAllDesk ? <ReplyAll size={16} /> : <Reply size={16} />}
             </button>
             <button
               type="button"
@@ -973,8 +973,8 @@ export function Reader(props: Props) {
               <ChevronDown size={14} className={`rot-chev${showDetails ? ' open' : ''}`} />
             </button>
             <span className="gm-msg-acts">
-              <button type="button" className="gm-icon" onClick={() => startReply()} aria-label={t('Reply')} title={t('Reply')}>
-                <Reply size={20} />
+              <button type="button" className="gm-icon" onClick={() => startReply(undefined, props.defaultReply === 'all' && canAll)} aria-label={props.defaultReply === 'all' && canAll ? t('Reply all') : t('Reply')} title={props.defaultReply === 'all' && canAll ? t('Reply all') : t('Reply')}>
+                {props.defaultReply === 'all' && canAll ? <ReplyAll size={20} /> : <Reply size={20} />}
               </button>
               <button
                 type="button"

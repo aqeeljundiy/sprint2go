@@ -81,7 +81,9 @@ export function Compose({ contacts, signature: baseSignature, signatureFor, work
   // From: a mailbox, or one of its aliases (sent as that address, with that address's signature).
   const startFrom = initial?.fromId && accounts.some((a) => a.id === initial.fromId) ? initial.fromId : defaultFrom;
   const addressOf = (id: string) => accounts.find((a) => a.id === id)?.email.toLowerCase() ?? '';
-  const [fromAddress, setFromAddress] = useState(initial?.fromAddress?.toLowerCase() || addressOf(startFrom));
+  // An address it can't send as any more (an alias removed since the draft was saved) falls back to the mailbox's own.
+  const startAddress = initial?.fromAddress?.toLowerCase();
+  const [fromAddress, setFromAddress] = useState(startAddress && (!workspace || sendersOf(workspace, accounts.find((a) => a.id === startFrom) ?? { id: '', email: '' }).includes(startAddress)) ? startAddress : addressOf(startFrom));
   const sigOf = (address: string) => (signatureFor ? signatureFor(address) : baseSignature);
   const signature = sigOf(fromAddress);
   const [extras, setExtras] = useState<SendExtras>({ replyTo: initial?.replyTo, priority: initial?.priority, confidential: initial?.confidential, plain: initial?.plain });
