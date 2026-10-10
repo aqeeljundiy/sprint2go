@@ -27,7 +27,7 @@ function Card({ t: tb, view, row, ctx, status, meta, selecting, selected, leavin
   const sv = status ? valueOf(tb, status, row, ctx) : null;
   const opt = status?.options?.find((o) => o.id === sv);
   const canPill = !!status && !!h.onPill && !isComputed(status) && (!ctx.canEdit || ctx.canEdit(status.id));
-  const pill = (status && (opt || canPill)) ? (
+  const pill = status && opt ? ( // an empty status shows nothing (no grey "No status" tag); the row page sets it
     <span
       role={canPill ? 'button' : undefined}
       tabIndex={canPill ? 0 : undefined}

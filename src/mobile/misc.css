@@ -701,6 +701,36 @@
   :root[data-theme='dark'] .vp-form > .field {
     background: #1c1c1f;
   }
+  /* The project: a row like iOS, its name on the left and the choice in grey on the right with a ›. */
+  .vp-form .vault-project {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-height: var(--row-1);
+  }
+  .vp-form .vault-project > span:first-child {
+    flex: none;
+    font-size: var(--fs-body);
+    color: var(--text);
+  }
+  .vp-form .vault-project .sel {
+    font-size: var(--fs-body);
+    flex: 1;
+    min-width: 0;
+    justify-content: flex-end;
+    color: var(--text-3);
+  }
+  .vp-form .vault-project .sel-text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .vp-form .vault-project .sel > svg:last-child {
+    transform: rotate(-90deg);
+  }
+  .vp-form input {
+    text-overflow: ellipsis; /* long hints end in … instead of being cut mid-word */
+  }
   .vault-edit .push-back svg {
     display: none;
   }
@@ -917,5 +947,29 @@
   }
   .vp-form small.muted {
     font: var(--t-secondary);
+  }
+}
+
+/* Sentence case on phones: no uppercase labels ("FILTER BY", menu titles, table heads). Section headers and labels
+   read as written (docs/mobile-kit.md section 0). Weekday letters in calendars keep their own style. */
+@media (max-width: 767px) {
+  .tb-fs-head,
+  .g-head,
+  .settings-content h3,
+  .d-heading,
+  .d-th,
+  .am-label,
+  .ais-label,
+  .ws-menu-title,
+  .nav-heading,
+  .tm-title,
+  .palette-group,
+  .board-head,
+  .job-group h4,
+  .imp-sec h4,
+  .lead-tag,
+  .next-invoice .ni-head {
+    text-transform: none;
+    letter-spacing: normal;
   }
 }

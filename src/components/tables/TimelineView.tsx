@@ -7,7 +7,6 @@ import { EmptyState } from '../ui/EmptyState';
 import { PickSelect } from '../ui/PickSelect';
 import type { CellCtx } from './Cell';
 import { isEmpty, rowColors, rowName, valueOf } from './fields';
-import { Agenda } from './Views';
 import { t, tx } from '../../i18n';
 import { fmtDate, fmtDay } from '../../i18n/format';
 
@@ -121,7 +120,8 @@ export function TimelineView({ table: tb, view, rows, ctx, onOpenRow, onValues, 
         }
       />
     );
-  if (narrow) return <Agenda table={tb} view={view} rows={rows} ctx={ctx} field={sf} end={ef} onOpenRow={onOpenRow} canAdd={canAdd} onAddRow={onAddRow} />;
+  // Phones get the real timeline too (a time axis and bars, N6): a narrower name column, the axis scrolls sideways,
+  // and tapping an empty track puts the row on that day. Which dates make the bar is set on a computer.
 
   const dates = tb.fields.filter((f) => f.type === 'date' || f.type === 'created');
   const movable = !readOnly && sf.type === 'date' && (!ctx.canEdit || ctx.canEdit(sf.id));
@@ -139,6 +139,7 @@ export function TimelineView({ table: tb, view, rows, ctx, onOpenRow, onValues, 
   return (
     <div className="tb-tl-wrap">
       <div className="tb-tl-tools">
+        {!narrow && (<>
         <span className="muted small">{tx('timeline', 'From')}</span>
         <PickSelect value={sf.id} aria-label={t('Bars start at')} onChange={(e) => onView({ dateField: e.target.value })}>
           {dates.map((f) => (
@@ -158,6 +159,7 @@ export function TimelineView({ table: tb, view, rows, ctx, onOpenRow, onValues, 
               </option>
             ))}
         </PickSelect>
+        </>)}
         <span className="spacer" />
         <div className="segmented sm">
           {(Object.keys(ZOOMS) as Zoom[]).map((z) => (

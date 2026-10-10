@@ -334,11 +334,7 @@ export function VaultView({
               icon={<KeyRound size={22} />}
               title={t('No logins yet')}
               text={t('Add a client login. Paste its 2FA setup key and the team gets the codes here.')}
-              action={
-                <button type="button" className="ghost-btn tonal" onClick={() => setEditing('new')}>
-                  {t('New login')}
-                </button>
-              }
+              // The create button is the one way to add a login on a phone (no second "New login" here).
             />
           ) : (
             <VaultPhoneList items={list} clients={clients} me={me} ops={ops} onOpen={setOpenId} />
@@ -964,6 +960,8 @@ function VaultEditor({
               </span>
             </div>
           </div>
+          {/* The optional parts in one group (on phones, one card), the project as a row with its value on the right. */}
+          <div className="vault-grid vault-more">
           <label className="field">
             <span>{item?.hasTotp ? t('2FA setup key (saved; paste a new one to replace it)') : t('2FA setup key (optional)')}</span>
             <input value={totp} onChange={(e) => setTotp(e.target.value)} placeholder={t('The key shown when you set up an authenticator app, or the otpauth:// link')} autoComplete="off" />
@@ -972,9 +970,10 @@ function VaultEditor({
             <span>{item?.hasNotes ? t('Notes (saved; type to replace)') : t('Notes (optional)')}</span>
             <input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder={t('Backup codes, security questions, who to ask')} autoComplete="off" />
           </label>
-          <div className="field">
+          <div className="field vault-project">
             <span>{term.One}</span>
             <ProjectPicker value={clientId} onChange={setClientId} projects={clients} none={t('Company login (no {project})', { project: term.one })} />
+          </div>
           </div>
           <div className="field">
             <span>{t('Who can use it')}</span>
@@ -1095,7 +1094,7 @@ function VaultGate({ record, me, onUnlocked }: { record?: VaultKeyRecord; me: st
             <>
               <button type="button" className="vg-how" aria-expanded={how} onClick={() => setHow((h) => !h)}>
                 {t('How it works')}
-                <ChevronDown size={16} className={`rot-chev${how ? ' open' : ''}`} />
+                <ChevronDown size={16} style={{ transform: how ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s ease' }} aria-hidden />
               </button>
               <div className={`fold${how ? ' open' : ''}`} aria-hidden={!how}>
                 <div className="fold-in">
