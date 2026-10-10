@@ -308,12 +308,11 @@
     border-radius: 12px;
     transition: background 0.15s;
   }
-  .mt-ws {
-    border-radius: 50%;
-  }
   .mt-ws .ws-logo-img,
   .mt-ws > :first-child {
-    border-radius: 50%;
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
   }
   .mt-back {
     color: var(--accent);

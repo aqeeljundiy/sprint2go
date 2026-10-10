@@ -4,7 +4,7 @@ import { brand } from '../terms';
 
 export function WorkspaceLogo({ ws, size = 28 }: { ws: Pick<Workspace, 'name' | 'logo' | 'color'>; size?: number }) {
   return ws.logo ? (
-    <img className="ws-logo" src={ws.logo} alt="" width={size} height={size} style={{ borderRadius: size * 0.26 }} />
+    <img className="ws-logo" src={ws.logo} alt="" width={size} height={size} style={{ width: size, height: size, flex: 'none', aspectRatio: '1 / 1', objectFit: 'cover', borderRadius: size * 0.26 }} />
   ) : (
     <span
       className="ws-logo ws-mono"
