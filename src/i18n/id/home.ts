@@ -205,6 +205,11 @@ const id: Record<string, string> = {
   'from you': 'dari Anda',
   'from {name}': 'dari {name}',
   someone: 'seseorang',
+
+  // The phone's Home: the line under the greeting, the set-up row
+  '{n} things need you.': '{n} hal perlu Anda tangani.',
+  'Nothing needs you right now. Next: {title} at {time}.': 'Tidak ada yang perlu Anda tangani sekarang. Berikutnya: {title} pukul {time}.',
+  '{n} left: {what}': '{n} lagi: {what}',
 };
 
 export default id;

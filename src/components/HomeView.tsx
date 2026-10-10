@@ -2,11 +2,10 @@ import { ProjectBadge } from './ProjectBadge';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { SmoothHeight } from './ui/Smooth';
 import { term } from '../terms';
-import { AlertTriangle, ArrowDown, ArrowRight, ArrowUp, CalendarDays, Check, FileText, GripVertical, Hash, Inbox, LayoutGrid, ListChecks, Maximize2, Menu, Mic, Minimize2, PartyPopper, Plus, Settings2, Sparkles, Users, Video, X, Search, Megaphone } from 'lucide-react';
+import { AlertTriangle, ArrowDown, ArrowRight, ArrowUp, CalendarDays, Check, ChevronRight, FileText, FlaskConical, GripVertical, Hash, Inbox, LayoutGrid, ListChecks, Maximize2, Menu, Mic, Minimize2, PartyPopper, Plus, Settings2, Sparkles, Users, Video, X, Search, Megaphone } from 'lucide-react';
 import type { CalEvent, Client, HomeTemplateId, Meeting, Notice, Team, Thread, Todo, User } from '../types';
 import { fmtDay, fmtTime, fmtWeekday, fmtWeekdayLong } from '../i18n/format';
 import { mark, t, textOf, tn, tx } from '../i18n';
-import { tj } from '../i18n/tj';
 import { useLang } from '../i18n/useLang';
 import { isMine } from '../identity';
 import { usePersisted } from '../settings';
@@ -17,11 +16,12 @@ import { Sheet } from './ui/Sheet';
 import { doers, dueLabel, isBrief, peopleOptions } from './TasksView';
 import { kindOf } from '../stages';
 import { EmptyState } from './ui/EmptyState';
-import { useAppSettings, useCreateAction } from '../mobile/chrome';
+import { useCreateAction } from '../mobile/chrome';
+import { LargeTitle } from '../mobile/TopBar';
 import { usePhone } from '../mobile/media';
 import { needsYou, updatesOf } from '../needsYou';
 import { addDays } from '../taskDates';
-import { CustomiseList, LiveCalls, MeetingStrip, NeedsList, TodayBlock, Updates } from './home/HomeParts';
+import { LiveCalls, MeetingStrip, NeedsList, TodayBlock, Updates } from './home/HomeParts';
 
 type CardId =
   | 'briefing'
@@ -140,6 +140,9 @@ interface Props {
   onOpenMeeting: (id: string) => void;
   onNotice: (n: Notice) => void;
   onMenu: () => void;
+  onNew?: () => void; // phones: Home's create button opens New (Brain dump first)
+  /** Phones: the demo company's "Try this" list as one row at the end of Home ("Try the demo, 2 of 8 done"). */
+  topRow?: { title: string; sub: string };
   /** News and warnings from the sprint2go team, until they end or this person dismisses them. */
   news?: { id: string; text: string; link?: string; kind: 'news' | 'warning' }[];
   onDismissNews?: (id: string) => void;
@@ -173,7 +176,8 @@ function guessTemplate(p: Props): HomeTemplateId {
 }
 
 export function HomeView(p: Props) {
-  useCreateAction('home', p.ai !== false && { label: t('Brain dump'), icon: Sparkles, run: () => p.onDump() });
+  // Phones: "+" opens New (Brain dump first when AI is on), like Slack's Home button: start anything from here.
+  useCreateAction('home', p.onNew ? { label: t('New'), icon: Plus, run: p.onNew } : p.ai !== false && { label: t('Brain dump'), icon: Sparkles, run: () => p.onDump() });
   const lang = useLang(); // the memos below write words
   const [dump, setDump] = useState('');
   const [editing, setEditing] = useState(false);
@@ -283,7 +287,7 @@ export function HomeView(p: Props) {
   const updates = updatesOf(p.notices, needs);
   const laterToday = d.todayEvents.filter((e) => !strip.some((x) => x.eventId === e.id));
   const phone = usePhone();
-  const [customising, setCustomising] = useState(false);
+  const [sheet, setSheet] = useState<'setup' | 'try' | null>(null);
 
   // A short, plain-language briefing built from the numbers (no AI call needed).
   const brief: string[] = [];
@@ -707,33 +711,33 @@ export function HomeView(p: Props) {
     setLayout({ ...layout, cards: list });
   };
 
-  // Customise on a phone: a list to show, hide and move cards (from the title or the end of Home).
-  const customise = (
-    <CustomiseList
-      cards={[...visible.map((c) => c.id), ...missing].map((id) => ({ id, name: CARD_INFO[id].name, hint: CARD_INFO[id].hint, on: visible.some((c) => c.id === id) }))}
-      onToggle={(id) => {
-        const cid = id as CardId;
-        setLayout(layout.cards.some((c) => c.id === cid) ? { ...layout, cards: layout.cards.filter((c) => c.id !== cid) } : { ...layout, cards: [...layout.cards, { id: cid, size: 'm' }] });
-      }}
-      onMove={(id, by) => {
-        const shown = visible.map((c) => c.id);
-        const i = shown.indexOf(id as CardId);
-        const target = shown[i + by];
-        if (target) move(id as CardId, layout.cards.findIndex((c) => c.id === target));
-      }}
-      template={
-        <Select<HomeTemplateId>
-          value={layout.template}
-          options={(Object.keys(TEMPLATES) as HomeTemplateId[]).map((id) => ({ value: id, label: TEMPLATES[id].name, hint: TEMPLATES[id].hint }))}
-          onChange={(tpl) => setLayout(fromTemplate(tpl))}
-          label={t('Start from')}
-          renderValue={(o) => <span className="sel-text">{tj('Start from: {template}', { template: <b>{o?.label}</b> })}</span>}
-        />
-      }
-      onReset={() => setSaved(null)}
-    />
-  );
-  useAppSettings('home', { id: 'customise', label: t('Customise Home'), hint: t('Which cards show, and in what order'), render: () => <HomeCustomise storageKey={`s2g-home:${p.me.id}:${p.workspaceId}`} fallback={guessTemplate(p)} enabled={p.enabled} /> });
+  const newsCards = p.news?.map((n) => (
+          <div key={n.id} className={`news-card ${n.kind}`} role="status">
+            {n.kind === 'warning' ? <AlertTriangle size={16} /> : <Megaphone size={16} />}
+            <span>
+              {n.text}
+              {n.link && (
+                <a href={n.link} target="_blank" rel="noreferrer">
+                  {t('Read more')}
+                </a>
+              )}
+            </span>
+            {p.onDismissNews && (
+              <button
+                type="button"
+                className="icon-btn sm"
+                aria-label={t('Dismiss')}
+                onClick={(e) => {
+                  const card = (e.currentTarget as HTMLElement).closest('.news-card');
+                  card?.classList.add('leaving');
+                  setTimeout(() => p.onDismissNews!(n.id), 180);
+                }}
+              >
+                <X size={14} />
+              </button>
+            )}
+          </div>
+        ));
 
   // Finish setting up (admins): only what's left to do.
   const todo = (p.setup ?? []).filter((x) => !x.done);
@@ -756,6 +760,135 @@ export function HomeView(p: Props) {
       </ul>
     </section>
   );
+
+  // Phones: Apple's large title (the date and the greeting), then one list on the page with plain sections, each item
+  // once, and nothing empty (Things, Todoist, Slack Home). The dashboard cards stay on desktop.
+  if (phone) {
+    const needActions = {
+      me: p.me.id,
+      users: p.users,
+      teams: p.teams,
+      tasks: p.tasks,
+      notices: p.notices,
+      today,
+      onDone: p.onToggleTask,
+      onStart: p.onStart,
+      onAssign: p.onAssign,
+      onNudge: p.onNudge,
+      onReschedule: p.onReschedule,
+      onOpenTask: p.onOpenTask,
+      onOpenThread: p.onOpenThread,
+      onNotice: p.onNotice,
+      onRead: p.onReadNotices,
+    };
+    // Each thing once: what's in Needs you (or live now) isn't repeated under Today.
+    const inNeeds = new Set(needList.flatMap((x) => (x.taskId ? [x.taskId] : [])));
+    const todayTasks = dueToday.filter((tk) => !inNeeds.has(tk.id));
+    const live = strip.length > 0 || (p.calls?.length ?? 0) > 0;
+    const nextEv = laterToday[0];
+    const nextTask = d.mine.find((tk) => tk.due && tk.due > today);
+    const summary = needList.length
+      ? [tn(needList.length, '{n} thing needs you.', '{n} things need you.'), nextEv ? t('Next: {title} at {time}.', { title: nextEv.title, time: fmtTime(nextEv.start) }) : ''].filter(Boolean).join(' ')
+      : nextEv
+        ? t('Nothing needs you right now. Next: {title} at {time}.', { title: nextEv.title, time: fmtTime(nextEv.start) })
+        : t('Nothing needs you right now.');
+    const quiet = !live && !needList.length && !todayTasks.length && !laterToday.length && !updates.length;
+    return (
+      <section className="home-pane home-phone view-enter">
+        <div className="home-scroll">
+          <LargeTitle app="home" className="home-greet">
+            <p className="hg-date">{fmtWeekdayLong(new Date())}</p>
+            <h1 className="hg-hello">{greeting.replace(/\.$/, '')}</h1>
+            <p className="hg-sum">{summary}</p>
+            {quiet && nextTask && <p className="hg-sum">{t('Next on your list: “{title}”, {when}.', { title: nextTask.title, when: dueWord(nextTask.due!) })}</p>}
+          </LargeTitle>
+
+          {newsCards}
+
+          {live && (
+            <div className="home-now">
+              <MeetingStrip items={strip} events={p.events} botWillJoin={p.botWillJoin} onBotJoin={p.onBotJoin} onSendNotetaker={p.onSendNotetaker} sent={p.notetakerSent} onOpen={(id) => p.onOpenCalendar(id)} />
+              {p.calls && p.onJoinHuddle && <LiveCalls calls={p.calls} onJoin={p.onJoinHuddle} />}
+            </div>
+          )}
+
+          {needList.length > 0 && (
+            <section className="hsec needs" aria-label={t('Needs you')}>
+              <h2 className="hsec-h">
+                <span>{t('Needs you')}</span>
+              </h2>
+              <NeedsList items={needList} a={needActions} limit={5} />
+            </section>
+          )}
+
+          {(todayTasks.length > 0 || laterToday.length > 0) && (
+            <TodayBlock
+              tasks={todayTasks}
+              events={laterToday}
+              clients={p.clients}
+              today={today}
+              onTick={p.onToggleTask}
+              onReschedule={p.onReschedule}
+              onOpenTask={p.onOpenTask}
+              onOpenEvent={(id) => p.onOpenCalendar(id)}
+              onOpenCalendar={p.enabled.has('calendar') ? () => p.onOpenCalendar() : undefined}
+            />
+          )}
+
+          {updates.length > 0 && <Updates notices={updates} onOpen={p.onNotice} onRead={p.onReadNotices} onAll={p.onAllNotices} limit={3} />}
+
+          <div className="home-rows">
+            {todo.length > 0 && (
+              <button type="button" className="home-row" onClick={() => setSheet('setup')}>
+                <span className="home-row-icon">
+                  <Settings2 size={18} />
+                </span>
+                <span className="home-row-text">
+                  <strong>{t('Finish setting up')}</strong>
+                  <small>{tn(todo.length, '{n} left: {what}', '{n} left: {what}', { what: todo[0].label })}</small>
+                </span>
+                <ChevronRight size={18} className="home-row-chev" />
+              </button>
+            )}
+            {p.topRow && (
+              <button type="button" className="home-row" onClick={() => setSheet('try')}>
+                <span className="home-row-icon">
+                  <FlaskConical size={18} />
+                </span>
+                <span className="home-row-text">
+                  <strong>{p.topRow.title}</strong>
+                  <small>{p.topRow.sub}</small>
+                </span>
+                <ChevronRight size={18} className="home-row-chev" />
+              </button>
+            )}
+            {updates.length === 0 && (
+              <button type="button" className="home-row" onClick={p.onAllNotices}>
+                <span className="home-row-icon">
+                  <Inbox size={18} />
+                </span>
+                <span className="home-row-text">
+                  <strong>{t('All notifications')}</strong>
+                </span>
+                <ChevronRight size={18} className="home-row-chev" />
+              </button>
+            )}
+          </div>
+          {!p.topRow && p.top}
+        </div>
+        {sheet === 'setup' && (
+          <Sheet onClose={() => setSheet(null)} title={t('Finish setting up')} className="home-setup-sheet">
+            {setupCard}
+          </Sheet>
+        )}
+        {sheet === 'try' && p.topRow && (
+          <Sheet onClose={() => setSheet(null)} label={p.topRow.title} size="tall" className="home-try-sheet">
+            {p.top}
+          </Sheet>
+        )}
+      </section>
+    );
+  }
 
   return (
     <section className="home-pane view-enter">
@@ -809,37 +942,11 @@ export function HomeView(p: Props) {
           <kbd>⌘K</kbd>
         </button>
 
-        {p.news?.map((n) => (
-          <div key={n.id} className={`news-card ${n.kind}`} role="status">
-            {n.kind === 'warning' ? <AlertTriangle size={16} /> : <Megaphone size={16} />}
-            <span>
-              {n.text}
-              {n.link && (
-                <a href={n.link} target="_blank" rel="noreferrer">
-                  {t('Read more')}
-                </a>
-              )}
-            </span>
-            {p.onDismissNews && (
-              <button
-                type="button"
-                className="icon-btn sm"
-                aria-label={t('Dismiss')}
-                onClick={(e) => {
-                  const card = (e.currentTarget as HTMLElement).closest('.news-card');
-                  card?.classList.add('leaving');
-                  setTimeout(() => p.onDismissNews!(n.id), 180);
-                }}
-              >
-                <X size={14} />
-              </button>
-            )}
-          </div>
-        ))}
+        {newsCards}
 
         {p.top}
 
-        {!phone && setupCard}
+        {setupCard}
 
         <MeetingStrip items={strip} events={p.events} botWillJoin={p.botWillJoin} onBotJoin={p.onBotJoin} onSendNotetaker={p.onSendNotetaker} sent={p.notetakerSent} onOpen={(id) => p.onOpenCalendar(id)} />
         {p.calls && p.onJoinHuddle && <LiveCalls calls={p.calls} onJoin={p.onJoinHuddle} />}
@@ -898,8 +1005,6 @@ export function HomeView(p: Props) {
           )}
         </div>
 
-        {phone && <Updates notices={updates} onOpen={p.onNotice} onRead={p.onReadNotices} onAll={p.onAllNotices} />}
-        {phone && setupCard}
         <div className={`home-grid cards ${editing ? 'editing' : ''}`}>
           {visible.map((c, i) => {
             const card = cards[c.id];
@@ -951,17 +1056,7 @@ export function HomeView(p: Props) {
             );
           })}
         </div>
-        {phone && (
-          <button type="button" className="ghost-btn home-customise" onClick={() => setCustomising(true)}>
-            <Settings2 size={16} /> {t('Customise Home')}
-          </button>
-        )}
       </div>
-      {customising && (
-        <Sheet onClose={() => setCustomising(false)} title={t('Customise Home')} size="tall" head={<button type="button" className="primary-btn sm" onClick={() => setCustomising(false)}>{t('Done')}</button>}>
-          {customise}
-        </Sheet>
-      )}
     </section>
   );
 }
@@ -974,45 +1069,3 @@ const dueWord = (day: string) => {
   if (day === addDays(today, 1)) return t('tomorrow');
   return fmtWeekday(day);
 };
-const NEEDS_APP: Partial<Record<CardId, string>> = { dump: 'tasks', mytasks: 'tasks', today: 'calendar', unread: 'mail', meetings: 'meet' };
-
-/** Customise Home, opened full screen from the title on a phone. It keeps the same saved layout as Home itself. */
-function HomeCustomise({ storageKey, fallback, enabled }: { storageKey: string; fallback: HomeTemplateId; enabled: Set<string> }) {
-  const [saved, setSaved] = usePersisted<Layout | null>(storageKey, null);
-  const layout = saved ?? fromTemplate(fallback);
-  const allowed = (id: CardId) => !NEEDS_APP[id] || enabled.has(NEEDS_APP[id]!);
-  const shown = layout.cards.filter((c) => allowed(c.id)).map((c) => c.id);
-  const hidden = (Object.keys(CARD_INFO) as CardId[]).filter((id) => allowed(id) && !shown.includes(id));
-  return (
-    <div className="hcust-page">
-      <CustomiseList
-        cards={[...shown, ...hidden].map((id) => ({ id, name: CARD_INFO[id].name, hint: CARD_INFO[id].hint, on: shown.includes(id) }))}
-        onToggle={(id) => {
-          const cid = id as CardId;
-          setSaved(layout.cards.some((c) => c.id === cid) ? { ...layout, cards: layout.cards.filter((c) => c.id !== cid) } : { ...layout, cards: [...layout.cards, { id: cid, size: 'm' }] });
-        }}
-        onMove={(id, by) => {
-          const i = shown.indexOf(id as CardId);
-          const target = shown[i + by];
-          if (!target) return;
-          const list = [...layout.cards];
-          const from = list.findIndex((c) => c.id === id);
-          const to = list.findIndex((c) => c.id === target);
-          const [x] = list.splice(from, 1);
-          list.splice(to, 0, x);
-          setSaved({ ...layout, cards: list });
-        }}
-        template={
-          <Select<HomeTemplateId>
-            value={layout.template}
-            options={(Object.keys(TEMPLATES) as HomeTemplateId[]).map((id) => ({ value: id, label: TEMPLATES[id].name, hint: TEMPLATES[id].hint }))}
-            onChange={(tpl) => setSaved(fromTemplate(tpl))}
-            label={t('Start from')}
-            renderValue={(o) => <span className="sel-text">{tj('Start from: {template}', { template: <b>{o?.label}</b> })}</span>}
-          />
-        }
-        onReset={() => setSaved(null)}
-      />
-    </div>
-  );
-}

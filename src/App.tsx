@@ -38,7 +38,7 @@ import { DEFAULT_TRACK_OPTIONS, REPLY_TRACK_OPTIONS, isTeam } from './tracking';
 import { isMine, setIdentity } from './identity';
 import { scanned, session, useStored } from './store';
 import { live, reloadAll, resync, server, uploadFile, uploadPolicy, wasSkipped } from './sync';
-import { isSandbox, isSandboxId, sandboxWsId, type TryKey } from './sandbox';
+import { TRY_KEYS, isSandbox, isSandboxId, sandboxWsId, type TryKey } from './sandbox';
 import { DemoCompanyBar, DemoInvite, ResetDemoDialog, TryList, demoCompanySeen, hideDemoCompany, openDemoCompany, resetDemoCompany, useDemoState } from './components/DemoCompany';
 import { InviteCard, type InviteState } from './components/InviteCard';
 import { inviteCalendarTimes, inviteSeries } from './inviteTimes';
@@ -4296,6 +4296,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             onSendNotetaker={botOn && autoJoin !== 'live' ? sendNotetakerTo : undefined}
             notetakerSent={sentFor}
             onMenu={() => setSidebarOpen(true)}
+            onNew={() => setNewOpen(true)}
+            topRow={inSandbox && ws.sandbox && !ws.sandbox.listOff ? { title: t('Try the demo'), sub: t('{n} of {total} done', { n: TRY_KEYS.filter((k) => ws.sandbox!.tried?.includes(k)).length, total: TRY_KEYS.length }) } : undefined}
             news={news.filter((n) => !newsSeen.includes(n.id))}
             onDismissNews={(id) => setNewsSeen((s) => [...s.slice(-50), id])}
             top={

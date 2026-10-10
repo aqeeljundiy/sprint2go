@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react';
-import { AlertTriangle, ArrowDown, ArrowUp, AtSign, Bell, Check, CheckCheck, CircleCheck, Clock, FileText, Headphones, Inbox, ListChecks, Mail, MessageCircle, Play, Repeat, Sunrise, Users, Video, type LucideIcon } from 'lucide-react';
+import { AlertTriangle, AtSign, Bell, Check, CheckCheck, CircleCheck, Clock, FileText, Headphones, Inbox, ListChecks, Mail, MessageCircle, Play, Repeat, Sunrise, Users, Video, type LucideIcon } from 'lucide-react';
 import { SwipeRow, type SwipeAction } from '../ui/SwipeRow';
 import { useLeaving, SmoothHeight } from '../ui/Smooth';
 import { Select } from '../ui/Select';
@@ -51,9 +51,9 @@ export interface NeedActions {
  * Needs you: what to act on now, across apps, most urgent first, each with its one action right on the row. On phones
  * the rows swipe too: right does the action, left moves a task to tomorrow or puts a notification away.
  */
-export function NeedsList({ items, a }: { items: Need[]; a: NeedActions }) {
+export function NeedsList({ items, a, limit = 6 }: { items: Need[]; a: NeedActions; limit?: number }) {
   const [all, setAll] = useState(false);
-  const shown = all ? items : items.slice(0, 6);
+  const shown = all ? items : items.slice(0, limit);
   const rows = useLeaving(shown, (x) => x.key);
   const task = (x: Need) => (x.taskId ? a.tasks.find((t) => t.id === x.taskId) : undefined);
   const read = (x: Need) => x.noticeIds.length && a.onRead(x.noticeIds);
@@ -146,9 +146,9 @@ export function NeedsList({ items, a }: { items: Need[]; a: NeedActions }) {
           </SwipeRow>
         );
       })}
-      {items.length > 6 && (
+      {items.length > limit && (
         <button type="button" className="link-btn small ny-more" onClick={() => setAll((v) => !v)}>
-          {all ? t('Show fewer') : tn(items.length - 6, 'Show {n} more', 'Show {n} more')}
+          {all ? t('Show fewer') : tn(items.length - limit, 'Show {n} more', 'Show {n} more')}
         </button>
       )}
     </div>
@@ -254,8 +254,8 @@ export function LiveCalls({ calls, onJoin }: { calls: { id: string; name: string
 const NOTE_ICON: Record<Notice['kind'], LucideIcon> = { task: ListChecks, mention: AtSign, meeting: Video, mail: Mail, done: CircleCheck, team: Users };
 
 /** On phones the bell lives here: news to read (not to act on), with the full list one tap away. */
-export function Updates({ notices, onOpen, onRead, onAll }: { notices: Notice[]; onOpen: (n: Notice) => void; onRead: (ids: string[]) => void; onAll: () => void }) {
-  const shown = notices.slice(0, 5);
+export function Updates({ notices, onOpen, onRead, onAll, limit = 5 }: { notices: Notice[]; onOpen: (n: Notice) => void; onRead: (ids: string[]) => void; onAll: () => void; limit?: number }) {
+  const shown = notices.slice(0, limit);
   const rows = useLeaving(shown, (n) => n.id);
   return (
     <section className="hsec hupd" aria-label={t('Updates')}>
@@ -393,53 +393,3 @@ export function TodayBlock({
     </section>
   );
 }
-
-export interface CardRow {
-  id: string;
-  name: string;
-  hint: string;
-  on: boolean;
-}
-
-/** Customise Home on a phone: show or hide each card, and move it up or down. No dragging. */
-export function CustomiseList({ cards, onToggle, onMove, template, onReset }: { cards: CardRow[]; onToggle: (id: string) => void; onMove: (id: string, by: -1 | 1) => void; template: ReactNode; onReset: () => void }) {
-  const shown = cards.filter((c) => c.on);
-  return (
-    <div className="hcust">
-      <div className="hcust-tpl">{template}</div>
-      <div className="as-group">{t('On your Home')}</div>
-      <div className="hcust-list">
-        {cards.map((c) => {
-          const i = shown.findIndex((x) => x.id === c.id);
-          return (
-            <div key={c.id} className={`hcust-row${c.on ? '' : ' off'}`}>
-              <button type="button" role="switch" aria-checked={c.on} className="hcust-toggle" onClick={() => onToggle(c.id)}>
-                <span className={`switch ${c.on ? 'on' : ''}`} aria-hidden="true">
-                  <span />
-                </span>
-                <span className="hcust-name">
-                  {c.name}
-                  <small>{c.hint}</small>
-                </span>
-              </button>
-              {c.on && (
-                <span className="hcust-moves">
-                  <button type="button" className="icon-btn" onClick={() => onMove(c.id, -1)} disabled={i <= 0} aria-label={t('Move {name} up', { name: c.name })}>
-                    <ArrowUp size={16} />
-                  </button>
-                  <button type="button" className="icon-btn" onClick={() => onMove(c.id, 1)} disabled={i === shown.length - 1} aria-label={t('Move {name} down', { name: c.name })}>
-                    <ArrowDown size={16} />
-                  </button>
-                </span>
-              )}
-            </div>
-          );
-        })}
-      </div>
-      <button type="button" className="link-btn small hcust-reset" onClick={onReset}>
-        {t('Back to the usual for my role')}
-      </button>
-    </div>
-  );
-}
-

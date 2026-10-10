@@ -477,7 +477,7 @@
     font-size: 16px;
     font-weight: 600;
   }
-  .ws-row.on {
+  .ws-panel .ws-row.on {
     color: var(--text);
   }
   .ws-logo {

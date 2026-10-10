@@ -412,76 +412,6 @@
   font-size: 12px;
 }
 
-/* ---------- Customise (a list, on phones) ---------- */
-.hcust {
-  display: grid;
-  gap: 4px;
-  padding: 0 4px 12px;
-}
-.hcust-tpl {
-  padding: 0 8px 8px;
-}
-.hcust-tpl .sel {
-  width: 100%;
-}
-.hcust-list {
-  display: grid;
-}
-.hcust-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 56px;
-  padding: 0 4px;
-  border-bottom: 1px solid var(--line);
-  transition: opacity 0.18s ease;
-}
-.hcust-row.off {
-  opacity: 0.72;
-}
-.hcust-toggle {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 6px 4px;
-  border: 0;
-  background: none;
-  color: var(--text);
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-.hcust-name {
-  min-width: 0;
-  display: grid;
-  gap: 1px;
-  font-size: 15px;
-  font-weight: 500;
-}
-.hcust-name small {
-  color: var(--text-3);
-  font-size: 12.5px;
-  font-weight: 400;
-}
-.hcust-moves {
-  flex: none;
-  display: flex;
-  gap: 2px;
-}
-.hcust-reset {
-  justify-self: start;
-  margin: 12px 8px 0;
-}
-.hcust-page {
-  padding: 8px 8px 32px;
-}
-.home-customise {
-  display: flex;
-  margin: 16px auto 4px;
-}
-
 @media (prefers-reduced-motion: reduce) {
   .hsec,
   .upn,
@@ -492,7 +422,7 @@
   }
   .ny-btn,
   .htd-title,
-  .hcust-row {
+  .home-row {
     transition: none;
   }
 }
