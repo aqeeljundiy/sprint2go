@@ -14,7 +14,7 @@
     display: none;
   }
   .home-phone .home-scroll {
-    padding: 0 0 calc(24px + var(--fab-space));
+    padding: 0 0 var(--fab-space);
   }
   /* The page and its rows share one background, so a swiped row has no edge. */
   .home-phone .swipe-face,
@@ -25,34 +25,22 @@
     background: var(--bg);
   }
 
-  /* ---------- The greeting: Apple's large title ---------- */
+  /* ---------- Under the greeting (the bar's title): the day and what needs you, one secondary line ---------- */
 
   .home-greet {
-    padding: 8px 16px 0;
-    margin-bottom: 16px;
-  }
-  .hg-date {
-    margin: 0;
-    font-size: var(--fs-secondary);
-    font-weight: 600;
-    color: var(--text-3);
-  }
-  .hg-hello {
-    margin: 4px 0 0;
-    font-size: var(--fs-display);
-    font-weight: 700;
-    line-height: 34px;
-    letter-spacing: -0.02em;
-    color: var(--text);
-    overflow: hidden;
-    white-space: nowrap;
-    text-overflow: ellipsis;
+    padding: 0 16px;
+    margin-bottom: 8px;
   }
   .hg-sum {
-    margin: 8px 0 0;
-    font-size: var(--fs-body);
-    line-height: 1.4;
+    margin: 0;
+    font: var(--t-secondary);
     color: var(--text-2);
+  }
+  .hg-sum + .hg-sum {
+    margin-top: 4px;
+  }
+  .hg-date {
+    color: var(--text-3);
   }
   .home-phone .news-card {
     margin: 0 16px 12px;
@@ -122,27 +110,23 @@
 
   /* ---------- Plain sections: Needs you, Today, Updates (no cards) ---------- */
 
+  /* Section header: 15/600, 24 above, 8 below; its action is a 13/600 text button with a 44 target. */
   .home-phone .hsec {
     margin: 0;
-    padding: 8px 16px 0;
+    padding: 24px 16px 0;
     border-radius: 0;
     background: none;
     box-shadow: none;
   }
-  .home-phone .hsec + .hsec,
-  .home-phone .home-now + .hsec {
-    margin-top: 8px;
-  }
   .home-phone .hsec-h {
-    min-height: 44px;
-    margin: 0;
-    font-size: var(--fs-heading);
-    font-weight: 700;
+    min-height: 20px;
+    margin: 0 0 8px;
   }
   .home-phone .hsec-h .link-btn {
     min-height: var(--tap);
-    font-size: var(--fs-body);
-    font-weight: 600;
+    margin: -12px 0;
+    font: var(--t-segment);
+    color: var(--accent-text);
     text-decoration: none;
   }
 
@@ -150,34 +134,34 @@
   .home-phone .ny-swipe + .ny-swipe {
     border-top: 0;
   }
+  /* Two-line rows (64): a 40 circle, the title 15/400, a 13 line under it; the divider starts at the text (52). */
   .home-phone .ny-swipe + .ny-swipe .ny-row {
-    box-shadow: inset 44px 0 0 var(--bg), inset 0 1px 0 var(--line);
+    box-shadow: inset 52px 0 0 var(--bg), inset 0 1px 0 var(--line);
   }
   .home-phone .ny-row {
     align-items: center;
     gap: 12px;
-    min-height: 64px;
-    padding: 8px 0;
+    min-height: var(--row-2);
+    padding: 12px 0;
   }
   .home-phone .ny-icon {
-    width: 32px;
-    height: 32px;
-    border-radius: 50%;
+    width: var(--av-m);
+    height: var(--av-m);
+    border-radius: var(--r-round);
   }
   .home-phone .ny-text {
-    gap: 4px;
+    gap: 0px;
   }
   .home-phone .ny-text strong {
     display: block;
-    font-size: var(--fs-body);
-    font-weight: 600;
-    line-height: 1.3;
+    font: var(--t-body);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
   .home-phone .ny-text small {
-    font-size: var(--fs-secondary);
+    font: var(--t-secondary);
+    color: var(--text-3);
   }
   .home-phone .ny-btn,
   .home-phone .ny-btn.primary {
@@ -186,8 +170,7 @@
     border-radius: 0;
     background: none;
     color: var(--accent-text);
-    font-size: var(--fs-body);
-    font-weight: 600;
+    font: var(--t-label);
   }
   .home-phone .ny-btn:active {
     opacity: 0.6;
@@ -207,16 +190,16 @@
   }
   .home-phone .ny-more {
     min-height: var(--tap);
-    margin: 0 0 0 48px;
-    font-size: var(--fs-body);
-    font-weight: 600;
+    margin: 0 0 0 calc(var(--av-m) + var(--lead-gap));
+    font: var(--t-label);
     text-decoration: none;
   }
 
   /* Today: events by time, then tasks due today, one list. */
   .home-phone .htd-ev,
   .home-phone .htd-task {
-    min-height: 52px;
+    min-height: var(--row-1);
+    gap: 0;
     border-bottom: 0;
   }
   .home-phone .htd-ev + .htd-ev,
@@ -225,9 +208,9 @@
     box-shadow: inset 56px 0 0 var(--bg), inset 0 1px 0 var(--line);
   }
   .home-phone .htd-ev time {
-    width: 46px;
+    width: 44px;
     margin-right: 12px;
-    font-size: var(--fs-body);
+    font: var(--t-body);
     color: var(--text-2);
   }
   .home-phone .htd-ev-title,
@@ -261,20 +244,32 @@
 
   /* Updates: up to three, then All notifications. */
   .home-phone .hupd-row {
-    min-height: 48px;
+    min-height: var(--row-2);
     gap: 12px;
+    padding: 12px 0;
+    align-items: center;
+  }
+  .home-phone .ny-swipe + .ny-swipe .hupd-row {
+    box-shadow: inset 52px 0 0 var(--bg), inset 0 1px 0 var(--line);
+  }
+  .home-phone .hupd-row .nt-icon {
+    width: var(--av-m);
+    height: var(--av-m);
+    border-radius: var(--r-round);
   }
   .home-phone .hupd-text {
-    font-size: var(--fs-body);
+    gap: 0px;
+    font: var(--t-body);
   }
   .home-phone .hupd-text time {
-    font-size: var(--fs-secondary);
+    font: var(--t-secondary);
+    color: var(--text-3);
   }
   .home-phone .hsec-all {
     min-height: var(--tap);
     padding: 0;
     border-top: 0;
-    font-size: var(--fs-body);
+    font: var(--t-label);
   }
   .home-phone .hsec-all svg {
     display: none;
@@ -291,14 +286,14 @@
     align-items: center;
     gap: 12px;
     width: 100%;
-    min-height: 48px;
-    padding: 8px 0;
+    min-height: var(--row-2);
+    padding: 12px 0;
     text-align: left;
     color: var(--text);
     transition: opacity 0.15s;
   }
   .home-row + .home-row {
-    box-shadow: inset 44px 0 0 var(--bg), inset 0 1px 0 var(--line);
+    box-shadow: inset 52px 0 0 var(--bg), inset 0 1px 0 var(--line);
   }
   .home-row:active {
     opacity: 0.6;
@@ -307,9 +302,9 @@
     flex: none;
     display: grid;
     place-items: center;
-    width: 32px;
-    height: 32px;
-    border-radius: 50%;
+    width: var(--av-m);
+    height: var(--av-m);
+    border-radius: var(--r-round);
     background: var(--hover);
     color: var(--text-2);
   }
@@ -320,8 +315,7 @@
     gap: 0px;
   }
   .home-row-text strong {
-    font-size: var(--fs-body);
-    font-weight: 600;
+    font: var(--t-body);
   }
   .home-row-text small {
     overflow: hidden;

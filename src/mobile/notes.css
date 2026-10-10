@@ -39,7 +39,7 @@
     min-height: 0;
     overflow-y: auto;
     overscroll-behavior: contain;
-    padding: 0 0 calc(16px + var(--fab-space, 0px));
+    padding: 0 0 var(--fab-space);
   }
   .nl-scroll.is-empty {
     display: flex;

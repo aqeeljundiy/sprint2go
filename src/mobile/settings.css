@@ -28,7 +28,7 @@
     min-height: 0;
     overflow-y: auto;
     overscroll-behavior: contain;
-    padding: 12px 0 calc(24px + var(--fab-space, 0px));
+    padding: 12px 0 var(--fab-space);
   }
   /* iOS's account card: your photo, name and email, first on the screen. */
   .set-account {

@@ -37,7 +37,7 @@
   /* ---------- Home: search, filter chips, Coming up, Past meetings (Google Meet's) ---------- */
 
   .meet-home .tracking-scroll {
-    padding: 4px 16px calc(24px + var(--fab-space, 0px));
+    padding: 4px 16px var(--fab-space);
   }
   .meet-home .tracking-scroll > * {
     flex-shrink: 0;

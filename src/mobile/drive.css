@@ -18,7 +18,7 @@
 /* Phones: Google Drive's iPhone app (DriveView's DrivePhone). A search pill, a sort row, plain rows, no boxes. */
 @media (max-width: 767px) {
   .drive-phone .drive-scroll {
-    padding: 8px 0 calc(24px + var(--fab-space, 88px));
+    padding: 8px 0 var(--fab-space);
   }
   .drive-phone .drive-note {
     margin: 4px 16px 8px;

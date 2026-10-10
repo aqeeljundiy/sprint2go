@@ -17,7 +17,7 @@ import { doers, dueLabel, isBrief, peopleOptions } from './TasksView';
 import { kindOf } from '../stages';
 import { EmptyState } from './ui/EmptyState';
 import { useCreateAction } from '../mobile/chrome';
-import { LargeTitle } from '../mobile/TopBar';
+import { TopBar } from '../mobile/TopBar';
 import { usePhone } from '../mobile/media';
 import { needsYou, updatesOf } from '../needsYou';
 import { addDays } from '../taskDates';
@@ -796,12 +796,21 @@ export function HomeView(p: Props) {
     return (
       <section className="home-pane home-phone view-enter">
         <div className="home-scroll">
-          <LargeTitle app="home" className="home-greet">
-            <p className="hg-date">{fmtWeekdayLong(new Date())}</p>
-            <h1 className="hg-hello">{greeting.replace(/\.$/, '')}</h1>
-            <p className="hg-sum">{summary}</p>
+          {/* The greeting is the bar's title (24/700, no large title row); the day and what needs you sit under it. */}
+          <TopBar
+            app="home"
+            title={
+              <h1 className="mt-title plain">
+                <span className="mt-title-text">{greeting.replace(/\.$/, '')}</span>
+              </h1>
+            }
+          />
+          <div className="home-greet">
+            <p className="hg-sum">
+              <span className="hg-date">{fmtWeekdayLong(new Date())}.</span> {summary}
+            </p>
             {quiet && nextTask && <p className="hg-sum">{t('Next on your list: “{title}”, {when}.', { title: nextTask.title, when: dueWord(nextTask.due!) })}</p>}
-          </LargeTitle>
+          </div>
 
           {newsCards}
 

@@ -420,7 +420,7 @@
     min-height: 0;
     overflow-y: auto;
     overscroll-behavior: contain;
-    padding-bottom: calc(16px + var(--fab-space, 88px));
+    padding-bottom: var(--fab-space);
   }
   .vp-search {
     display: flex;

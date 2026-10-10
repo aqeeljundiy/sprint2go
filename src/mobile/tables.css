@@ -180,7 +180,7 @@
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: 0 0 calc(24px + var(--fab-space, 0px));
+  padding: 0 0 var(--fab-space);
   background: var(--surface);
 }
 .tb-crd-list {
@@ -376,7 +376,7 @@
 }
 /* Tables home on phones: grouped rows, a 32 px letter tile in the table's colour, the name at 17 px. */
 .tasks-pane.tb-home-phone > .tracking-scroll {
-  padding: 16px 0 calc(24px + var(--fab-space, 0px));
+  padding: 16px 0 var(--fab-space);
 }
 .tb-home-row.g-row {
   min-height: 48px;
@@ -912,7 +912,7 @@ button.tb-page-title:active {
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding-bottom: calc(24px + var(--fab-space, 0px));
+  padding-bottom: var(--fab-space);
 }
 .tb-pcal-head {
   display: flex;

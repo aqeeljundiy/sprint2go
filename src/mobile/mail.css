@@ -35,12 +35,13 @@
   }
 
   /* Gmail's search pill (MailTop.tsx), and the selection bar that takes its place. Same box, so nothing moves. */
+  /* The pill is the 52 px bar: 48 tall with 4 px above it (Gmail's), drawer icon, field, your avatar (32). */
   .gm-search,
   .gm-select {
     display: flex;
     align-items: center;
-    height: 56px;
-    margin: 8px 16px 0;
+    height: 48px;
+    margin: 4px 16px 0;
   }
   .gm-search {
     padding: 0 8px;
@@ -49,7 +50,7 @@
     color: var(--text-2);
   }
   .gm-select {
-    margin: 8px 8px 0;
+    margin: 4px 8px 0;
     gap: 4px;
   }
   .gm-fade {
@@ -79,8 +80,7 @@
     height: 100%;
     padding: 0 4px;
     text-align: left;
-    font-size: var(--fs-field);
-    font-weight: 400;
+    font: var(--t-body);
     color: var(--text-3);
     overflow: hidden;
     white-space: nowrap;
@@ -107,8 +107,7 @@
   }
   .gm-count {
     padding-left: 8px;
-    font-size: var(--fs-title);
-    font-weight: 600;
+    font: var(--t-title);
     font-variant-numeric: tabular-nums;
   }
   .gm-select .spacer {
@@ -121,10 +120,7 @@
     display: flex;
     align-items: flex-end;
     min-height: 44px;
-    padding: 0 16px 12px;
-    font-size: var(--fs-secondary);
-    font-weight: 600;
-    color: var(--text-3);
+    padding: 0 16px 8px;
   }
   .gm-selall {
     align-items: center;
@@ -166,7 +162,7 @@
   }
 
   .rows {
-    padding: 0 0 calc(24px + var(--fab-space));
+    padding: 0 0 var(--fab-space);
   }
   .rows > .row-li + .row-li {
     margin-top: 0;
@@ -175,10 +171,12 @@
     border-radius: 0;
   }
 
-  /* A row: avatar 40 at 16, text from 72; who 16, subject 14, a line of it 14, the time 12. Bold when unread. */
+  /* A three-line row (80): avatar 40 at 16, text from 68; who 15, subject 13, a line of it 13, the time 12.
+     Unread: who and subject at 600. The divider starts at the text, none after the last row. */
   .gm-row {
-    gap: 16px;
-    min-height: 80px;
+    position: relative;
+    gap: 12px;
+    min-height: var(--row-3);
     padding: 12px 16px;
     border-radius: 0;
     background: var(--surface);
@@ -192,13 +190,32 @@
   .gm-row::after {
     content: none;
   }
+  .row-li + .row-li .gm-row::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 68px;
+    right: 0;
+    height: 1px;
+    background: var(--line);
+  }
   .gm-row .row-av {
-    width: 44px;
-    height: 44px;
-    margin: -4px;
+    width: var(--av-m);
+    height: var(--av-m);
+    margin: 0;
   }
   .gm-row .row-check {
-    inset: 2px;
+    inset: 0;
+  }
+  .gm-row .row-check svg {
+    width: var(--icon-m);
+    height: var(--icon-m);
+  }
+  .gm-row .row-clip {
+    flex: none;
+    width: var(--icon-s);
+    height: var(--icon-s);
+    color: var(--text-3);
   }
   .gm-row .row-av .avatar,
   .gm-row .row-check {
@@ -212,13 +229,11 @@
   .gm-row .row-from {
     flex: 1;
     min-width: 0;
-    font-size: var(--fs-body);
-    line-height: 22px;
-    font-weight: 400;
+    font: var(--t-body);
     color: var(--text);
   }
   .gm-row.unread .row-from {
-    font-weight: 700;
+    font-weight: 600;
     color: var(--text);
   }
   .gm-row .row-count {
@@ -239,7 +254,6 @@
     color: var(--text-3);
   }
   .gm-row.unread .row-date {
-    font-weight: 700;
     color: var(--text);
   }
   .gm-row .row-date.snoozed {
@@ -250,14 +264,12 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    margin-top: 1px;
-    font-size: var(--fs-secondary);
-    line-height: 20px;
-    font-weight: 400;
+    margin-top: 0;
+    font: var(--t-secondary);
     color: var(--text);
   }
   .gm-row.unread .row-subject {
-    font-weight: 700;
+    font-weight: 600;
   }
   .row-subj-text {
     min-width: 0;
@@ -279,10 +291,9 @@
     max-width: 40%;
     height: 20px;
     padding: 0 8px;
-    border-radius: var(--r-tile);
-    font-size: var(--fs-caption);
-    line-height: 18px;
-    font-weight: 600;
+    border-radius: var(--r-pill);
+    font: var(--t-chip);
+    line-height: 20px;
     color: var(--text-2);
     background: color-mix(in oklab, var(--c, var(--text-3)) 16%, transparent);
     overflow: hidden;
@@ -293,14 +304,13 @@
     display: flex;
     align-items: center;
     gap: 4px;
-    height: 20px;
+    height: var(--lh-secondary);
   }
   .gm-row .row-snippet {
     flex: 1;
     min-width: 0;
     margin: 0;
-    font-size: var(--fs-secondary);
-    line-height: 20px;
+    font: var(--t-secondary);
     color: var(--text-3);
     display: block;
     overflow: hidden;
@@ -308,7 +318,7 @@
     text-overflow: ellipsis;
   }
   .gm-row .hl {
-    font-weight: 700;
+    font-weight: 600;
     color: var(--text);
   }
   /* The star sits at the end of the snippet line, its 44 target reaching into the row's padding. */
@@ -567,10 +577,10 @@
     display: flex;
     align-items: center;
     gap: 12px;
-    min-height: 64px;
-    margin: 4px 12px;
-    padding: 8px 12px;
-    border-radius: var(--r-card);
+    min-height: var(--row-2);
+    margin: 4px 0;
+    padding: 12px 16px;
+    border-radius: 0;
     text-align: left;
     transition: background 0.15s;
   }
@@ -582,14 +592,13 @@
     min-width: 0;
   }
   .gm-drawer-who b {
-    font-size: var(--fs-body);
-    font-weight: 700;
+    font: var(--t-heading);
     overflow: hidden;
     white-space: nowrap;
     text-overflow: ellipsis;
   }
   .gm-drawer-who small {
-    font-size: var(--fs-secondary);
+    font: var(--t-secondary);
     color: var(--text-3);
     overflow: hidden;
     white-space: nowrap;
@@ -605,18 +614,18 @@
   .gm-nav-group {
     display: grid;
   }
+  /* Drawer rows: 44, the icon at the 16 gutter, the current one on a pill that runs in from the left edge. */
   .gm-nav {
     display: grid;
-    grid-template-columns: 20px minmax(0, 1fr) auto;
+    grid-template-columns: 24px minmax(0, 1fr) auto;
     align-items: center;
-    gap: 16px;
-    min-height: 48px;
-    margin: 0 12px;
-    padding: 0 12px;
-    border-radius: var(--r-pill);
+    gap: 12px;
+    min-height: var(--row-compact);
+    margin: 0 8px 0 0;
+    padding: 0 16px;
+    border-radius: 0 var(--r-pill) var(--r-pill) 0;
     text-align: left;
-    font-size: var(--fs-body);
-    font-weight: 400;
+    font: var(--t-body);
     color: var(--text);
     transition: background 0.15s, color 0.15s;
   }
@@ -643,8 +652,7 @@
     text-shadow: 0 0 0.4px currentColor; /* a touch heavier without the width changing */
   }
   .gm-nav-count {
-    font-size: var(--fs-secondary);
-    font-weight: 600;
+    font: var(--t-chip);
     color: var(--text-2);
   }
   .gm-nav.active .gm-nav-count {
@@ -652,17 +660,13 @@
   }
   .gm-sep {
     height: 1px;
-    margin: 8px 0 8px 24px;
+    margin: 8px 0 8px 16px;
     background: var(--line);
   }
   .gm-head {
     display: flex;
     align-items: center;
-    min-height: 32px;
-    padding: 0 24px;
-    font-size: var(--fs-caption);
-    font-weight: 600;
-    color: var(--text-3);
+    padding: 16px 16px 8px;
   }
 
   /* ---------- Mail settings (MailSettings.tsx): Gmail's plain rows; swipes with a preview ---------- */
@@ -1301,7 +1305,7 @@
     color: var(--text-2);
   }
   .gm-invite .invite-status {
-    font-size: var(--fs-secondary);
+    font: var(--t-secondary);
     color: var(--ok);
   }
   .gm-invite .invite-status.warn {
@@ -1335,9 +1339,9 @@
     min-height: var(--tap);
     padding: 0 16px;
     border: 0;
+    border-radius: var(--r-pill);
     background: none;
-    font-size: var(--fs-secondary);
-    font-weight: 600;
+    font: var(--t-segment);
     color: var(--text);
   }
   .gm-smart button::after {
@@ -1346,7 +1350,7 @@
     inset: 4px 0;
     z-index: -1;
     border: 1px solid var(--border);
-    border-radius: var(--r-card);
+    border-radius: var(--r-pill);
     transition: background 0.15s;
   }
   .gm-smart button:active::after {
@@ -1580,9 +1584,29 @@
   .compose.phone .recip-label {
     flex: none;
     width: 56px;
-    font-size: var(--fs-field);
-    font-weight: 400;
+    font: var(--t-body);
     color: var(--text-3);
+  }
+  .compose.phone .recip-chips {
+    gap: 8px;
+  }
+  .compose.phone .recip-label {
+    padding-top: 0;
+  }
+  /* Field rows: the line under each starts at the label (16), like every list. */
+  .compose.phone .compose-field,
+  .compose.phone .recip {
+    margin-left: 16px;
+    padding-left: 0;
+  }
+  .gm-smart .ai-suggest {
+    gap: 8px;
+  }
+  .compose.phone .recip-chips input {
+    padding: 0;
+  }
+  .compose.phone .from-sel {
+    padding: 0 12px 0 0;
   }
   .compose.phone .compose-field input {
     flex: 1;

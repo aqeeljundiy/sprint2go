@@ -23,7 +23,7 @@
   /* ---------- The list: Slack's Home, DMs and Activity under one switch ---------- */
 
   .chat-list {
-    padding: 0 0 calc(24px + var(--fab-space));
+    padding: 0 0 var(--fab-space);
   }
   /* The switch: Slack's three tabs as one segmented control right under the top bar (the suite keeps the one bar). */
   .chat-switch-row {
@@ -81,33 +81,29 @@
   }
 
   /* Tiles (Slack's Catch up, Threads, Huddles): white with a hairline, the hot one says so in its icon and weight. */
+  /* Shortcuts that have something new (Catch up, Threads, a draft, a reminder, a live huddle): pills that wrap to a
+     second line, never cut off at the edge. The ones with nothing new don't show (ChatApp.tsx). */
   .chat-tiles {
     display: flex;
+    flex-wrap: wrap;
     gap: 8px;
-    overflow-x: auto;
-    padding: 4px 16px 12px;
-    scroll-snap-type: x proximity;
-    scroll-padding: 0 16px;
-    scrollbar-width: none;
-    overscroll-behavior-x: contain;
+    padding: 4px 16px 8px;
   }
   .chat-tiles::-webkit-scrollbar {
     display: none;
   }
   .chat-tile {
     flex: none;
-    display: grid;
-    align-content: start;
-    gap: 0px;
-    min-width: 104px;
-    max-width: 168px;
-    min-height: 80px;
-    padding: 12px 12px;
-    border-radius: var(--r-tile);
-    background: var(--surface);
-    border: 1px solid var(--border);
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    max-width: 100%;
+    min-height: 36px;
+    padding: 0 12px;
+    border-radius: var(--r-pill);
+    background: var(--surface-2);
+    border: 0;
     text-align: left;
-    scroll-snap-align: start;
     transition:
       background 0.15s,
       transform 0.15s;
@@ -118,17 +114,21 @@
     transform: scale(0.98);
   }
   .ct-icon {
+    display: grid;
     color: var(--text-2);
-    margin-bottom: 8px;
+    margin: 0;
+  }
+  .ct-icon svg {
+    width: var(--icon-s);
+    height: var(--icon-s);
   }
   .ct-label {
-    font-size: var(--fs-body);
-    font-weight: 600;
+    font: var(--t-segment);
     color: var(--text);
     white-space: nowrap;
   }
   .ct-line {
-    font-size: var(--fs-secondary);
+    font: var(--t-secondary);
     color: var(--text-3);
     overflow: hidden;
     text-overflow: ellipsis;
@@ -138,7 +138,7 @@
     color: var(--accent-text, var(--accent));
   }
   .chat-tile.hot .ct-line {
-    color: var(--text-2);
+    color: var(--accent-text);
     font-weight: 600;
   }
   .chat-tile.tile-live .ct-icon,
@@ -210,10 +210,11 @@
   }
 
   /* Sections: a hairline between them, a small icon tile, the name in sentence case, the fold chevron at the right. */
+  /* Sections: 12 px apart plus the header's own air (24 above the name), no lines between them. */
   .chat-list .chat-section {
-    margin: 0;
-    padding: 4px 0;
-    border-top: 1px solid var(--border);
+    margin: 12px 0 0;
+    padding: 0;
+    border-top: 0;
   }
   .chat-list .sec-head-row {
     padding: 0;
@@ -225,11 +226,10 @@
     width: 100%;
     min-height: 44px;
     padding: 0 12px 0 16px;
-    font-size: var(--fs-body);
-    font-weight: 600;
+    font: var(--t-heading);
     letter-spacing: 0;
     text-transform: none;
-    color: var(--text-2);
+    color: var(--text);
     opacity: 1;
     transition: background 0.15s;
   }
@@ -237,6 +237,7 @@
     background: var(--hover);
   }
   .sec-ico {
+    display: none !important; /* no icons in front of section headers */
     flex: none;
     display: grid;
     place-items: center;
@@ -290,14 +291,14 @@
   }
   .cl-glyph {
     display: grid;
-    place-items: center;
+    place-items: center start;
     flex: none;
-    width: 20px;
-    height: 20px;
+    width: var(--av-xs);
+    height: var(--av-xs);
     color: var(--text-2);
   }
   .cl-glyph .avatar {
-    border-radius: var(--r-tile);
+    border-radius: var(--r-round);
     font-size: var(--fs-caption) !important;
   }
   .cl-glyph .presence {
@@ -325,7 +326,7 @@
     color: var(--text);
   }
   .cl-row.unread .cl-name {
-    font-weight: 700;
+    font-weight: 600;
   }
   .cl-row.unread .cl-glyph {
     color: var(--text);
@@ -379,7 +380,7 @@
     display: flex;
   }
   .clh-avs .avatar {
-    border-radius: var(--r-tile);
+    border-radius: var(--r-round);
     box-shadow: 0 0 0 1.5px var(--surface);
   }
   .clh-avs .avatar + .avatar {
@@ -391,10 +392,11 @@
     gap: 12px;
     width: 100%;
     min-height: var(--tap);
+    margin-top: 12px;
     padding: 0 16px;
-    border-top: 1px solid var(--border);
+    border-top: 0;
     color: var(--text-2);
-    font-size: var(--fs-body);
+    font: var(--t-body);
     transition: background 0.15s;
   }
   .cl-add:active {
@@ -412,13 +414,13 @@
     padding: 12px 16px;
   }
   .dm-row-av .avatar {
-    border-radius: var(--r-tile);
+    border-radius: var(--r-round);
   }
   .cl-main {
     flex: 1;
     min-width: 0;
     display: grid;
-    gap: 4px;
+    gap: 0;
   }
   .cl-top,
   .cl-bottom {
@@ -431,8 +433,14 @@
     align-items: flex-start;
   }
   .dm-row .cl-name {
-    font-weight: 600;
+    font-weight: 400;
     color: var(--text);
+  }
+  .dm-row.unread .cl-name {
+    font-weight: 600;
+  }
+  .dm-row + .dm-row {
+    box-shadow: inset 68px 0 0 var(--surface), inset 0 1px 0 var(--line);
   }
   .dm-row .cl-top time {
     flex: none;
@@ -440,8 +448,7 @@
     color: var(--text-3);
   }
   .dm-row.unread .cl-top time {
-    color: var(--text-2);
-    font-weight: 600;
+    color: var(--text);
   }
   .cl-preview {
     flex: 1;
@@ -450,8 +457,7 @@
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
     overflow: hidden;
-    font-size: var(--fs-secondary);
-    line-height: 19px;
+    font: var(--t-secondary);
     color: var(--text-3);
   }
   .dm-row.unread .cl-preview {
@@ -502,10 +508,9 @@
   }
   .act-list {
     display: grid;
-    border-top: 1px solid var(--border);
   }
-  .act-swipe {
-    border-bottom: 1px solid var(--border);
+  .act-swipe + .act-swipe .act-row {
+    box-shadow: inset 16px 0 0 var(--surface), inset 0 1px 0 var(--line);
   }
   .act-row {
     display: grid;
@@ -561,7 +566,7 @@
   }
   .act-main .avatar {
     flex: none;
-    border-radius: var(--r-tile);
+    border-radius: var(--r-round);
   }
   .act-ico {
     flex: none;
@@ -656,7 +661,7 @@
     background: var(--hover);
   }
   .nm-row .avatar {
-    border-radius: var(--r-tile);
+    border-radius: var(--r-round);
   }
   .nm-glyph {
     display: grid;
@@ -823,7 +828,7 @@
     padding-bottom: 4px;
   }
   .push-screen .chat-msg > .avatar {
-    border-radius: var(--r-tile);
+    border-radius: var(--r-round);
   }
   .push-screen .cm-gutter {
     width: 36px;
@@ -919,7 +924,7 @@
     box-shadow: none;
   }
   .push-screen .tl-avs .avatar {
-    border-radius: var(--r-tile);
+    border-radius: var(--r-round);
   }
   .push-screen .tl-avs .avatar + .avatar {
     margin-left: 4px;
@@ -943,6 +948,16 @@
     border-radius: var(--r-tile);
     border: 1px solid var(--border);
     background: none;
+  }
+  .push-screen .cm-task {
+    padding: 8px 12px;
+  }
+  .push-screen .chat-day > span {
+    padding: 4px 12px;
+  }
+  .push-screen .cm-text .mention {
+    padding: 0 4px;
+    border-radius: var(--r-pill);
   }
   .push-screen .chat-file {
     max-width: none;
@@ -1123,7 +1138,7 @@
     background: var(--hover);
   }
   .composer.is-phone .mention-pop .avatar {
-    border-radius: var(--r-tile);
+    border-radius: var(--r-round);
   }
   /* Threads: "Also send to #channel" as a checkbox on its own row. */
   .cmp-also.is-check {
@@ -1199,7 +1214,7 @@
     text-align: center;
   }
   .cd-hero .avatar {
-    border-radius: var(--r-card);
+    border-radius: var(--r-round);
     margin-bottom: 8px;
   }
   .cd-hero strong {
@@ -1272,21 +1287,24 @@
     font-weight: 700;
   }
   .cd-rows {
-    border-top: 1px solid var(--border);
+    border-top: 0;
   }
   .cd-row {
     display: flex;
     align-items: center;
     gap: 12px;
     width: 100%;
-    min-height: 48px;
+    min-height: var(--row-1);
     padding: 0 16px;
-    border-bottom: 1px solid var(--line, var(--border));
+    border-bottom: 0;
     text-align: left;
     transition: background 0.15s;
   }
   .cd-row:active {
     background: var(--hover);
+  }
+  .cd-row + .cd-row {
+    box-shadow: inset 16px 0 0 var(--surface), inset 0 1px 0 var(--line);
   }
   .cd-label {
     flex: 1;
@@ -1302,7 +1320,8 @@
   }
   .cd-row.danger {
     margin-top: 24px;
-    border-top: 1px solid var(--line, var(--border));
+    box-shadow: none;
+    border-top: 0;
     color: var(--danger);
   }
   .chat-pane-screen .chan-pane {
@@ -1560,7 +1579,7 @@
     line-height: 22px;
   }
   .page-catchup .cu-msg .avatar {
-    border-radius: var(--r-tile);
+    border-radius: var(--r-round);
   }
   .cu-actions button {
     min-height: 48px;

@@ -98,7 +98,8 @@ export function TaskViews({
   // A project's tasks look the same wherever they open on a phone (Tasks or the project's page): by stage.
   const dkind = kind === 'client' && phone ? 'project' : kind;
   const [d, setD, resetD] = useDisplay(dkind);
-  const layouts: Layout[] = kind === 'upcoming' ? ['calendar'] : kind === 'today' ? ['list', 'board'] : ['list', 'board', 'calendar'];
+  // Phones keep the week strip for Upcoming only: every other list (Assigned by me, Supervising, a team) is plain rows.
+  const layouts: Layout[] = kind === 'upcoming' ? ['calendar'] : kind === 'today' || phone ? ['list', 'board'] : ['list', 'board', 'calendar'];
   const layout: Layout = layouts.includes(d.layout) ? d.layout : layouts[0];
   const [fieldsPref, setFieldsPref] = usePersisted<{ list: string[]; board: string[] }>('s2g-task-fields', { list: LIST_FIELDS, board: BOARD_FIELDS });
   const fields = (layout === 'board' ? fieldsPref.board : fieldsPref.list) ?? (layout === 'board' ? BOARD_FIELDS : LIST_FIELDS);

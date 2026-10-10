@@ -5,8 +5,9 @@
    Phones: @media (max-width: 767px). Narrow: (max-width: 599px). Panes: @container on an inner element.
    The shared look of rows, boards, Quick Add and the sheets is in src/tasks.css.
 
-   The phone's Tasks copies Todoist (research/mobile/fix/tasks/spec.md): Browse's grouped cards as the root, then each
-   list with a large title and one "…" in the top bar, Todoist's row sizes, a task sheet of icon-and-value rows.
+   The phone's Tasks copies Todoist's lists (research/mobile/fix/tasks/spec.md) on the sprint2go system: a switch
+   under the top bar (Today, Upcoming, My tasks, Browse), Browse's grouped cards, sub-screens with the back arrow and
+   one "…", rows at 15 px, a task sheet of icon-and-value rows.
    ========================================================================== */
 
 @media (max-width: 767px) {
@@ -19,28 +20,37 @@
     background: var(--bg);
   }
   .tasks-pane:not(.has-list):not(.scope-briefs):not(.tasks-browse) > .tracking-scroll {
-    padding: 4px 12px calc(24px + var(--fab-space));
+    padding: 4px 12px var(--fab-space);
   }
   .tasks-pane.has-list > .tracking-scroll,
   .tasks-pane.scope-briefs > .tracking-scroll,
   .tasks-browse > .tracking-scroll {
-    padding: 0 0 calc(24px + var(--fab-space));
+    padding: 0 0 var(--fab-space);
   }
   .tasks-pane .trow,
   .tasks-pane .trow-swipe > .swipe-face {
     background: var(--bg);
   }
 
-  /* ---------- The large title (Apple's; Todoist's "Today") ---------- */
-  .tv-title {
-    margin: 0 0 12px;
-    font-size: var(--fs-display);
-    font-weight: 700;
-    line-height: 40px;
-    letter-spacing: -0.02em;
-    color: var(--text);
-    overflow: hidden;
+  /* ---------- The switch: Today, Upcoming, My tasks, Browse (Chat's segmented control, under the top bar) ---------- */
+  .tasks-switch-row {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    padding: 8px 16px;
+    background: var(--bg);
+  }
+  .tasks-switch.segmented {
+    display: flex;
+    height: 36px;
+  }
+  .tasks-switch.segmented > button {
+    flex: 1 1 auto;
+    min-width: 0;
+    height: 32px;
+    padding: 0 8px;
     white-space: nowrap;
+    overflow: hidden;
     text-overflow: ellipsis;
   }
 
@@ -50,7 +60,7 @@
     align-items: center;
   }
   .tv-dots {
-    color: var(--accent-text);
+    color: var(--text-2);
   }
   /* Todoist's project pill: people, layout and "…" in one capsule. */
   .tv-pill {
@@ -99,18 +109,17 @@
     min-height: 32px;
   }
 
-  /* ---------- Section headers: 17 px semibold, a hairline under them ---------- */
+  /* ---------- Section headers: 15/600, 24 above, 8 below, no line ---------- */
   .tasks-pane .t-group {
     margin-bottom: 0;
   }
   .t-heading {
     gap: 4px;
-    min-height: 44px;
+    min-height: 0;
     padding: 24px 16px 8px;
-    border-bottom: 1px solid var(--line);
+    border-bottom: 0;
     color: var(--text);
-    font-size: var(--fs-heading);
-    font-weight: 600;
+    font: var(--t-heading);
   }
   .t-heading > b {
     display: none; /* the rows show how many */
@@ -127,8 +136,7 @@
     margin: -12px -8px -12px auto;
     padding: 0 8px;
     color: var(--accent-text);
-    font-size: var(--fs-body);
-    font-weight: 400;
+    font: var(--t-segment);
     text-decoration: none;
   }
   .t-heading .t-resched-2 {
@@ -142,7 +150,7 @@
     margin: 4px 16px 0;
   }
 
-  /* ---------- Rows: Todoist's sizes. 24 px ring at 16, title 17 at 56, a 14 px line of details ---------- */
+  /* ---------- Rows: the ring at 16, the title 15 at 56, a 13 line of details; 48 one line, 64 with details ---------- */
   .trow-swipe {
     border-bottom: 0;
   }
@@ -158,9 +166,12 @@
     pointer-events: none;
   }
   .trow {
-    gap: 8px;
-    min-height: 48px;
-    padding: 16px 16px 16px 8px;
+    gap: 4px;
+    min-height: var(--row-1);
+    padding: 12px 16px 12px 4px;
+  }
+  .trow:has(.trow-meta) {
+    min-height: var(--row-2);
   }
   .trow:hover {
     background: var(--bg); /* touch leaves no hover behind */
@@ -173,7 +184,7 @@
     background: var(--accent-soft);
   }
   .trow-check {
-    width: 44px;
+    width: 48px;
     height: 44px;
     margin: -12px 0;
   }
@@ -194,14 +205,18 @@
     padding-top: 0;
   }
   .trow-title {
-    font-size: var(--fs-body);
-    line-height: 22px;
+    font: var(--t-body);
   }
   .trow-meta {
     gap: 4px 12px;
-    margin-top: 4px;
-    font-size: var(--fs-secondary);
-    line-height: 18px;
+    margin-top: 0;
+    font: var(--t-secondary);
+  }
+  /* One meaning per colour: red is late; every other date, a team or a stage is secondary text. A project is a dot. */
+  .trow-meta .tm:is(.due-today, .due-tomorrow, .due-week, .due-later),
+  .trow-meta .tm.team,
+  .trow-meta .tm.stage {
+    color: var(--text-3);
   }
   .trow-meta svg {
     width: 16px;
@@ -221,14 +236,8 @@
     order: 1;
   }
   /* The project as Todoist's "Name #", right-aligned; alone on its line when there's nothing else. */
-  .tm.proj i {
-    display: none;
-  }
-  .tm-hash {
-    display: inline;
-    margin-left: 4px;
-    color: var(--c);
-    font-weight: 600;
+  .tm.proj {
+    color: var(--text-3);
   }
   .trow-act {
     align-self: flex-start;
@@ -237,8 +246,7 @@
   .trow-act .row-act {
     min-height: 32px;
     padding-inline: 12px;
-    font-size: var(--fs-secondary);
-    font-weight: 600;
+    font: var(--t-segment);
   }
   /* Who's on it: a small avatar at the top right, on the title's line (team, queue and project views). */
   .trow-who {
@@ -1249,29 +1257,30 @@
   .tbr-scroll {
     padding-inline: 0;
   }
+  /* Grouped cards at 16 from the edge; each header 24 above, 8 below, at the card's text column (32). */
   .tbr-group {
-    margin: 0 16px 24px;
+    margin: 16px 16px 0;
     animation: fadeIn 0.2s ease-out backwards;
+  }
+  .tbr-group + .tbr-group {
+    margin-top: 24px;
   }
   .tbr-head {
     display: flex;
     align-items: center;
-    min-height: var(--tap);
-    padding: 0 0 4px 4px;
+    min-height: 20px;
+    padding: 0 0 8px 16px;
   }
   .tbr-head h2 {
     flex: 1;
     min-width: 0;
     margin: 0;
     overflow: hidden;
-    color: var(--text);
-    font-size: var(--fs-heading);
-    font-weight: 600;
     white-space: nowrap;
     text-overflow: ellipsis;
   }
   .tbr-add {
-    margin-right: -8px;
+    margin: -12px -8px -12px 0;
     color: var(--text-2);
   }
   .tbr-card {
@@ -1285,7 +1294,7 @@
     align-items: center;
     gap: 0;
     width: 100%;
-    min-height: 48px;
+    min-height: var(--row-1);
     padding: 0 12px 0 16px;
     border: 0;
     background: none;
@@ -1298,7 +1307,7 @@
     content: '';
     position: absolute;
     top: 0;
-    left: 56px;
+    left: 48px;
     right: 0;
     height: 1px;
     background: var(--line);
@@ -1311,21 +1320,24 @@
     flex: none;
     display: grid;
     place-items: center;
-    width: 24px;
-    height: 24px;
-    margin-right: 16px;
-    color: var(--accent-text);
+    width: var(--icon-m);
+    height: var(--icon-m);
+    margin-right: 12px;
+    color: var(--text-2);
   }
+  /* A team's or project's colour is data: a dot, not a coloured "#". */
   .tbr-hash {
-    font-size: var(--fs-title);
-    font-weight: 400;
-    line-height: 1;
+    width: 10px;
+    height: 10px;
+    border-radius: var(--r-round);
+    background: currentColor;
+    font-size: 0;
   }
   .tbr-label {
     flex: 1;
     min-width: 0;
     overflow: hidden;
-    font-size: var(--fs-body);
+    font: var(--t-body);
     white-space: nowrap;
     text-overflow: ellipsis;
   }
@@ -1337,7 +1349,7 @@
     flex: none;
     margin-left: 8px;
     color: var(--text-3);
-    font-size: var(--fs-body);
+    font: var(--t-secondary);
   }
   .tbr-hint.danger {
     color: var(--danger);
@@ -1354,12 +1366,6 @@
 @media (max-width: 767px) and (prefers-reduced-motion: reduce) {
   .tbr-group {
     animation: none;
-  }
-}
-@media (min-width: 393px) and (max-width: 767px) {
-  .tv-title {
-    font-size: var(--fs-display);
-    line-height: 41px;
   }
 }
 

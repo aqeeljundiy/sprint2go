@@ -5,8 +5,8 @@
 # apps connector (sign-in with OAuth and PKCE, every MCP tool, each person sees only their own, outward things are drafts),
 # the import checks (Slack, Trello and Google Drive into a company, Undo, and zips that try to get out or blow up),
 # the Tables checks (filters with groups, each person's own filters and sorts, templates that repeat, who may change a view),
-# phone mail apps (IMAP and SMTP submission with app passwords, against a real IMAP client and nodemailer) and the
-# language check (every Indonesian text keeps the English one's placeholders).
+# phone mail apps (IMAP and SMTP submission with app passwords, against a real IMAP client and nodemailer), the
+# phone design system check (the phone layer uses only the tokens) and the language check (every Indonesian text keeps the English one's placeholders).
 name: CI
 on:
   push:
@@ -29,6 +29,8 @@ jobs:
         run: npx tsc -p tsconfig.server.json --noEmit
       - name: Build
         run: npx vite build
+      - name: Phone layer keeps to the design system (tokens, type roles, spacing, radii, rows; docs/mobile-kit.md)
+        run: node scripts/ui-tokens-check.mjs
       - name: Demo-only code is guarded
         run: node scripts/check-demo-guards.mjs
       - name: Languages (Indonesian placeholders match the English, per area; docs/i18n.md)

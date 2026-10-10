@@ -260,7 +260,9 @@ export function ChatSidebar(p: SidebarProps) {
     saved: { icon: <Bookmark size={18} />, line: nextReminder ? t('Reminder {when}', { when: whenText(nextReminder.remindAt!) }) : chat.saved.length ? t('Your saved messages') : tx('tile', 'Nothing saved'), hot: false },
     live: { icon: <Headphones size={18} />, line: live.length ? (live.length > 1 ? tn(live.length, '{n} on', '{n} on') : chanName(live[0], p.users, p.me)) : '', hot: true, hidden: !live.length },
   };
-  const tiles = chat.tiles.order.filter((id) => !chat.tiles.hidden.includes(id) && !tileState[id].hidden);
+  // Phones show a shortcut only when it has something new or waiting: no "Caught up" or "Nothing saved" tiles.
+  const waiting: Record<TileId, boolean> = { catchup: unreadConvos.length > 0, threads: newReplies > 0, drafts: draftCount + scheduled > 0, saved: !!nextReminder, live: live.length > 0 };
+  const tiles = chat.tiles.order.filter((id) => !chat.tiles.hidden.includes(id) && !tileState[id].hidden && (!phone || waiting[id]));
   const openTile = (id: TileId) => (id === 'live' ? live[0] && p.onOpen(live[0].id) : p.onPage(id));
 
   /* ---------- one conversation in the list ---------- */

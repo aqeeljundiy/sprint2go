@@ -1,9 +1,9 @@
-import { useEffect, useRef, type ReactNode } from 'react';
+import { type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronLeft, type LucideIcon } from 'lucide-react';
 import { t } from '../i18n';
 import type { AppId } from '../types';
-import { useLargeTitleClaim, useTopBarClaim, useTopTargets } from './chrome';
+import { useTopBarClaim, useTopTargets } from './chrome';
 
 /**
  * An app takes over parts of the phone's top bar (docs/mobile-kit.md, section 3). Render it anywhere in the app's own
@@ -45,41 +45,5 @@ export function TopBarBack({ label, onClick }: { label?: string; onClick: () => 
       <ChevronLeft size={24} />
       {label && <span>{label}</span>}
     </button>
-  );
-}
-
-/**
- * A large title in the page (Apple's 34 pt title, Home's greeting, a Tasks list's name). While it's on screen the bar's
- * own title is tucked away; once it scrolls under the bar, `title` fades into the bar (17 px).
- */
-export function LargeTitle({ app, children, className = '' }: { app: AppId; children: ReactNode; className?: string }) {
-  const ref = useRef<HTMLDivElement>(null);
-  const state = useRef({ tucked: true, subs: new Set<() => void>() });
-  useLargeTitleClaim(
-    app,
-    () => state.current.tucked,
-    (f) => (state.current.subs.add(f), () => void state.current.subs.delete(f)),
-  );
-  useEffect(() => {
-    const el = ref.current;
-    if (!el || typeof IntersectionObserver === 'undefined') return;
-    // The bar covers the top of the screen: the title counts as gone once its lower half is under the bar.
-    const bar = document.querySelector('.mobile-top')?.getBoundingClientRect().bottom ?? 56;
-    const io = new IntersectionObserver(
-      ([e]) => {
-        const tucked = e.isIntersecting;
-        if (tucked === state.current.tucked) return;
-        state.current.tucked = tucked;
-        state.current.subs.forEach((f) => f());
-      },
-      { rootMargin: `-${Math.round(bar)}px 0px 0px 0px`, threshold: 0.5 },
-    );
-    io.observe(el);
-    return () => io.disconnect();
-  }, []);
-  return (
-    <div ref={ref} className={`large-title ${className}`}>
-      {children}
-    </div>
   );
 }

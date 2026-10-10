@@ -206,7 +206,7 @@ export function CompanySheet({
           return (
             <button key={w.id} type="button" className={`as-item ws-row${on ? ' on' : ''}`} aria-current={on || undefined} onClick={() => (onWorkspace(w.id), onClose())}>
               <span className="ws-logo">
-                <WorkspaceLogo ws={w} size={32} />
+                <WorkspaceLogo ws={w} size={40} />
               </span>
               <span className="as-label">
                 <span className="ws-name-line">
@@ -257,7 +257,7 @@ export function CompanySheet({
         {portals.map((pt) => (
           <button key={pt.key} type="button" className={`as-item ws-row${pt.key === currentPortal ? ' on' : ''}`} onClick={() => (onPortal?.(pt.key), onClose())}>
             <span className="ws-logo">
-              <WorkspaceLogo ws={pt.ws} size={32} />
+              <WorkspaceLogo ws={pt.ws} size={40} />
             </span>
             <span className="as-label">
               {pt.ws.name}

@@ -28,6 +28,14 @@
     font: var(--t-display);
     letter-spacing: var(--ls-display);
   }
+  /* A sub-screen's name after the back arrow. */
+  .mt-title.small {
+    font: var(--t-title);
+    letter-spacing: var(--ls-title);
+  }
+  .mt-back {
+    color: var(--text);
+  }
   /* Streams and plain lists sit on white, so their bar is white too (grouped screens keep the grey page). */
   .app:is(.mode-mail, .mode-chat, .mode-drive, .mode-calendar, .mode-meet) {
     --page: var(--surface);
@@ -76,7 +84,8 @@
       .tb-pf-section h4,
       .tb-pcal-list h4,
       .tb-ag-day h4,
-      .cd-sec-head
+      .cd-sec-head,
+      .palette-group
     ) {
     font: var(--t-heading);
     color: var(--text);
@@ -88,6 +97,11 @@
     font: var(--t-heading);
     color: var(--text);
     padding: 16px 12px 8px;
+  }
+
+  /* ---------- Sheets: rows start at the 16 gutter (4 + the row's 12) ---------- */
+  .sheet-body {
+    padding: 0 4px 12px;
   }
 
   /* ---------- Rows in sheets and menus ---------- */
@@ -102,15 +116,27 @@
   /* ---------- Segmented controls: 36 tall, pill, 13/600 ---------- */
   .segmented {
     min-height: 36px;
+    gap: 4px;
     border-radius: var(--r-pill);
   }
   .segmented > button {
+    gap: 8px;
     font: var(--t-segment);
     border-radius: var(--r-pill);
   }
 
+  /* ---------- Anything you press is a pill or a circle ---------- */
+  .icon-btn {
+    border-radius: var(--r-pill);
+  }
+  .sel {
+    gap: 8px;
+  }
+
   /* ---------- Badges and counts: 12/600 pills, always a number or a word ---------- */
-  span.badge {
+  span.badge,
+  span.badge.sm {
+    padding: 0 8px;
     font: var(--t-chip);
     border-radius: var(--r-pill);
   }
@@ -125,7 +151,9 @@
     min-height: var(--tap);
     padding: 0 16px;
   }
-  .link-btn {
+  .link-btn,
+  .link-btn.small {
+    gap: 4px;
     font: var(--t-label);
     color: var(--accent-text);
   }

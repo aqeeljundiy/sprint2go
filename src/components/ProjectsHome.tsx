@@ -92,8 +92,6 @@ export function ProjectsHome({ projects, tasks, users, onOpen, onCreate, onMenu,
     ];
     return (
       <TasksBrowse
-        app="projects"
-        title={term.Many}
         groups={groups}
         top={
           <>

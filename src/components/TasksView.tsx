@@ -23,8 +23,8 @@ import { Dot, Select, type Option } from './ui/Select';
 import { personOption } from './ui/PeopleList';
 import { QuotesTab } from './Quotes';
 import type { Quote } from '../types';
-import { useCreateAction, useTitleTucked } from '../mobile/chrome';
-import { LargeTitle, TopBar, TopBarBack } from '../mobile/TopBar';
+import { useCreateAction } from '../mobile/chrome';
+import { TopBar, TopBarBack } from '../mobile/TopBar';
 import { usePhone } from '../mobile/media';
 import { Sheet } from './ui/Sheet';
 import type { SheetAction } from './ui/ActionSheet';
@@ -202,13 +202,34 @@ interface Props {
   onNewProject?: () => void;
 }
 
-/** The view's name in the phone's top bar: hidden while the large title shows, then faded in small (Apple's). */
-function BarTitle({ app, text }: { app: 'tasks' | 'projects'; text: string }) {
-  const tk = useTitleTucked(app);
+/** A sub-screen's name in the phone's top bar, after the back arrow: 17/600. */
+function BarTitle({ text }: { text: string }) {
   return (
-    <h1 className={`mt-title plain ${tk.large && tk.tucked ? 'tucked' : 'small'}`} aria-hidden={(tk.large && tk.tucked) || undefined}>
+    <h1 className="mt-title plain small">
       <span className="mt-title-text">{text}</span>
     </h1>
+  );
+}
+
+type SwitchId = 'today' | 'upcoming' | 'mine' | 'browse';
+/** Phones: Today, Upcoming, My tasks and Browse under the top bar, like Chat's Home, DMs and Activity. */
+function TasksSwitch({ on, onPick }: { on: SwitchId; onPick: (id: SwitchId) => void }) {
+  const items: [SwitchId, string][] = [
+    ['today', t('Today')],
+    ['upcoming', t('Upcoming')],
+    ['mine', t('My tasks')],
+    ['browse', t('Browse')],
+  ];
+  return (
+    <div className="tasks-switch-row">
+      <div className="segmented tasks-switch" role="tablist" aria-label={t('Tasks')}>
+        {items.map(([id, label]) => (
+          <button key={id} type="button" role="tab" aria-selected={on === id} className={on === id ? 'on' : ''} onClick={() => on !== id && onPick(id)}>
+            {label}
+          </button>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -654,19 +675,19 @@ export function TasksView(p: Props) {
   const people = proj && (
     <ProjectPeople compact client={proj} users={p.users} me={p.me} canEdit={projManage} canInvite={projManage || !!p.canInviteGuests} onPatch={(x) => p.onPatchClient(proj.id, x)} onGuests={() => openPart('portal')} />
   );
-  const backToBrowse = app === 'tasks' && p.onBrowse ? <TopBarBack label={t('Tasks')} onClick={() => p.onBrowse!(true)} /> : undefined;
+  // Today, Upcoming, My tasks and Browse have the switch and the bar's own "Tasks"; anything opened from Browse is a
+  // sub-screen: the back arrow and its name at 17/600.
+  const switchOn: SwitchId | null = phone && app === 'tasks' && p.onBrowse ? (showBrowse ? 'browse' : scope.kind === 'today' || scope.kind === 'upcoming' || scope.kind === 'mine' ? scope.kind : null) : null;
+  const tasksSwitch = switchOn && <TasksSwitch on={switchOn} onPick={(id) => (id === 'browse' ? p.onBrowse!(true) : go({ kind: id }))} />;
+  const sub = phone && !switchOn;
+  const backToBrowse = sub && app === 'tasks' && p.onBrowse ? <TopBarBack onClick={() => p.onBrowse!(true)} /> : undefined;
   const partName = client && clientTab !== 'tasks' ? (clientTab === 'overview' ? client.name : (tabItems.find((x) => x.id === clientTab)?.name ?? client.name)) : '';
-  const phoneBar: PhoneBar | undefined = phone ? { app, lead: backToBrowse, title: <BarTitle app={app} text={heading} />, people: people || undefined, more: [...projectMenu, ...teamMenu], stages: client && projectManage ? () => setStagesOpen(true) : undefined } : undefined;
-  const largeTitle = phone && (showTaskList || scope.kind === 'briefs') && (
-    <LargeTitle app={app}>
-      <h1 className="tv-title">{heading}</h1>
-    </LargeTitle>
-  );
+  const phoneBar: PhoneBar | undefined = phone ? { app, lead: backToBrowse, title: sub ? <BarTitle text={heading} /> : undefined, people: people || undefined, more: [...projectMenu, ...teamMenu], stages: client && projectManage ? () => setStagesOpen(true) : undefined } : undefined;
 
   if (showBrowse)
     return (
       <>
-        <TasksBrowse groups={browseGroups} />
+        <TasksBrowse groups={browseGroups.filter((g) => g.id !== 'mine')} top={tasksSwitch} />
         {browseAdd && <QuickAdd ops={ops} defaults={{}} mode="sheet" where={t('My tasks')} inputRef={browseField} onClose={() => setBrowseAdd(false)} />}
       </>
     );
@@ -676,7 +697,7 @@ export function TasksView(p: Props) {
 
   return (
     <section className={`tasks-pane view-enter scope-${scope.kind}${client ? ` project-pane tab-${clientTab}` : ''}${showTaskList ? ' has-list' : ''}`}>
-      {phone && !showTaskList && <TopBar app={app} lead={backToBrowse} title={<BarTitle app={app} text={partName || heading} />} />}
+      {phone && !showTaskList && <TopBar app={app} lead={backToBrowse} title={sub ? <BarTitle text={partName || heading} /> : undefined} />}
       <header className="tracking-head tasks-head">
         <button className="icon-btn menu-btn" onClick={p.onMenu} aria-label={t('Open menu')}>
           <Menu size={18} />
@@ -816,7 +837,7 @@ export function TasksView(p: Props) {
       )}
 
       <div className="tracking-scroll" key={`${JSON.stringify(scope)}:${clientTab}`}>
-        {largeTitle}
+        {tasksSwitch}
         {team && !phone && (
           <div className="workload">
             {workload.map((w) => (

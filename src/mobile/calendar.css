@@ -899,7 +899,7 @@
 
 @media (max-width: 767px) {
   .is-phone .sch {
-    padding-bottom: calc(24px + var(--fab-space, 0px));
+    padding-bottom: var(--fab-space);
   }
   .is-phone .sch-month {
     display: flex;

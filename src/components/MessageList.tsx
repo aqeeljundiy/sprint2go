@@ -560,8 +560,8 @@ export function MailRow(p: {
   const snoozeBtn = useRef<HTMLButtonElement>(null);
   const hold = useLongPress(() => !p.selecting && p.onHold(), { disabled: p.leaving });
   if (p.phone) {
-    // Gmail's three lines: who and when, the subject, a line of it with the star. Unread is bold, nothing else.
-    // A fourth line only for files. A project (or label) is one small chip after the subject.
+    // Gmail's three lines: who and when, the subject, a line of it with the star. Unread is semibold, nothing else.
+    // Files are a paperclip by the time. A project (or label) is one small chip after the subject.
     const files = th.messages.flatMap((m) => m.attachments ?? []);
     const tag = p.client ?? labels[0];
     return (
@@ -592,6 +592,7 @@ export function MailRow(p: {
                 <Avatar person={who} size={18} />
               </span>
             )}
+            {files.length > 0 && <Paperclip size={16} className="row-clip" aria-hidden="true" />}
             <span className={`row-date${snoozed ? ' snoozed' : ''}`}>{snoozed ? whenWords(new Date(th.snoozedUntil!)) : th.sendAt ? whenWords(new Date(th.sendAt)) : listDate(last.date)}</span>
           </div>
           <div className="row-subject">
@@ -620,17 +621,6 @@ export function MailRow(p: {
               <Star size={20} />
             </button>
           </div>
-          {files.length > 0 && (
-            <div className="gm-files">
-              {files.slice(0, 2).map((f, i) => (
-                <span key={i} className="gm-file">
-                  <Paperclip size={14} />
-                  <span>{f.name}</span>
-                </span>
-              ))}
-              {files.length > 2 && <span className="gm-file more">+{files.length - 2}</span>}
-            </div>
-          )}
         </div>
       </div>
     );

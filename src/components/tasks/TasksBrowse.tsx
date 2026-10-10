@@ -1,8 +1,6 @@
 import type { ReactNode } from 'react';
 import { ChevronRight, Plus } from 'lucide-react';
 import { useActionMenu, type SheetAction } from '../ui/ActionSheet';
-import { LargeTitle } from '../../mobile/TopBar';
-import { t } from '../../i18n';
 
 export interface BrowseRow {
   id: string;
@@ -22,17 +20,15 @@ export interface BrowseGroup {
 }
 
 /**
- * Tasks on a phone, one level up (Todoist's Browse, iOS Mail's Mailboxes): the root of the Tasks stack, reached with
- * "‹ Tasks" or by tapping Tasks in the bar again. Grouped cards: Today, Upcoming, My tasks; the team's queues and
+ * Tasks on a phone, one level up (Todoist's Browse, iOS Mail's Mailboxes): the Browse part of the switch under the
+ * top bar, or Tasks in the bar tapped again. Grouped cards: Today, Upcoming, My tasks; the team's queues and
  * reviews; the projects; saved views; then this app's settings. The Projects app's list on a phone is the same page.
  */
-export function TasksBrowse({ groups, app = 'tasks', title, top }: { groups: BrowseGroup[]; app?: 'tasks' | 'projects'; title?: string; top?: ReactNode }) {
+export function TasksBrowse({ groups, top }: { groups: BrowseGroup[]; top?: ReactNode }) {
+  // The title is the top bar's (24/700); no large title row.
   return (
     <section className="tasks-pane tasks-browse view-enter">
       <div className="tracking-scroll tbr-scroll">
-        <LargeTitle app={app}>
-          <h1 className="tv-title">{title ?? t('Tasks')}</h1>
-        </LargeTitle>
         {top}
         {groups
           .filter((g) => g.rows.length || g.add)
