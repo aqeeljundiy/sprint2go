@@ -225,7 +225,7 @@ export function Compose({ contacts, signature: baseSignature, signatureFor, work
       {win === 'max' && <div className={`compose-scrim ${closing ? 'out' : ''}`} onClick={() => setWin('normal')} />}
       <div
         ref={box}
-        className={`compose ${win} ${closing ? 'closing' : ''} ${dragOver ? 'drag' : ''}${phone ? ' phone' : ''}${format ? ' fmt-on' : ''}`}
+        className={`compose ${win} ${closing ? 'closing' : ''} ${dragOver ? 'drag' : ''}${phone ? ' phone' : ''}${format ? ' fmt-on' : ''}${!phone && win === 'normal' && size.w < 640 ? ' narrow' : ''}`}
         style={win === 'normal' && !phone ? { width: size.w, height: size.h } : undefined}
         role="dialog"
         aria-label={title}

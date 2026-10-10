@@ -512,7 +512,6 @@ export function Reader(props: Props) {
       <article key={m.id} className={`message ${open ? 'open' : ''}`}>
         {open && (
           <span className="msg-acts">
-            {m.priority === 'high' && <span className="prio-chip">{t('High priority')}</span>}
             <button type="button" className="icon-btn" onClick={() => startReply()} aria-label={t('Reply')} title={t('Reply')} disabled={!!props.replyOff}>
               <Reply size={16} />
             </button>
@@ -536,6 +535,7 @@ export function Reader(props: Props) {
             <div className="message-from">
               <strong>{isMine(m.from.email) ? t('You') : m.from.name}</strong>
               {open && <span className="email">&lt;{m.from.email}&gt;</span>}
+              {m.priority === 'high' && <span className="prio-chip">{t('High priority')}</span>}
             </div>
             <div className="message-to">
               {open
@@ -929,7 +929,7 @@ export function Reader(props: Props) {
       ...(!isMine(m.from.email) ? [{ label: t('Block {name}', { name: m.from.name || m.from.email }), icon: Ban, group: 'end', run: () => props.onBlock(thread) }] : []),
     ];
     const toWords = (m: Message) => {
-      const names = m.to.map((p) => (isMine(p.email) ? t('me') : p.name || p.email));
+      const names = [...m.to, ...(m.cc ?? [])].map((p) => (isMine(p.email) ? t('me') : p.name || p.email));
       return names.length > 2 ? t('to {names} and {n} more', { names: names.slice(0, 2).join(', '), n: names.length - 2 }) : t('to {names}', { names: names.join(', ') });
     };
     const isLatest = (m: Message) => m.id === last.id;

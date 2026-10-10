@@ -6,7 +6,7 @@ import { Sheet } from '../ui/Sheet';
 import { isPhone } from '../../mobile/media';
 import { server } from '../../sync';
 import { toast } from '../../toast';
-import { getLang, t } from '../../i18n';
+import { getLang, t, tx } from '../../i18n';
 import { fmtDateTime } from '../../i18n/format';
 import { isSandboxId } from '../../sandbox';
 
@@ -59,7 +59,7 @@ const Verdict = ({ v }: { v?: string }) => {
   const Icon = ok ? ShieldCheck : bad ? ShieldAlert : ShieldQuestion;
   return (
     <span className={`og-verdict ${ok ? 'pass' : bad ? 'fail' : 'none'}`}>
-      <Icon size={14} /> {v ? v.toUpperCase() : t('Not checked')}
+      <Icon size={14} /> {v ? v.toUpperCase() : tx('auth check', 'Not checked')}
     </span>
   );
 };

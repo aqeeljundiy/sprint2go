@@ -111,7 +111,7 @@
   animation: fadeIn 0.18s var(--ease, ease);
 }
 .message.open > .message-head {
-  padding-right: 96px;
+  padding-right: 84px;
 }
 .prio-chip {
   font-size: 12px;
@@ -120,7 +120,7 @@
   background: var(--danger-soft);
   border-radius: var(--r-pill);
   padding: 2px 8px;
-  margin-right: 4px;
+  margin-left: 8px;
   white-space: nowrap;
 }
 
@@ -365,8 +365,13 @@
   color: var(--text-3);
 }
 .og-sheet .sheet-body,
-.og-sheet {
-  max-width: 760px;
+.cm-sheet .sheet-body {
+  padding: 0 16px 16px;
+}
+@media (min-width: 768px) {
+  .sheet.og-sheet {
+    width: min(760px, 100%);
+  }
 }
 
 /* Printing happens in a frame nobody sees. */
@@ -409,4 +414,12 @@ iframe.print-frame {
   .mail-frame iframe {
     transition: none;
   }
+}
+
+/* A narrow compose window: read tracking shows as its eye alone (the words are in its tooltip), so the footer fits. */
+.compose.narrow .compose-foot .track-toggle > span {
+  display: none;
+}
+.compose.narrow .compose-foot .track-toggle {
+  padding-inline: 8px;
 }

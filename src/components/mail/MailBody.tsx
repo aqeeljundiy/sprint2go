@@ -8,7 +8,7 @@ import { mailHtml, hasOutsidePictures } from './mailHtml';
 import { usePersisted } from '../../settings';
 import { server } from '../../sync';
 import { toast } from '../../toast';
-import { t } from '../../i18n';
+import { t, tx } from '../../i18n';
 import { fmtDateTime } from '../../i18n/format';
 
 /** What SPF, DKIM and DMARC said about a received message: it failed when DMARC failed, or SPF failed without DKIM. */
@@ -76,7 +76,14 @@ ${noCopy ? 'html,body{-webkit-user-select:none;user-select:none;-webkit-touch-ca
       const wide = root.scrollWidth;
       const room = f.clientWidth;
       if (wide > room + 2 && room > 0) root.style.zoom = String(Math.max(0.4, room / wide));
-      const h = Math.ceil(root.getBoundingClientRect().height * (Number(root.style.zoom) || 1) || d.documentElement.scrollHeight);
+      // The end of the content, measured where it really is (zoom included, whatever the engine).
+      let end = d.getElementById('s2g-end');
+      if (!end) {
+        end = d.createElement('div');
+        end.id = 's2g-end';
+        d.body.appendChild(end);
+      }
+      const h = Math.ceil(end.getBoundingClientRect().top + (f.contentWindow?.scrollY ?? 0));
       setHeight((was) => (Math.abs(was - h) > 1 ? h : was));
     };
     const ready = () => {
@@ -164,7 +171,7 @@ function SenderBanner({ meta }: { meta: ConfidentialMeta }) {
       </span>
       {!shut && server.on && (
         <button type="button" className="link-btn" disabled={busy} onClick={remove}>
-          {busy ? t('Removing…') : t('Remove access')}
+          {busy ? tx('confidential', 'Removing…') : t('Remove access')}
         </button>
       )}
     </div>

@@ -49,7 +49,7 @@ export function ReplyHead({
           <ChevronDown size={13} className={`rot-chev${menu ? ' open' : ''}`} />
         </button>
         {editing ? (
-          <span className="rh-label">{t('To')}</span>
+          <span className="rh-label">{all ? t('Reply all') : t('Reply')}</span>
         ) : (
           <button type="button" className="rh-people" onClick={() => setEditing(true)} title={t('Change who it goes to')}>
             <span className="rh-to">{names(to) || t('Add people')}</span>
