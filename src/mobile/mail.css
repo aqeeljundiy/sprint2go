@@ -1899,7 +1899,6 @@
   }
 }
 
-/* ==========================================================================
    Mail for teams on phones (src/components/mail/: Contacts, Mailbox access, Mail storage, Groups, Mail rules).
    Contacts is a plain list under the app's top bar (Gmail's people list); the Settings sections read as iOS groups
    through src/mobile/settings.css, with these fixes for their own rows.
@@ -2124,5 +2123,115 @@
   .settings-push .mx-hold-add .person-sel,
   .settings-push .mx-hold-add input {
     flex: 1 1 100%;
+=======
+/* ---------- Mail's sorting on phones (components/mail/Sorting.tsx, Safety.tsx): the other tabs' rows at the top of
+   Primary (Gmail's), their drawer entries, a saved search on the list, Spam's 30 days, the phishing banner ---------- */
+@media (max-width: 767px) {
+  .tab-rows {
+    display: grid;
   }
+  .tab-row {
+    display: flex;
+    align-items: center;
+    gap: var(--lead-gap);
+    min-height: var(--row-2);
+    padding: 8px var(--gutter);
+    text-align: left;
+    transition: background 0.15s;
+    animation: fadeIn 0.2s ease-out backwards;
+  }
+  .tab-row:active {
+    background: var(--hover);
+  }
+  .tab-row-icon {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: var(--av-m);
+    height: var(--av-m);
+    border-radius: var(--r-round);
+    background: var(--accent-soft);
+    color: var(--accent-text);
+  }
+  .tab-row-words {
+    flex: 1;
+    min-width: 0;
+    display: grid;
+  }
+  .tab-row-words b {
+    font: var(--t-heading);
+  }
+  .tab-row-words small {
+    font: var(--t-secondary);
+    color: var(--text-2);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .tab-row-new {
+    flex: none;
+    padding: 0 8px;
+    border-radius: var(--r-pill);
+    background: var(--accent);
+    color: #fff;
+    font: var(--t-chip);
+  }
+  .gm-nav-count.gm-nav-new {
+    color: var(--accent-text);
+  }
+  .gm-query-bar {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    min-height: var(--row-compact);
+    margin: 0 var(--gutter) var(--sp-2);
+    padding: 0 0 0 var(--sp-3);
+    border-radius: var(--r-pill);
+    background: var(--accent-soft);
+    color: var(--accent-text);
+    font: var(--t-segment);
+    animation: fadeIn 0.2s ease-out backwards;
+  }
+  .gm-query-bar > span {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .gm-query-bar .gm-icon {
+    color: inherit;
+  }
+  .keep-notice {
+    padding: 8px var(--gutter);
+    font: var(--t-secondary);
+  }
+  .gm-reader .safety-banner {
+    margin: 0 0 var(--sp-3);
+    padding: var(--sp-3);
+    border-radius: var(--r-card);
+  }
+  .gm-reader .safety-words {
+    font: var(--t-secondary);
+  }
+  .gm-reader .safety-words strong {
+    font: var(--t-heading);
+  }
+  .gm-reader .safety-actions .primary-btn,
+  .gm-reader .safety-actions .ghost-btn {
+    min-height: var(--tap);
+  }
+  .row-subject .imp-mark {
+    margin-right: var(--sp-1);
+  }
+  .kbd-groups {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 767px) and (prefers-reduced-motion: reduce) {
+  .tab-row,
+  .gm-query-bar {
+    animation: none;
+
+/* ===================================================================  }
 }

@@ -8,6 +8,7 @@ import { createServer as createNetServer, type Server as NetServer, type Socket 
 import { createServer as createTlsServer, TLSSocket, type SecureContext, type Server as TlsServer } from 'node:tls';
 import { randomBytes } from 'node:crypto';
 import * as store from './imapStore.ts';
+import { matchMessage, parseQuery } from '../src/mailQuery.ts';
 import { bodystructure, envelope, join, list, nstring, parse, parseSection, sectionBytes, toBuffer, headerValues, type Chunk, type Part, type Section } from './imapMime.ts';
 
 export interface ImapDeps {
@@ -1151,6 +1152,15 @@ class Session {
         case 'SENTSINCE': {
           const d = searchDay(strOf(arg()));
           return (c) => day(hitOf(c)?.m.date ?? '') >= d;
+        }
+        case 'X-GM-RAW': {
+          // Gmail's search operators, as in the app (src/mailQuery.ts): X-GM-RAW "from:nadia has:attachment".
+          // The folder is already chosen, so Spam and Trash aren't left out here.
+          const qn = parseQuery(utf8Of(arg()) ?? '');
+          return (c) => {
+            const h = hitOf(c);
+            return !!h && matchMessage(qn, h.t as never, h.m as never, { isMine: (e) => mb.addresses.has(e.toLowerCase()) || mb.email.toLowerCase() === e.toLowerCase() });
+          };
         }
         case 'UID': {
           const set = new Set(pick(strOf(arg()) ?? '', sel.uids, true).map((i) => sel.uids[i]));
