@@ -391,6 +391,16 @@ const id: Record<string, string> = {
   'Meeting languages': 'Bahasa rapat',
   'Main language': 'Bahasa utama',
   main: 'utama',
+
+  // Phones: iOS Settings (the list's groups and values, General & email as rows)
+  'Plan and data': 'Paket dan data',
+  'Trial, {n} days left': 'Uji coba, {n} hari lagi',
+  '{used} of {total}': '{used} dari {total}',
+  Automatic: 'Otomatis',
+  'None yet': 'Belum ada',
+  'In everyone’s calendar, and a note on tasks due that day.': 'Ada di kalender semua orang, dan catatan pada tugas yang jatuh tempo hari itu.',
+  'People at these domains are your team, so their email is never tracked. Separate them with commas.':
+    'Orang di domain ini adalah tim Anda, jadi email mereka tidak pernah dilacak. Pisahkan dengan koma.',
 };
 
 export default id;

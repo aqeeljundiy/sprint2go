@@ -28,75 +28,45 @@
     min-height: 0;
     overflow-y: auto;
     overscroll-behavior: contain;
-    padding: 4px 16px calc(24px + var(--fab-space, 0px));
+    padding: 12px 0 calc(24px + var(--fab-space, 0px));
   }
-  .set-list-head {
-    margin: 20px 4px 8px;
-    font-size: 13px;
-    font-weight: 600;
-    letter-spacing: 0;
-    color: var(--text-3);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .set-list-group:first-child .set-list-head {
-    margin-top: 12px;
-  }
-  .set-list-card {
-    border: 1px solid var(--border);
-    border-radius: 16px;
-    background: var(--surface);
-    overflow: hidden;
-  }
-  .set-list-row {
-    position: relative;
+  /* iOS's account card: your photo, name and email, first on the screen. */
+  .set-account {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 14px;
     width: 100%;
-    min-height: 50px;
-    padding: 6px 12px 6px 12px;
-    font-size: 16px;
-    font-weight: 500;
-    color: var(--text);
+    min-height: 80px;
+    padding: 12px 16px;
     text-align: left;
+    color: var(--text);
     transition: background 0.15s;
   }
-  .set-list-row + .set-list-row::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 52px; /* the line starts under the name, not the icon */
-    right: 0;
-    height: 1px;
-    background: var(--line);
-  }
-  .set-list-row:active {
+  .set-account:active {
     background: var(--hover);
   }
-  .set-list-icon {
-    flex: none;
-    display: grid;
-    place-items: center;
-    width: 30px;
-    height: 30px;
-    border-radius: 9px;
-    background: var(--surface-2);
-    color: var(--text-2);
-  }
-  .set-list-name {
+  .set-account-text {
     flex: 1;
     min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .set-account-text strong {
+    font-size: 20px;
+    font-weight: 600;
+    line-height: 25px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  .set-list-chev {
-    flex: none;
+  .set-account-text small {
+    font-size: 15px;
     color: var(--text-3);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
-
   /* One section, full screen: the screen's title already says it. */
   .settings-push .settings-content {
     overflow: visible;
@@ -107,6 +77,191 @@
   }
   .settings-push .settings-content > .set-intro:nth-child(2) {
     margin-top: 0;
+  }
+  /* iOS: a section is grouped rows on the grouped grey, the title centred; the intro paragraph goes (footers explain). */
+  .settings-push .push-head {
+    background: var(--bg);
+    border-bottom-color: transparent;
+  }
+  .settings-push .push-body {
+    background: var(--bg);
+  }
+  .settings-push .push-head,
+  .set-edit .push-head {
+    position: relative;
+  }
+  .settings-push .push-title,
+  .set-edit .push-title {
+    position: absolute;
+    left: 104px;
+    right: 104px;
+    bottom: 4px;
+    line-height: 44px;
+    text-align: center;
+    font-weight: 600;
+    pointer-events: none;
+  }
+  .settings-push .push-actions,
+  .set-edit .push-actions {
+    margin-left: auto;
+  }
+  .settings-push .settings-content > .set-intro {
+    display: none;
+  }
+  .set-rows {
+    margin: 0 -16px 8px;
+  }
+  /* Every section's blocks read as iOS groups: an uppercase header over a borderless card of rows, the explanation
+     under each setting in 13 px; "Not yet" chips become the row's value in grey. */
+  .settings-push .set-block {
+    gap: 0;
+    margin-top: 24px;
+  }
+  .settings-push .set-block:first-of-type {
+    margin-top: 4px;
+  }
+  .settings-push .set-block > h3 {
+    margin: 0 16px 8px;
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    color: var(--text-3);
+  }
+  .settings-push .set-block > :not(h3) {
+    background: var(--surface);
+  }
+  .settings-push .set-block > h3 + *,
+  .settings-push .set-block > :first-child:not(h3) {
+    border-top-left-radius: 16px;
+    border-top-right-radius: 16px;
+  }
+  .settings-push .set-block > :last-child {
+    border-bottom-left-radius: 16px;
+    border-bottom-right-radius: 16px;
+  }
+  .settings-push .set-block .set-row {
+    min-height: 48px;
+    padding: 12px 16px;
+    border-bottom: 0;
+    box-shadow: inset 0 -0.5px 0 var(--border);
+  }
+  .settings-push .set-block > .set-row:last-child,
+  .settings-push .set-block > .fold:last-child .set-row:last-child {
+    box-shadow: none;
+  }
+  .settings-push .set-row strong {
+    font-size: 17px;
+    font-weight: 400;
+    line-height: 22px;
+  }
+  .settings-push .set-row small {
+    display: block;
+    margin-top: 2px;
+    font-size: 13px;
+    line-height: 18px;
+  }
+  .settings-push .set-row > .badge.is-neutral {
+    padding: 0;
+    background: none;
+    font-size: 15px;
+    font-weight: 400;
+    color: var(--text-3);
+    white-space: nowrap;
+  }
+  .settings-push .set-row .switch {
+    width: 51px;
+    height: 31px;
+  }
+  .settings-push .set-row .switch span {
+    width: 27px;
+    height: 27px;
+    top: 2px;
+    left: 2px;
+  }
+  .settings-push .set-row .switch.on span {
+    transform: translateX(20px);
+  }
+  :root[data-theme='dark'] .settings-push .set-block > :not(h3) {
+    background: #1c1c1f;
+  }
+  .set-rows .g-row {
+    min-height: 48px;
+  }
+  .set-only {
+    margin: 0 32px 12px;
+  }
+  /* A choice row: the value and a chevron on the right, opening the sheet with a tick. */
+  .set-choice {
+    flex: 0 1 auto;
+    min-width: 0;
+    max-width: 55%;
+  }
+  .set-choice .sel.sel-flat {
+    min-height: 44px;
+    max-width: 100%;
+    padding: 0;
+    border: 0;
+    background: none;
+    box-shadow: none;
+    font-size: 17px;
+    color: var(--text-3);
+    justify-content: flex-end;
+  }
+  .set-choice .sel-text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .set-choice .sel-icon {
+    display: none;
+  }
+  .set-brand-val {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .set-dot {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.1);
+  }
+  /* One value on a screen of its own. */
+  .set-edit .push-head {
+    background: var(--bg);
+    border-bottom-color: transparent;
+  }
+  .set-edit .push-body {
+    background: var(--bg);
+  }
+  .set-edit-body {
+    padding: 16px 0 32px;
+  }
+  .set-edit-body.set-brand {
+    padding: 16px;
+  }
+  .set-edit-input {
+    flex: 1;
+    min-width: 0;
+    min-height: 36px;
+    border: 0;
+    background: none;
+    font: inherit;
+    font-size: 17px;
+    color: var(--text);
+    outline: none;
+  }
+  .set-save {
+    min-height: 44px;
+    padding: 0 10px;
+    font-size: 17px;
+    font-weight: 600;
+    color: var(--accent);
+    transition: opacity 0.15s;
+  }
+  .set-save:disabled {
+    opacity: 0.4;
   }
   .theme-cards {
     gap: 8px;

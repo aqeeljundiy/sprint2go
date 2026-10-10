@@ -41,6 +41,10 @@ import { ConnectedApps } from './ConnectedApps';
 import { ImportSection } from './imports/ImportSection';
 import { BarDefaults } from '../mobile/BarDefaults';
 import { MAIL_APPS_SECTION, PhoneMailApps } from './PhoneMailApps';
+import { Avatar } from './Avatar';
+import { Group, GRow, type GColor } from './ui/Grouped';
+import { fmtSize } from '../data/drive';
+import { planName } from '../data/pricing';
 import { LANGS, getLang, mark, t, tn, type Lang, tx } from '../i18n';
 import { fmtDate, fmtTime } from '../i18n/format';
 
@@ -164,33 +168,189 @@ function Toggle({ on, onChange, label, hint }: { on: boolean; onChange: (v: bool
 const roleName = (r: Role) => (r === 'owner' ? t('Owner') : r === 'admin' ? t('Admin') : t('Member'));
 
 /**
- * Phones: Settings is a list of sections, grouped like the desktop's (the company, then you). Each opens full screen over
- * the list with Back. Keyboard shortcuts stay a desktop thing.
+ * Phones: iOS Settings. Your account card first, then short groups of rows with coloured icons and the current value
+ * on the right. Each section opens full screen over the list with Back. Keyboard shortcuts stay a desktop thing.
  */
-function SettingsList({ sections, company, onOpen }: { sections: typeof SECTIONS; company: string; onOpen: (id: SettingsSection) => void }) {
-  const shown = sections.filter((x) => x.id !== 'shortcuts');
+const PHONE_GROUPS: { id: string; head: () => string; rows: SettingsSection[] }[] = [
+  { id: 'you', head: () => t('You'), rows: ['notifications', 'appearance', 'myapps', 'mail', 'mailapps'] },
+  { id: 'company', head: () => '', rows: ['workspace', 'teams', 'permissions', 'clients', 'agency'] },
+  { id: 'work', head: () => t('Work'), rows: ['stages', 'apps', 'meetings', 'ai'] },
+  { id: 'email', head: () => t('Email'), rows: ['email', 'import'] },
+  { id: 'plan', head: () => t('Plan and data'), rows: ['billing', 'storage', 'security'] },
+  { id: 'support', head: () => t('Support'), rows: ['help', 'developer'] },
+];
+const ROW_COLOR: Partial<Record<SettingsSection, GColor>> = {
+  notifications: 'red',
+  appearance: 'indigo',
+  myapps: 'blue',
+  mail: 'blue',
+  mailapps: 'teal',
+  workspace: 'grey',
+  teams: 'green',
+  permissions: 'grey',
+  clients: 'orange',
+  agency: 'pink',
+  stages: 'purple',
+  apps: 'blue',
+  meetings: 'green',
+  ai: 'indigo',
+  email: 'teal',
+  import: 'orange',
+  billing: 'green',
+  storage: 'grey',
+  security: 'blue',
+  help: 'blue',
+  developer: 'grey',
+};
+
+function SettingsList({ sections, company, me, values, onOpen }: { sections: typeof SECTIONS; company: string; me?: User; values: Partial<Record<SettingsSection, string>>; onOpen: (id: SettingsSection) => void }) {
+  const has = new Set(sections.map((x) => x.id));
   return (
-    <div className="set-list">
-      {(['Company', 'You'] as const).map((g) => {
-        const rows = shown.filter((x) => x.group === g);
+    <div className="set-list g-page">
+      {has.has('account') && me && (
+        <div className="g-group">
+          <div className="g-card">
+            <button type="button" className="set-account" onClick={() => onOpen('account')}>
+              <Avatar person={me} size={56} />
+              <span className="set-account-text">
+                <strong>{me.name}</strong>
+                <small>{me.email}</small>
+              </span>
+              <ChevronRight size={18} className="g-chev" aria-hidden />
+            </button>
+          </div>
+        </div>
+      )}
+      {PHONE_GROUPS.map((g) => {
+        const rows = g.rows.filter((id) => has.has(id)).map((id) => sections.find((x) => x.id === id)!);
         if (!rows.length) return null;
         return (
-          <section key={g} className="set-list-group" aria-label={g === 'Company' ? company : t('You')}>
-            <h2 className="set-list-head">{g === 'Company' ? company : t('You')}</h2>
-            <div className="set-list-card">
-              {rows.map(({ id, name, icon: Icon }) => (
-                <button key={id} type="button" className="set-list-row" onClick={() => onOpen(id)}>
-                  <span className="set-list-icon">
-                    <Icon size={17} />
-                  </span>
-                  <span className="set-list-name">{t(name)}</span>
-                  <ChevronRight size={18} className="set-list-chev" />
-                </button>
-              ))}
-            </div>
-          </section>
+          <Group key={g.id} title={g.id === 'company' ? company : g.head()}>
+            {rows.map(({ id, name, icon }) => (
+              <GRow key={id} icon={icon} color={ROW_COLOR[id] ?? 'grey'} label={t(name)} value={values[id]} onClick={() => onOpen(id)} />
+            ))}
+          </Group>
         );
       })}
+    </div>
+  );
+}
+
+/** One value on a screen of its own (iOS: Settings, General, About, Name): a 17 px field, Save at the top right. */
+function TextEditScreen({ title, value, placeholder, footer, onSave, onBack }: { title: string; value: string; placeholder?: string; footer?: string; onSave: (v: string) => void; onBack: () => void }) {
+  const [v, setV] = useState(value);
+  return (
+    <PushScreen
+      title={title}
+      backLabel={t('Back')}
+      onBack={onBack}
+      className="g-page set-edit"
+      actions={
+        <button type="button" className="set-save" disabled={v.trim() === value.trim()} onClick={() => (onSave(v), onBack())}>
+          {t('Save')}
+        </button>
+      }
+    >
+      <div className="set-edit-body">
+        <Group footer={footer}>
+          <div className="g-row">
+            <input className="set-edit-input" autoFocus value={v} onChange={(e) => setV(e.target.value)} placeholder={placeholder} aria-label={title} onKeyDown={(e) => e.key === 'Enter' && v.trim() !== value.trim() && (onSave(v), onBack())} />
+          </div>
+        </Group>
+      </div>
+    </PushScreen>
+  );
+}
+
+/**
+ * General & email on a phone, as iOS rows: each setting with its value on the right. Text opens its own screen;
+ * choices open a sheet with a tick; explanations sit under the card they explain. No brand preview.
+ */
+function WorkspacePhone({ ws, canManage, onWorkspace, onHolidays, holidayCal }: { ws: Workspace; canManage: boolean; onWorkspace: (p: Partial<Workspace>) => void; onHolidays: (country: string | null) => void; holidayCal?: CalendarDef }) {
+  const [edit, setEdit] = useState<'name' | 'domains' | 'brand' | null>(null);
+  const open = (k: typeof edit) => (canManage ? () => setEdit(k) : undefined);
+  const holidayNote = !ws.holidays
+    ? t('Show your country’s public holidays as all-day items in everyone’s calendar here. Tasks due on a holiday get a note.')
+    : holidayCal?.error
+      ? t('Couldn’t update them: {error}', { error: t(holidayCal.error) })
+      : t('In everyone’s calendar, and a note on tasks due that day.');
+  const choice = (node: ReactNode) => <span className="set-choice">{node}</span>;
+  return (
+    <div className="set-rows">
+      {!canManage && <p className="g-foot set-only">{t('Only owners and admins can change workspace settings.')}</p>}
+      <Group footer={t('People at these domains are your team, so their email is never tracked.')}>
+        <GRow label={t('Business name')} value={ws.name || t('Untitled')} onClick={open('name')} />
+        <GRow
+          label={t('Logo and colour')}
+          accessory={
+            <span className="set-brand-val">
+              <WorkspaceLogo ws={ws} size={28} />
+              <i className="set-dot" style={{ background: ws.color }} />
+            </span>
+          }
+          chevron={canManage}
+          onClick={open('brand')}
+        />
+        <GRow label={t('Email domains')} value={ws.domains.join(', ') || t('None yet')} onClick={open('domains')} />
+      </Group>
+      <Group footer={t('Changes the word everywhere in the app. With Projects, the people you invite are called guests.')}>
+        <GRow
+          label={t('What you call your work')}
+          accessory={choice(
+            <Select<'project' | 'client'>
+              value={ws.terms?.word ?? 'project'}
+              onChange={(v) => onWorkspace({ terms: { word: v } })}
+              label={t('What you call your work')}
+              title={t('What you call your work')}
+              disabled={!canManage}
+              className="sel-flat"
+              options={[
+                { value: 'project', label: t('Projects'), hint: t('Any kind of work: clients, partners, internal') },
+                { value: 'client', label: t('Clients'), hint: t('For agencies that work for clients') },
+              ]}
+            />,
+          )}
+        />
+      </Group>
+      <Group footer={holidayNote}>
+        <GRow
+          label={t('Public holidays')}
+          accessory={choice(<Select value={ws.holidays?.country ?? ''} onChange={(v) => onHolidays(v || null)} label={t('Public holidays')} title={t('Public holidays')} disabled={!canManage} className="sel-flat" searchable options={[{ value: '', label: t('Off') }, ...HOLIDAY_COUNTRIES.map((c) => ({ value: c.code, label: t(c.name) }))]} />)}
+        />
+        <GRow label={t('Time zone')} accessory={choice(<Select value={companyTz(ws)} onChange={(v) => onWorkspace({ timeZone: v })} label={t('Time zone')} title={t('Time zone')} disabled={!canManage} className="sel-flat" searchable options={zoneOptions(companyTz(ws))} />)} />
+        <GRow
+          label={t('Language')}
+          accessory={choice(
+            <Select<'' | Lang>
+              value={ws.language ?? ''}
+              onChange={(v) => onWorkspace({ language: v || undefined })}
+              label={t('Language')}
+              title={t('Language')}
+              disabled={!canManage}
+              className="sel-flat"
+              options={[{ value: '', label: t('Each person’s browser') }, ...LANGS.map((l) => ({ value: l.id, label: l.name }))]}
+            />,
+          )}
+        />
+      </Group>
+      {edit === 'name' && <TextEditScreen title={t('Business name')} value={ws.name} onSave={(v) => onWorkspace({ name: v.trim() })} onBack={() => setEdit(null)} />}
+      {edit === 'domains' && (
+        <TextEditScreen
+          title={t('Email domains')}
+          value={ws.domains.join(', ')}
+          placeholder={t('business.com')}
+          footer={t('People at these domains are your team, so their email is never tracked. Separate them with commas.')}
+          onSave={(v) => onWorkspace({ domains: v.split(/[,\s]+/).map((d) => d.replace(/^@/, '').toLowerCase()).filter(Boolean) })}
+          onBack={() => setEdit(null)}
+        />
+      )}
+      {edit === 'brand' && (
+        <PushScreen title={t('Logo and colour')} backLabel={t('Back')} onBack={() => setEdit(null)} className="set-edit">
+          <div className="set-edit-body set-brand">
+            <BrandFields value={ws} onChange={onWorkspace} />
+          </div>
+        </PushScreen>
+      )}
     </div>
   );
 }
@@ -205,7 +365,7 @@ function SectionScreen({ phone, open, title, onBack, children }: { phone: boolea
   ) : null;
 }
 
-export function SettingsPage({ email, settings: s, update, section, onSection, onMenu, workspace: ws, onWorkspace, onHolidays, holidayCal, onAddAccount, onRemoveAccount, mailExtras, users, me, onPhoto, onPreviewOnboarding, myApps, myRole, onInvite, onRole, onRemoveMember, onAccess, blocked, onUnblock, admin, demo, embedded }: Props & { embedded?: boolean }) {
+export function SettingsPage({ email, settings: s, update, section, onSection, usage, onMenu, workspace: ws, onWorkspace, onHolidays, holidayCal, onAddAccount, onRemoveAccount, mailExtras, users, me, onPhoto, onPreviewOnboarding, myApps, myRole, onInvite, onRole, onRemoveMember, onAccess, blocked, onUnblock, admin, demo, embedded }: Props & { embedded?: boolean }) {
   // Phones: the list of sections, and the one open over it (Settings opened for one section starts on it).
   const onPhone = usePhone();
   const phone = onPhone && !embedded;
@@ -246,7 +406,19 @@ export function SettingsPage({ email, settings: s, update, section, onSection, o
             </span>
           ))}
         </nav>
-        {phone && <SettingsList sections={sections} company={ws.name || t('Company')} onOpen={(id) => (onSection(id), setSectionOpen(true))} />}
+        {phone && (
+          <SettingsList
+            sections={sections}
+            company={ws.name || t('Company')}
+            me={users.find((u) => u.id === me)}
+            values={{
+              billing: plan.trialEnds && Date.parse(plan.trialEnds) > Date.now() ? t('Trial, {n} days left', { n: Math.max(1, Math.ceil((Date.parse(plan.trialEnds) - Date.now()) / 86_400_000)) }) : planName(plan),
+              storage: usage ? t('{used} of {total}', { used: fmtSize(usage.mail + usage.drive), total: fmtSize(usage.quota) }) : undefined,
+              appearance: s.theme === 'dark' ? t('Dark') : s.theme === 'light' ? t('Light') : t('Automatic'),
+            }}
+            onOpen={(id) => (onSection(id), setSectionOpen(true))}
+          />
+        )}
 
         <SectionScreen phone={phone} open={sectionOpen} title={t(SECTIONS.find((x) => x.id === section)?.name ?? 'Settings')} onBack={() => setSectionOpen(false)}>
         <div className="settings-content" key={section}>
@@ -256,6 +428,10 @@ export function SettingsPage({ email, settings: s, update, section, onSection, o
               <p className="set-intro">
                 {demo?.inDemo ? t('This is your demo company: change anything here, nothing leaves it. Billing, AI keys, mail delivery and security are set in your real company.') : t('Each business gets its own brand, email accounts, calendar and drive.')}
               </p>
+              {onPhone ? (
+                <WorkspacePhone ws={ws} canManage={canManage} onWorkspace={onWorkspace} onHolidays={onHolidays} holidayCal={holidayCal} />
+              ) : (
+              <>
               <div className="ws-preview">
                 <WorkspaceLogo ws={ws} size={44} />
                 <div>
@@ -340,6 +516,8 @@ export function SettingsPage({ email, settings: s, update, section, onSection, o
                 <small>{t('For new members and anyone who hasn’t picked their own language in Settings, Account.')}</small>
               </div>
               </fieldset>
+              </>
+              )}
 
               <h3>{t('Members')}</h3>
               <div className="acct-list">
