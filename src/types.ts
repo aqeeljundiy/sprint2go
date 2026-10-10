@@ -1162,6 +1162,7 @@ export interface TableViewDef {
   id: string;
   name: string;
   kind: 'grid' | 'board' | 'list' | 'gallery' | 'calendar' | 'timeline';
+  asTable?: boolean; // a grid someone added as "Table": phones show it as a table, not as cards
   groupBy?: string; // board: its columns (a single choice field); grid and list: group rows by any field
   subGroupBy?: string; // board: swimlanes; grid and list: groups inside each group
   sort?: { fieldId: string; dir: 'asc' | 'desc' }; // older views: one sort

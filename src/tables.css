@@ -2459,6 +2459,12 @@
   aspect-ratio: 16 / 10;
   background: var(--surface-2);
 }
+.tb-gletter {
+  background: color-mix(in srgb, var(--tb-c, var(--accent)) 16%, var(--surface));
+  color: color-mix(in srgb, var(--tb-c, var(--accent)) 75%, var(--text));
+  font-size: 28px;
+  font-weight: 700;
+}
 .tb-gcover img {
   width: 100%;
   height: 100%;

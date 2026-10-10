@@ -75,7 +75,7 @@ export function NewTableDialog({ clients, clientId: startClient, onCreate, onClo
           <SmoothHeight>
             <div className="field">
               <span>{t('Start from')}</span>
-              <div className="cat-pick two">
+              <div className="cat-pick two tb-tpl-pick">
                 {TEMPLATES.map((x) => (
                   <button key={x.id} type="button" className={template === x.id ? 'on' : ''} onClick={() => setTemplate(x.id)}>
                     <strong>{x.name}</strong>
@@ -212,7 +212,8 @@ export function TablesHome({ tables, rows, clients, onOpen, onNew, onMenu }: { t
             title={t('No tables yet')}
             text={t('Start from Leads, a content pipeline or a blank table. Add your own columns any time.')}
             action={
-              <button className="primary-btn sm" onClick={onNew}>
+              // Phones: the create button is the one way in, so no second "New table" here.
+              !phone && <button className="primary-btn sm" onClick={onNew}>
                 <Plus size={14} /> {t('New table')}
               </button>
             }

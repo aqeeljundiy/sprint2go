@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { ChevronLeft, ChevronRight, ImageOff, Plus } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Plus } from 'lucide-react';
 import { usePersisted } from '../../settings';
 import { useLongPress } from '../ui/useLongPress';
 import type { CellValue, DataTable, FileRef, TableField, TableRow, TableViewDef } from '../../types';
@@ -83,7 +83,10 @@ export function GalleryView({ table: tb, view, rows, ctx, onOpenRow, onAddRow }:
         const img = cover ? ((r.values[cover.id] as FileRef[] | null) ?? []).find((x) => x.type.startsWith('image/')) : undefined;
         return (
           <button key={r.id} type="button" className="tb-gcard" style={{ ['--i' as string]: Math.min(i, 24) }} onClick={() => onOpenRow(r.id)}>
-            {cover && <span className="tb-gcover">{img ? <img src={img.url} alt="" /> : <ImageOff size={18} className="muted" />}</span>}
+            {/* Every card has a picture: the cover image, else the row's first letter on the table's colour. */}
+            <span className={`tb-gcover${img ? '' : ' tb-gletter'}`} style={img ? undefined : { ['--tb-c' as string]: tb.color }}>
+              {img ? <img src={img.url} alt="" /> : <span aria-hidden>{(rowName(tb, r) || '?').trim().charAt(0).toUpperCase()}</span>}
+            </span>
             <span className="tb-gbody">
               <strong>{rowName(tb, r)}</strong>
               {fields.map((f) => {
@@ -256,7 +259,8 @@ function AgendaRow({ t: tb, view, r, ctx, end, onOpenRow }: { t: DataTable; view
 export function Agenda({ table: tb, view, rows, ctx, field, end, onOpenRow, canAdd, onAddRow }: { table: DataTable; view?: TableViewDef; rows: TableRow[]; ctx: CellCtx; field: TableField; end?: TableField; onOpenRow: (id: string) => void; canAdd?: boolean; onAddRow?: (values: Record<string, CellValue>) => void }) {
   const today = localDay();
   const [earlier, setEarlier] = useState(false);
-  const [undatedOpen, setUndatedOpen] = useState(false);
+  // When no row has a date yet, the undated rows are the whole view: show them open rather than a near-empty screen.
+  const [undatedOpen, setUndatedOpen] = useState(() => !rows.some((r) => !isEmpty(valueOf(tb, field, r, ctx))));
   const byDay = new Map<string, TableRow[]>();
   const undated: TableRow[] = [];
   for (const r of rows) {
@@ -291,7 +295,7 @@ export function Agenda({ table: tb, view, rows, ctx, field, end, onOpenRow, canA
           </div>
         </>
       )}
-      {!next.length && <p className="muted small tb-ag-none">{t('Nothing from today on.')}</p>}
+      {!next.length && <p className="muted small tb-ag-none">{keys.length || !undated.length ? t('Nothing from today on.') : t('No row has a {field} yet. Open one to give it a date and it shows here by day.', { field: field.name.toLowerCase() })}</p>}
       {next.map(day)}
       {canAdd && onAddRow && field.type === 'date' && (
         <button type="button" className="tb-ag-add" onClick={() => onAddRow({ [field.id]: today })}>

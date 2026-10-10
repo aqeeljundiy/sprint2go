@@ -664,6 +664,7 @@ const id: Record<string, string> = {
   Earlier: 'Sebelumnya',
   'Nothing from today on.': 'Belum ada apa-apa mulai hari ini.',
   'New row today': 'Baris baru hari ini',
+  'No row has a {field} yet. Open one to give it a date and it shows here by day.': 'Belum ada baris dengan {field}. Buka satu dan beri tanggal, nanti muncul di sini per hari.',
   'Without {field}': 'Tanpa {field}',
   '{date}, {rows}': '{date}, {rows}',
   Month: 'Bulan',

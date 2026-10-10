@@ -1261,8 +1261,19 @@ button.tb-page-title:active {
     grid-row: 1 / span 2;
   }
   .tb-gallery {
-    padding: 12px 16px 24px;
+    padding: 12px 16px var(--fab-space);
     gap: 12px;
+    grid-template-columns: repeat(2, minmax(0, 1fr)); /* two even columns, every card the same width */
+  }
+  .tb-gletter {
+    font-size: var(--fs-display);
+  }
+  .tb-gbody {
+    padding: 8px 12px 12px;
+  }
+  .tb-gbody strong {
+    font-size: var(--fs-body);
+    font-weight: 600;
   }
   .tb-gadd {
     min-height: 64px;
@@ -1335,4 +1346,60 @@ button.tb-page-title:active {
   width: 100%;
   margin: 0 0 12px;
   padding: 4px 0;
+}
+
+/* New table on a phone: the templates are a plain list to pick one from (a radio on the left), not boxed cards. */
+@media (max-width: 767px) {
+  .cat-pick.tb-tpl-pick {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+  .cat-pick.tb-tpl-pick button {
+    position: relative;
+    min-height: var(--row-2);
+    align-content: center;
+    gap: 0;
+    padding: 8px 0 8px 32px;
+    border: 0;
+    border-bottom: 1px solid var(--line);
+    border-radius: 0;
+    background: none;
+    transition: color 0.15s ease;
+  }
+  .cat-pick.tb-tpl-pick button:last-child {
+    border-bottom: 0;
+  }
+  .cat-pick.tb-tpl-pick button strong {
+    font: var(--t-body);
+  }
+  .cat-pick.tb-tpl-pick button small {
+    font: var(--t-secondary);
+    color: var(--text-3);
+  }
+  .cat-pick.tb-tpl-pick button::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 50%;
+    width: 20px;
+    height: 20px;
+    margin-top: -10px; /* system: centres the 20 px radio */
+    border-radius: 50%;
+    box-shadow: inset 0 0 0 2px var(--text-3);
+    transition: box-shadow 0.15s ease;
+  }
+  .cat-pick.tb-tpl-pick button.on {
+    background: none;
+  }
+  .cat-pick.tb-tpl-pick button.on::before {
+    box-shadow: inset 0 0 0 6px var(--accent);
+  }
+}
+
+/* Focus rings in Tables are the company colour (the browser's own ring follows the system accent, often amber). */
+.tb-pane :focus-visible,
+.tb-home-phone :focus-visible,
+.tb-vpill:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }

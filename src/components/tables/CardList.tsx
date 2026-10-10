@@ -122,14 +122,13 @@ export function CardList({ t: tb, view, rows, ctx, selecting, selected, collapse
       )}
     </div>
   );
-  // The end of the list: "+ New row", and while the table is (nearly) empty, a line on what a row is.
+  // The end of the list: "+ New row" (the empty state explains what a row is, so no hint under rows).
   const end = onNew && !selecting && (
     <div className="tb-crd-end">
       <button type="button" className="tb-crd-new" onClick={onNew}>
         <Plus size={20} aria-hidden />
         <span>{t('New row')}</span>
       </button>
-      {(total ?? rows.length) < 3 && <p className="tb-crd-guide">{t('Each row is one thing you track: a lead, a video, an order. Add one, then tap it to fill in its fields.')}</p>}
     </div>
   );
   if (!gf)

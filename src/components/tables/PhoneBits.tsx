@@ -20,7 +20,7 @@ import { t, tn, tx, textOf } from '../../i18n';
 /* The phone's pieces for Tables: the views sheet, filter and settings sheets, quick create, picking several rows. */
 
 /** The views of a table, with a tick on the one showing and "Add a view" for people who may. */
-export function ViewsSheet({ table, current, onPick, onAdd, onClose, gridAsList }: { table: DataTable; current: string; gridAsList?: boolean; onPick: (id: string) => void; onAdd?: (kind: TableViewDef['kind']) => void; onClose: () => void }) {
+export function ViewsSheet({ table, current, onPick, onAdd, onClose, gridAsList }: { table: DataTable; current: string; gridAsList?: (viewId: string) => boolean; onPick: (id: string) => void; onAdd?: (kind: TableViewDef['kind']) => void; onClose: () => void }) {
   const [adding, setAdding] = useState(false);
   return (
     <Sheet title={adding ? t('Add a view') : t('Views')} onClose={onClose} className="tb-sheet" head={adding && <button type="button" className="ghost-btn sm" onClick={() => setAdding(false)}>{t('Back')}</button>}>
@@ -37,11 +37,11 @@ export function ViewsSheet({ table, current, onPick, onAdd, onClose, gridAsList 
                 </button>
               ))
             : table.views.map((v) => {
-                const I = viewIcon(v.kind === 'grid' && gridAsList ? 'list' : v.kind); // a grid shows as rows on a phone
+                const I = viewIcon(v.kind === 'grid' && gridAsList?.(v.id) ? 'list' : v.kind); // a grid shows as rows on a phone
                 return (
                   <button key={v.id} type="button" className="as-item" aria-current={v.id === current} onClick={() => (onPick(v.id), onClose())}>
                     <I size={18} className="as-icon" />
-                    <span className="as-label">{viewName(v, v.kind === 'grid' && gridAsList ? 'list' : v.kind)}</span>
+                    <span className="as-label">{viewName(v, v.kind === 'grid' && gridAsList?.(v.id) ? 'list' : v.kind)}</span>
                     {v.id === current && <Check size={18} className="as-check" />}
                   </button>
                 );

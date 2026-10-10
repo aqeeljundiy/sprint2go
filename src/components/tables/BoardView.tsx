@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ArrowDown, ArrowUp, ChevronRight, Columns3, Eye, EyeOff, GripVertical, ImageOff, MoreHorizontal, Plus, SlidersHorizontal, Trash2 } from 'lucide-react';
 import type { CellValue, DataTable, FieldOption, FileRef, TableField, TableRow, TableViewDef } from '../../types';
 import { CellView, type CellCtx } from './Cell';
@@ -152,7 +152,10 @@ export function BoardView({
   const hiddenGroups = new Set(view.hiddenGroups ?? []);
   const options = group?.options ?? [];
   const noneLabel = group ? noValue(group) : t('No status');
-  const columns: { id: string; label: string; color: string }[] = [...options, { id: '', label: noneLabel, color: NONE_COLOR }];
+  // Phones show one column at a time and open on the first: "No status" leads there, so rows that have no status yet
+  // are what you see first instead of an empty column (it only shows while it has cards).
+  const noneCol = { id: '', label: noneLabel, color: NONE_COLOR };
+  const columns: { id: string; label: string; color: string }[] = phone ? [noneCol, ...options] : [...options, noneCol];
   const listOf = (id: string, from: TableRow[] = rows) => (group ? from.filter((r) => (r.values[group.id] ?? '') === id || (!id && !options.some((o) => o.id === r.values[group.id]))) : id ? [] : from);
   const canMove = !readOnly && !!group && (!ctx.canEdit || ctx.canEdit(group.id));
   // Which columns show: hidden ones never; "No status" when it has cards (or while dragging); empty ones unless hidden.
@@ -208,6 +211,19 @@ export function BoardView({
     });
     setAt(i);
   };
+  // Phones: open on the first column that has cards, never on an empty one.
+  useEffect(() => {
+    if (!phone) return;
+    const i = visible.findIndex((c) => listOf(c.id).length > 0);
+    if (i <= 0) return;
+    requestAnimationFrame(() => {
+      wrap.current?.querySelectorAll<HTMLElement>('.tb-board').forEach((b) => {
+        const col = b.querySelectorAll<HTMLElement>(':scope > .tb-col')[i];
+        if (col) b.scrollLeft = col.offsetLeft - b.offsetLeft - 16;
+      });
+      setAt(i);
+    });
+  }, [view.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const onScroll = (e: React.UIEvent<HTMLDivElement>) => {
     if (!phone) return;
     const b = e.currentTarget;

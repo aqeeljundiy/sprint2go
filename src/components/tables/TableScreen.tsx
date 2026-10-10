@@ -81,7 +81,7 @@ export function TableScreen(p: ScreenProps) {
   const view = base ? tweaks.effective(base) : undefined;
   const differs = base ? tweaks.differs(base) : false;
   const [cardsOn, setCardsOn] = usePersisted<Record<string, boolean>>('s2g-tb-cards', {}); // per view, on this device
-  const cards = narrow && !!view && (view.kind === 'grid' || view.kind === 'list') && (cardsOn[view.id] ?? true);
+  const cards = narrow && !!view && (view.kind === 'grid' || view.kind === 'list') && (cardsOn[view.id] ?? !view.asTable);
   const [q, setQ] = useState('');
   const [searching, setSearching] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -380,7 +380,8 @@ export function TableScreen(p: ScreenProps) {
 
   /* views */
   const addView = (kind: TableViewDef['kind']) => {
-    const v = newView(tb, kind);
+    // A view added as Table shows as a table on every phone too (phones show other grids as cards).
+    const v = { ...newView(tb, kind), ...(kind === 'grid' ? { asTable: true } : {}) };
     patchTable({ views: [...tb.views, v] });
     setViewId(v.id);
     setPop(null);
@@ -506,12 +507,15 @@ export function TableScreen(p: ScreenProps) {
     if (!quick) return;
     const first = tb.fields[0];
     const id = addRow({ ...quick.values, ...(nm ? { [first.id]: nm } : {}) }, undefined, tpl ?? null);
-    if (!again) setQuick(null);
+    // Made from the sheet: open the new row so its fields can be filled in. "Add another" keeps the sheet up instead.
+    if (!again) return (setQuick(null), p.setOpenRow(id));
     p.toast({ text: nm ? t('Added “{name}”', { name: nm }) : t('Added a row'), action: { label: t('Open'), run: () => (setQuick(null), p.setOpenRow(id)) } });
   };
 
   // Phones: the create button adds a row (templates on a long-press); the title switches between tables.
   const templates = tb.templates ?? [];
+  // On a phone the create button is the one way to add a row: no second "New row" in the list, gallery or empty state.
+  const soloAdd = !phone || !!g;
   useCreateAction('tables', !g && canAdd && !!view && { label: t('New row'), icon: Plus, run: () => openQuick(), more: templates.map((x) => ({ label: t('New “{name}”', { name: x.name }), icon: LayoutTemplate, run: () => openQuick(templateValues(tb, x, p.me), t('New “{name}”', { name: x.name })) })) });
   // Phones: a table is a sub-screen of All tables: the back arrow, its name at 17/600, row search and its settings.
   const [settingsStart, setSettingsStart] = useState<'root' | 'sort'>('root');
@@ -961,13 +965,13 @@ export function TableScreen(p: ScreenProps) {
               onCollapse={foldGroup}
               canAdd={canAdd}
               total={mine.length}
-              onNew={canAdd ? () => openQuick() : undefined}
+              onNew={canAdd && soloAdd ? () => openQuick() : undefined}
               h={{ onOpen: (id) => openRowFull(id), onToggle: toggle, actions: rowActions, onPill: (r, f) => setEditCell({ rowId: r.id, fieldId: f.id }), onAdd: (v, label) => openQuick(v, inGroup(label)) }}
             />
           ) : view.kind === 'list' ? (
             <ListView table={tb} view={view} rows={shown} ctx={ctx} onOpenRow={(id) => openRowFull(id)} onView={patchView} />
           ) : view.kind === 'gallery' ? (
-            <GalleryView table={tb} view={view} rows={shown} ctx={ctx} onOpenRow={(id) => openRowFull(id)} onAddRow={canAdd ? () => (narrow ? openQuick() : openRowFull(addRow())) : undefined} />
+            <GalleryView table={tb} view={view} rows={shown} ctx={ctx} onOpenRow={(id) => openRowFull(id)} onAddRow={canAdd && soloAdd ? () => (narrow ? openQuick() : openRowFull(addRow())) : undefined} />
           ) : view.kind === 'calendar' ? (
             <CalendarView
               table={tb}
@@ -989,7 +993,7 @@ export function TableScreen(p: ScreenProps) {
             <GridView
               locked={!!g}
               fixedColumns={!structure}
-              canAdd={canAdd}
+              canAdd={canAdd && soloAdd}
               channels={p.channels}
               table={tb}
               tables={p.tables}
@@ -1031,7 +1035,7 @@ export function TableScreen(p: ScreenProps) {
                 title={t('No rows yet')}
                 text={canAdd ? t('Each row is one thing you track: a lead, a video, an order. Add one, then tap it to fill in its fields.') : undefined}
                 action={
-                  canAdd ? (
+                  canAdd && soloAdd ? (
                     <button type="button" className="ghost-btn tonal" onClick={() => openQuick()}>
                       {t('New row')}
                     </button>
@@ -1112,7 +1116,7 @@ export function TableScreen(p: ScreenProps) {
           </div>
         </Sheet>
       )}
-      {sheet === 'views' && <ViewsSheet table={tb} gridAsList={narrow && (cardsOn[base?.id ?? ''] ?? true)} current={base?.id ?? ''} onPick={(id) => (setViewId(id), setSelected(new Set()), setSelecting(false))} onAdd={structure ? addView : undefined} onClose={() => setSheet(null)} />}
+      {sheet === 'views' && <ViewsSheet table={tb} gridAsList={(id) => narrow && (cardsOn[id] ?? !tb.views.find((x) => x.id === id)?.asTable)} current={base?.id ?? ''} onPick={(id) => (setViewId(id), setSelected(new Set()), setSelecting(false))} onAdd={structure ? addView : undefined} onClose={() => setSheet(null)} />}
       {sheet === 'filter' && view && <FilterSheet table={tb} view={view} rows={mine} ctx={textCtx} shown={shown.length} onChange={patchView} onClose={() => setSheet(null)} />}
       {sheet === 'settings' && view && <SettingsSheet start={settingsStart} table={tb} view={view} ctx={textCtx} a={settingsActions} onClose={() => setSheet(null)} />}
       {sheet === 'bulk' && <BulkEditSheet table={tb} rows={pickedRows} ctx={ctx} onApply={(fieldId, v) => bulkSet([...selected], fieldId, v)} onClose={() => setSheet(null)} />}
