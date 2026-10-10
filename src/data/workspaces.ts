@@ -35,7 +35,7 @@ const PNP_LOGO = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(
 )}`;
 
 export const USERS: User[] = [
-  { id: 'u-james', name: 'James Carter', email: 'james@demo.sprint2go.com', title: 'COO', color: '#6366f1' },
+  { id: 'u-james', name: 'James Carter', email: 'james@demo.sprint2go.com', title: 'COO', color: '#166534' },
   { id: 'u-owen', name: 'Owen Mitchell', email: 'owen@demo.sprint2go.com', title: 'Performance Marketer', color: '#059669', nicknames: ['Bim'] },
   { id: 'u-henry', name: 'Henry Walsh', email: 'henry@demo.sprint2go.com', title: 'CEO', color: '#d97706', nicknames: ['Hen'] },
   { id: 'u-sophie', name: 'Sophie Turner', email: 'sophie@demo.sprint2go.com', title: 'Head of Accounts', color: '#0284c7', nicknames: ['Sofi'] },

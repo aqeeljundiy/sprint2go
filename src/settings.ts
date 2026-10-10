@@ -45,7 +45,7 @@ export const ACCENTS = ['#5b5bf6', '#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '
 export const DEFAULT_SETTINGS: Settings = {
   name: 'James',
   title: 'COO',
-  avatarColor: '#5b5bf6',
+  avatarColor: '#166534',
   signature: '<p><b>James</b><br>COO</p>',
   theme: 'system',
   accent: '#5b5bf6',

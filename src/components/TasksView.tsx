@@ -219,8 +219,9 @@ export function TasksView(p: Props) {
   const [stagesOpen, setStagesOpen] = useState(false); // the project's own task stages (a dialog from its header)
   const scopeId = 'id' in p.scope ? p.scope.id : '';
   const phone = usePhone();
-  // A project opens on its tasks on a phone (Todoist's project screen); its overview and parts are in its "…".
-  const homeTab = phone ? 'tasks' : 'overview';
+  // From Tasks a project opens on its tasks (Todoist's project screen); from Projects on its hub, the overview with
+  // every part as a row (a project is more than its task list). Back from a part returns to that home.
+  const homeTab = phone && (p.app ?? 'tasks') === 'tasks' ? 'tasks' : 'overview';
   useEffect(() => {
     if (p.scope.kind === 'client') setClientTab(p.scope.teamId ? 'tasks' : (p.clientTab ?? homeTab));
   }, [scopeId, p.clientTab]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -659,7 +660,7 @@ export function TasksView(p: Props) {
   const sub = phone && !root;
   const backToBrowse = sub && app === 'tasks' && p.onBrowse ? <TopBarBack onClick={() => p.onBrowse!(true)} /> : undefined;
   const partName = client && clientTab !== 'tasks' ? (clientTab === 'overview' ? client.name : (tabItems.find((x) => x.id === clientTab)?.name ?? client.name)) : '';
-  const phoneBar: PhoneBar | undefined = phone ? { app, lead: backToBrowse, title: sub ? <BarTitle text={heading} /> : undefined, people: people || undefined, more: [...projectMenu, ...teamMenu], stages: client && projectManage ? () => setStagesOpen(true) : undefined } : undefined;
+  const phoneBar: PhoneBar | undefined = phone ? { app, lead: backToBrowse, title: sub ? <BarTitle text={heading} /> : undefined, people: app === 'tasks' ? undefined : people || undefined /* Tasks: the name keeps its room; people are on the project's hub */, more: [...projectMenu, ...teamMenu], stages: client && projectManage ? () => setStagesOpen(true) : undefined } : undefined;
 
   if (showBrowse)
     return (

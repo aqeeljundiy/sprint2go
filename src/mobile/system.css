@@ -188,3 +188,12 @@
     color: var(--text-3);
   }
 }
+
+/* Links on phones: accent text, never underlined (one link style everywhere). */
+@media (max-width: 767px) {
+  .link-btn,
+  a.link-btn {
+    text-decoration: none;
+    color: var(--accent-text);
+  }
+}

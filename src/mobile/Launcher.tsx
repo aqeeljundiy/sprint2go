@@ -123,11 +123,11 @@ export function Launcher(p: {
           </button>
           {p.ai && (
             <button type="button" className="icon-btn ln-ib" onClick={p.onAsk} aria-label={t('Ask AI')} title={t('Ask AI')}>
-              <Sparkles size={24} />
+              <Sparkles size={24} strokeWidth={1.75} />
             </button>
           )}
           <button type="button" className="icon-btn ln-ib" onClick={p.onBell} aria-label={p.unreadNotices ? t('Notifications, new ones') : t('Notifications')}>
-            <Bell size={24} />
+            <Bell size={24} strokeWidth={1.75} />
             {p.unreadNotices > 0 && <i className="ln-dot" />}
           </button>
           <button type="button" className="ln-me" onClick={p.onAccount} aria-label={t('Your account')}>

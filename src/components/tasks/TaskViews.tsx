@@ -420,7 +420,7 @@ export function TaskViews({
           actions={
             <span className={`tv-actions${bar.people ? ' tv-pill' : ''}`}>
               {bar.people}
-              {bar.people && layouts.length > 1 && (
+              {layouts.length > 1 && (
                 <button type="button" className={`icon-btn tv-pill-btn${words.length ? ' on' : ''}`} onClick={() => setDisplayOpen(true)} aria-label={t('Layout and display')} title={t('Display')}>
                   <LayoutIcon size={20} />
                 </button>

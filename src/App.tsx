@@ -531,6 +531,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const [connectCal, setConnectCal] = useState<false | true | 'holidays'>(false);
   const [calCursor, setCalCursor] = useState(new Date());
   // The last view, remembered on this device (phones and wide screens each keep their own).
+  const [projMine, setProjMine] = useState(false);
   const [calViewPhone, setCalViewPhone] = usePersisted<CalView>('s2g-cal-view:phone', 'schedule');
   // A Day opened by tapping a date is a visit, not a choice: the next time Calendar opens, it's the Schedule again.
   useEffect(() => {
@@ -3863,13 +3864,14 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     if (mode === 'projects')
       return {
         label: term.Many,
-        value: projScope.kind === 'client' ? projScope.id : projScope.kind === 'past' ? 'past' : 'all',
+        value: projScope.kind === 'client' ? projScope.id : projScope.kind === 'past' ? 'past' : mobile && projMine ? 'mine' : 'all',
         options: [
           { value: 'all', label: t('All {projects}', { projects: term.many }), group: term.Many },
+          ...(mobile ? [{ value: 'mine', label: t('My {projects}', { projects: term.many }), group: term.Many }] : []), // the bar's Mine
           ...wsClients.map((c) => ({ value: c.id, label: c.name, group: term.Many })),
           { value: 'past', label: t('Past {projects}', { projects: term.many }), group: t('More') },
         ],
-        onChange: (v: string) => setProjScope(v === 'all' ? { kind: 'projects' } : v === 'past' ? { kind: 'past' } : { kind: 'client', id: v }),
+        onChange: (v: string) => (setProjMine(v === 'mine'), setProjScope(v === 'all' || v === 'mine' ? { kind: 'projects' } : v === 'past' ? { kind: 'past' } : { kind: 'client', id: v })),
       };
     if (mode === 'drive')
       return {
@@ -4087,7 +4089,6 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   // Each app's sections on phones: what's selected now, and how to get to one (from its bar, the URL or Back).
   const [chatPart, setChatPart] = useState<'home' | 'dms' | 'activity'>('home');
   const [calMeetings, setCalMeetings] = useState(false);
-  const [projMine, setProjMine] = useState(false);
   const [meetPart, setMeetPart] = useState<'meetings' | 'notes'>('meetings');
   const [teamsPart, setTeamsPart] = useState<'teams' | 'people'>('teams');
   const sectionNow = (app: Mode): string | undefined => {
@@ -4151,10 +4152,15 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     }
   };
   // The thing open in the app (a task, a channel, a note…), for the URL.
+  const BROWSE_KINDS = ['project', 'client', 'team', 'supervising', 'myteams', 'myclients', 'all', 'delegated', 'briefs', 'grid'];
   const itemNow = (app: Mode): string | undefined => {
     switch (app) {
-      case 'tasks':
-        return taskOpen ?? undefined;
+      case 'tasks': {
+        if (taskOpen) return taskOpen;
+        // A screen opened from Browse has its own address (/tasks/browse/project/p1), so Back and reload keep the place.
+        if (mobile && !taskBrowse && !['today', 'upcoming', 'mine'].includes(taskScope.kind)) return 'id' in taskScope ? `${taskScope.kind}/${taskScope.id}` : taskScope.kind;
+        return undefined;
+      }
       case 'chat':
         return chatId ?? undefined;
       case 'mail':
@@ -4189,9 +4195,19 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       return true;
     }
     switch (app) {
-      case 'tasks':
+      case 'tasks': {
+        // A Browse screen (see itemNow): "project/p1", "team/t1", "client/c1" or a list's name ("all", "briefs"…).
+        const [kind, ref] = id.split('/');
+        if (BROWSE_KINDS.includes(kind)) {
+          if (ref ? kind === 'team' ? !wsTeams.some((x) => x.id === ref) : !wsClientsAll.some((x) => x.id === ref) : false) return false;
+          setTaskBrowse(false);
+          setTaskOpen(null);
+          setTaskScope((ref ? { kind, id: ref } : { kind }) as TaskScope);
+          return true;
+        }
         if (!todos.some((x) => x.id === id)) return false;
         return (setTaskOpen(id), true);
+      }
       case 'chat':
         if (!channels.some((c) => c.id === id)) return false;
         return (setChatId(id), setChatPage(null), true);

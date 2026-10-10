@@ -86,6 +86,8 @@ export function PastClients({ clients, tasks, canManage, onOpen, onReactivate }:
           </div>
         )}
 
+        {/* Only once something has ended (an active project in a table of "none" says nothing); never on phones. */}
+        {past.length > 0 && (
         <div className="side-card over-time">
           <h3>{t('{Projects} over time', { projects: term.many })}</h3>
           {avg !== null && <p className="muted small">{tn(avg, 'On average, work with a {project} lasted {n} month.', 'On average, work with a {project} lasted {n} months.', { project: term.one })}</p>}
@@ -112,6 +114,7 @@ export function PastClients({ clients, tasks, canManage, onOpen, onReactivate }:
             </table>
           )}
         </div>
+        )}
       </div>
     </section>
   );

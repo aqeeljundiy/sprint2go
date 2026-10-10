@@ -157,3 +157,10 @@
     color: var(--text-2);
   }
 }
+
+/* Past projects on phones: only the ended ones as rows; the month-by-month table is a desktop look back. */
+@media (max-width: 767px) {
+  .tasks-pane .over-time {
+    display: none;
+  }
+}

@@ -1753,3 +1753,49 @@
     padding: 4px 8px;
   }
 }
+
+/* ---------- The task sheet, walkthrough fixes: one header family, a calmer title, chips that wrap, plain sections ---------- */
+@media (max-width: 767px) {
+  .tdp .drawer-title {
+    font-size: 20px !important; /* system: the task title reads above its rows but under a screen title (24) */
+    font-weight: 600;
+    line-height: 26px;
+  }
+  .tdp-lab {
+    display: block;
+    font: var(--t-caption);
+    color: var(--text-3);
+  }
+  .tdp-chips {
+    flex-wrap: wrap;
+    overflow-x: visible;
+  }
+  .tdp-chips .sel.td-chip,
+  .tdp-chips button.td-chip,
+  .tdp-chips .td-chip-people .people-btn {
+    border-radius: var(--r-pill);
+  }
+  .tdp-sec {
+    margin-top: 24px;
+    border-top: 1px solid var(--line);
+  }
+  :root[data-theme='dark'] .tdp-sec {
+    border-top-color: var(--line);
+  }
+  /* Dates are text; only late is red. */
+  .tdp-row :is(.due-today, .due-tomorrow, .due-week, .due-later) {
+    color: var(--text);
+  }
+  /* The place and the stage get their whole words (Indonesian runs longer); the pill and the round buttons share a row. */
+  .sheet-title .td-crumbs {
+    flex-wrap: wrap;
+    min-width: 0;
+  }
+  .sheet-title .td-crumb-text {
+    max-width: none;
+    white-space: normal;
+  }
+  .sel.td-crumb {
+    border-radius: var(--r-pill);
+  }
+}
