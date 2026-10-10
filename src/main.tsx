@@ -22,6 +22,7 @@ import './polish.css';
 import './tasks.css';
 import './home.css';
 import './mail.css';
+import './mailSorting.css'; // Mail's search options, tabs, sections, phishing banner (components/mail/Sorting.tsx)
 import './admin.css';
 import './notify.css';
 import './security.css';

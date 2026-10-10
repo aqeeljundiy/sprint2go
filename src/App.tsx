@@ -58,6 +58,11 @@ import { Sidebar, SIDEBAR_MAX, SIDEBAR_MIN, folderName, type Mode } from './comp
 import { MessageList, type MailActions, type MailFilter } from './components/MessageList';
 import { needsReply, snoozePatch, wakeThread, whenWords } from './mailRules';
 import { MailSettingsScreen } from './components/mail/MailSettings';
+// Search operators, inbox tabs, Important, mute, multiple inboxes, auto-advance, conversation view, shortcuts.
+import { advanceTo, rowOf, sortInbox, splitRows, tabOf, tabsOn, useMailPrefs, categoryName } from './components/mail/sortPrefs';
+import { InboxSections, InboxSettings, InboxTabs, KeepNotice, QueryBar, SavedSearches, TabNav, TabRows } from './components/mail/Sorting';
+import { MailShortcuts } from './components/mail/Shortcuts';
+import { matchThread, parseQuery, type Category } from './mailQuery';
 import { Reader } from './components/Reader';
 import { Compose, type Outgoing, type OutgoingFile } from './components/Compose';
 import type { CalView } from './components/CalendarView';
@@ -153,10 +158,13 @@ function writeRoute(m: Mode) {
 const fromMe = (t: Thread) => t.messages.some((m) => isMine(m.from.email));
 
 /** What a mail list needs to know beyond the thread: who's looking, which emails gave them to-dos, each one's project. */
-type ViewCtx = { me?: string; todo?: Set<string>; projectOf?: (t: Thread) => string | undefined };
+type ViewCtx = { me?: string; todo?: Set<string>; projectOf?: (t: Thread) => string | undefined; tabs?: Category[] };
 
-function inView(t: Thread, v: View, ctx: ViewCtx = {}) {
+function inView(t: Thread, v: View, ctx: ViewCtx = {}): boolean {
   if (v.kind === 'tracking' || v.kind === 'files') return false;
+  // Inbox tabs (mail/sortPrefs.ts): the inbox is Primary when tabs are on; each tab is its own part of the inbox.
+  if (v.kind === 'category') return inView(t, { kind: 'folder', id: 'inbox' }) && tabOf(t, ctx.tabs ?? []) === v.id;
+  if (v.kind === 'folder' && v.id === 'inbox' && (ctx.tabs?.length ?? 0) > 1 && tabOf(t, ctx.tabs!) !== 'primary') return false;
   const kept = t.location !== 'trash' && t.location !== 'spam';
   if (v.kind === 'todos') return kept && !!ctx.todo?.has(t.id);
   if (v.kind === 'project') return kept && t.location !== 'drafts' && ctx.projectOf?.(t) === v.id;
@@ -635,24 +643,39 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const todoThreads = useMemo(() => new Set(myTodos.filter((t) => t.threadId && !t.done).map((t) => t.threadId!)), [myTodos]);
   // The project an email is with, by the sender's domain (as clientForThread, which is defined further down).
   const projectOfThread = (t: Thread) => clients.find((c) => c.workspaceId === ws.id && c.domain && t.messages.some((m) => [m.from, ...m.to].some((p) => p.email.toLowerCase().endsWith('@' + c.domain))))?.id;
-  const viewCtx: ViewCtx = { me: user.id, todo: todoThreads, projectOf: projectOfThread };
+  // The person's inbox settings: tabs, order, conversation view, auto-advance (components/mail/sortPrefs.ts).
+  const [mailPrefs] = useMailPrefs();
+  const mailTabs = useMemo(() => tabsOn(mailPrefs), [JSON.stringify(mailPrefs.tabs)]); // eslint-disable-line react-hooks/exhaustive-deps
+  const viewCtx: ViewCtx = { me: user.id, todo: todoThreads, projectOf: projectOfThread, tabs: mailTabs };
+  // The search box reads Gmail's operators (src/mailQuery.ts, the same as the server, the AI connector and IMAP).
+  const parsedQuery = useMemo(() => parseQuery(query), [query]);
+  const queryCtx = { isMine, labelName: (id: string) => LABELS.find((l) => l.id === id)?.name };
   /** Whether an email passes the chip under the title (Unread, Needs reply, Assigned to me, Attachments) and the search. */
-  const passes = (t: Thread, q = query.trim().toLowerCase()) =>
+  const passes = (t: Thread) =>
     (filter === 'all' ||
       (filter === 'unread' && t.unread) ||
       (filter === 'reply' && needsReply(t, isMine)) ||
       (filter === 'assigned' && t.assignee === user.id) ||
       (filter === 'files' && threadHasAttachment(t))) && // pictures inside the words don't count (src/mailAttachments.ts)
-    (!q || t.subject.toLowerCase().includes(q) || t.messages.some((m) => m.from.name.toLowerCase().includes(q) || m.from.email.includes(q) || m.body.toLowerCase().includes(q)));
-  const visible = useMemo(
-    () => scoped.filter((t) => inView(t, view, viewCtx) && passes(t)).sort((a, b) => lastMessage(b).date.localeCompare(lastMessage(a).date)),
-    [scoped, view, filter, query, todoThreads, clients], // eslint-disable-line react-hooks/exhaustive-deps
-  );
+    (!parsedQuery || matchThread(parsedQuery, t, queryCtx));
+  /** A search looks through all mail, as in Gmail (in:inbox, label: and the rest narrow it); otherwise the view. */
+  const inList = (t: Thread) => (parsedQuery ? true : inView(t, view, viewCtx)) && passes(t);
+  const visible = useMemo(() => {
+    const list = scoped.filter(inList).sort((a, b) => lastMessage(b).date.localeCompare(lastMessage(a).date));
+    const ordered = !parsedQuery && view.kind === 'folder' && view.id === 'inbox' ? sortInbox(list, mailPrefs.inboxType) : list;
+    return mailPrefs.conversation ? ordered : splitRows(ordered); // conversation view off: a row per email
+  }, [scoped, view, filter, parsedQuery, todoThreads, clients, mailTabs, mailPrefs.inboxType, mailPrefs.conversation]); // eslint-disable-line react-hooks/exhaustive-deps
   /** Whether an email would still be in this list after a change (a swipe only slides out what really leaves). */
-  const staysInList = (t: Thread, patch: Partial<Thread>) => {
-    const next = { ...t, ...patch };
-    return inView(next, view, viewCtx) && passes(next);
-  };
+  const staysInList = (t: Thread, patch: Partial<Thread>) => inList({ ...t, ...patch });
+  /** With conversation view off, the open row is one email of the conversation (`thread~message`). */
+  const [rowMsg, setRowMsg] = useState<string | null>(null);
+  /** The whole inbox (every tab), for the tabs' news; a section's search for multiple inboxes. */
+  const inboxAll = useMemo(() => scoped.filter((t) => inView(t, { kind: 'folder', id: 'inbox' })), [scoped]);
+  const sectionMatch = useCallback(
+    (q: string) => scoped.filter((t) => matchThread(parseQuery(q), t, queryCtx)).sort((a, b) => lastMessage(b).date.localeCompare(lastMessage(a).date)),
+    [scoped], // eslint-disable-line react-hooks/exhaustive-deps
+  );
+  const selectedRow = selectedId && !mailPrefs.conversation && rowMsg && visible.some((r) => r.id === selectedId + '~' + rowMsg) ? selectedId + '~' + rowMsg : selectedId;
 
   const counts = useMemo(
     () => ({
@@ -799,7 +822,10 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const composeNow = useRef<(() => Outgoing | null) | null>(null);
 
   const open = useCallback(
-    (id: string) => {
+    (row: string) => {
+      // Conversation view off: a row is one email of a conversation (components/mail/sortPrefs.ts).
+      const { thread: id, message } = rowOf(row);
+      setRowMsg(message ?? null);
       const t = threads.find((x) => x.id === id);
       if (t?.location === 'drafts') {
         const m = t.messages[0];
@@ -824,18 +850,24 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
    */
   const leaveReader = (gone: string[]) => {
     if (!selectedId || !gone.includes(selectedId)) return;
-    if (mobile) return setReaderOpen(false);
-    const idx = visible.findIndex((t) => t.id === selectedId);
-    const next = visible.slice(idx + 1).find((t) => !gone.includes(t.id)) ?? visible.slice(0, Math.max(0, idx)).reverse().find((t) => !gone.includes(t.id));
-    setSelectedId(next?.id ?? null);
-    if (!next) setReaderOpen(false);
+    // Auto-advance (Settings, Mail): the newer or older email, or back to the list. As usual: the next one on a
+    // computer, the list on a phone.
+    const to = advanceTo(mailPrefs.advance, mobile);
+    if (to === 'list') return mobile ? setReaderOpen(false) : (setSelectedId(null), setReaderOpen(false));
+    const base = (r: Thread) => rowOf(r.id).thread;
+    const idx = visible.findIndex((t) => base(t) === selectedId);
+    const after = visible.slice(idx + 1).find((t) => !gone.includes(base(t)));
+    const before = visible.slice(0, Math.max(0, idx)).reverse().find((t) => !gone.includes(base(t)));
+    const next = to === 'older' ? (after ?? (mobile ? undefined : before)) : (before ?? (mobile ? undefined : after));
+    if (next) open(next.id);
+    else (setSelectedId(null), setReaderOpen(false));
   };
   /**
    * One change to one or several emails: the list folds away whatever leaves it, the reader moves on, and the toast's
    * Undo puts back only what this changed (not anything else that happened since).
    */
   const changeMail = (ids: string[], patch: (t: Thread) => Partial<Thread>, text: string | null) => {
-    const set = new Set(ids);
+    const set = new Set(ids.map((id) => rowOf(id).thread)); // rows of single emails act on their conversation
     const list = threads.filter((t) => set.has(t.id));
     if (!list.length) return;
     const old = new Map(list.map((t) => [t.id, Object.fromEntries(Object.keys(patch(t)).map((k) => [k, t[k as keyof Thread]])) as Partial<Thread>]));
@@ -869,7 +901,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     setReaderOpen(false);
   };
   /** Where the open email sits in the list: its neighbours are the reader's previous and next. */
-  const selIdx = visible.findIndex((t) => t.id === selectedId);
+  const selIdx = visible.findIndex((t) => t.id === selectedRow);
   /** A teammate by an address of theirs: their sign-in, or a personal mailbox that's theirs. */
   const userForEmail = (email: string) => {
     const e = email.toLowerCase();
@@ -3500,7 +3532,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       }
       if (mode !== 'mail') return;
 
-      const idx = visible.findIndex((t) => t.id === selectedId);
+      const idx = visible.findIndex((t) => t.id === selectedRow);
       switch (e.key) {
         case 'j':
         case 'ArrowDown': {
@@ -3547,7 +3579,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
 
   /* ---------------- Render ---------------- */
 
-  const title = view.kind === 'folder' ? folderName(view.id) : view.kind === 'tracking' ? t('Waiting for reply') : view.kind === 'files' ? t('Files') : view.kind === 'todos' ? t('To-do') : view.kind === 'project' ? (wsClientsAll.find((c) => c.id === view.id)?.name ?? term.one) : (LABELS.find((l) => l.id === view.id)?.name ?? '');
+  const title = mode === 'mail' && parsedQuery ? t('Search results') : view.kind === 'category' ? categoryName(view.id) : view.kind === 'folder' ? folderName(view.id) : view.kind === 'tracking' ? t('Waiting for reply') : view.kind === 'files' ? t('Files') : view.kind === 'todos' ? t('To-do') : view.kind === 'project' ? (wsClientsAll.find((c) => c.id === view.id)?.name ?? term.one) : (LABELS.find((l) => l.id === view.id)?.name ?? '');
   const appMode = mode === 'settings' ? lastMode : mode;
 
   /** Each app's gear: Settings at that app's section (only sections this person can use). */
@@ -4174,6 +4206,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
           if (mode !== 'mail') go('mail');
         }}
         view={view}
+        savedNav={<SavedSearches query={query} onRun={(q) => (selectView({ kind: 'folder', id: 'inbox' }), setQuery(q), mobile && setSidebarOpen(false))} />}
+        tabNav={<TabNav current={view.kind === 'category' ? view.id : null} inbox={inboxAll} onPick={(c) => (activeAccount !== 'all' && setActiveAccount('all'), selectView({ kind: 'category', id: c }))} />}
         labels={LABELS}
         clients={mobile ? wsClients.filter((c) => c.domain) : wsClients}
         phoneMail={{
@@ -4804,6 +4838,19 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
                   </div>
                 ) : undefined
               }
+              top={
+                // Inbox tabs, multiple inboxes and Spam's 30 days (components/mail/Sorting.tsx); none during a search.
+                parsedQuery ? (mobile ? <QueryBar query={query} onClear={() => setQuery('')} /> : undefined) : (
+                  <>
+                    {!mobile && (view.kind === 'category' || (view.kind === 'folder' && view.id === 'inbox')) && (
+                      <InboxTabs inbox={inboxAll} current={view.kind === 'category' ? view.id : 'primary'} onPick={(c) => selectView(c === 'primary' ? { kind: 'folder', id: 'inbox' } : { kind: 'category', id: c })} />
+                    )}
+                    {mobile && view.kind === 'folder' && view.id === 'inbox' && <TabRows inbox={inboxAll} onPick={(c) => selectView({ kind: 'category', id: c })} />}
+                    {!mobile && view.kind === 'folder' && view.id === 'inbox' && <InboxSections match={sectionMatch} me={ME} onOpen={open} onQuery={setQuery} />}
+                    {view.kind === 'folder' && (view.id === 'spam' || view.id === 'trash') && <KeepNotice where={view.id} ids={visible.map((r) => rowOf(r.id).thread)} />}
+                  </>
+                )
+              }
               ref={searchRef}
               title={title}
               threads={visible}
@@ -4815,7 +4862,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
               teamMail={teamMail}
               sharedMail={(t) => accountOf(t.accountId)?.kind === 'shared'}
               assignChip={myAccounts.some((a) => a.kind === 'shared') && !(view.kind === 'folder' && view.id === 'assigned')}
-              selectedId={selectedId}
+              selectedId={selectedRow}
               query={query}
               filter={filter}
               showSnippets={settings.showSnippets}
@@ -4853,8 +4900,9 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
                   : undefined;
               })()}
             />
+            <MailShortcuts selectedId={selectedId} actions={mailActions} onForward={(id) => { const th = threads.find((x) => x.id === id); if (th) forward(th); }} />
             <Reader
-              thread={selected}
+              thread={!mailPrefs.conversation && selected && rowMsg && selected.messages.some((m) => m.id === rowMsg) ? { ...selected, messages: selected.messages.filter((m) => m.id === rowMsg) } : selected}
               restoreReply={restoreReply}
               replyOff={selectedAcct && !boxReady(selectedAcct.id).send ? t('Sending isn’t set up for this mailbox yet') : undefined}
               onReplyOff={() => selectedAcct && replyBlocked(selectedAcct)}
@@ -5244,6 +5292,9 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             }}
             onRemoveAccount={(id) => setRemoveAcct(ws.accounts.find((a) => a.id === id) ?? null)}
             mailExtras={
+              <>
+              {/* Inbox tabs, order, multiple inboxes, conversation view, auto-advance (phones: Mail settings, Inbox). */}
+              {!mobile && <InboxSettings />}
               <OutOfOffice
                 accounts={myAccounts.filter((a) => !a.temp)}
                 canSend={(id) => (boxReady(id).send ? null : (boxReady(id).sendWhy ?? boxReady(id).why ?? 'Sending isn’t set up for this mailbox yet.'))}
@@ -5257,6 +5308,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
                   return r?.ok ? null : why ? t(why) : t('No connection. Try again.');
                 }}
               />
+              </>
             }
           />
           </PushedSettings>

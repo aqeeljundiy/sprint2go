@@ -97,6 +97,9 @@ interface Props {
   /** Why Compose is off (sending isn't set up). The button stays clickable so it can say why. */
   composeOff?: string;
   onClose: () => void;
+  /** Mail: saved searches (desktop sidebar and phone drawer), and the inbox tabs in the phone drawer (mail/Sorting.tsx). */
+  savedNav?: ReactNode;
+  tabNav?: ReactNode;
   /** Phones, Mail: Gmail's drawer. Its header (the company and you), labels and projects with counts, settings last. */
   phoneMail?: {
     workspace: Workspace;
@@ -273,6 +276,7 @@ export function Sidebar(props: Props) {
                   </button>
 
                 </nav>
+                {props.savedNav}
 
                 {(!!props.clients?.length || props.onNewProject) && (
                   <>
@@ -345,6 +349,7 @@ function PhoneMailDrawer(props: Props & { pm: NonNullable<Props['phoneMail']>; i
           )}
           {boxes.length === 0 && item('inbox', InboxIcon, t('Inbox'), inboxOn('all'), () => props.onAccountFilter('all'), counts.inbox)}
           {temps.map((a) => item(a.id, Timer, a.email.split('@')[0] + '@', inboxOn(a.id), () => props.onAccountFilter(a.id), props.accountUnread[a.id]))}
+          {props.tabNav}
           {shared && item('assigned', UserCheck, t('Assigned to me'), isActive({ kind: 'folder', id: 'assigned' }), () => pick({ kind: 'folder', id: 'assigned' }), counts.assigned)}
         </nav>
         <div className="gm-sep" />
@@ -361,6 +366,7 @@ function PhoneMailDrawer(props: Props & { pm: NonNullable<Props['phoneMail']>; i
           {item('spam', ShieldAlert, folderName('spam'), isActive({ kind: 'folder', id: 'spam' }), () => pick({ kind: 'folder', id: 'spam' }), counts.spam)}
           {item('trash', Trash2, folderName('trash'), isActive({ kind: 'folder', id: 'trash' }), () => pick({ kind: 'folder', id: 'trash' }))}
         </nav>
+        {props.savedNav}
         {pm.labels.length > 0 && (
           <>
             <div className="gm-sep" />
