@@ -25,6 +25,7 @@ const LEAVING = [
   '.ask-pill',
   '.huddle',
   '.huddle-bar',
+  '.huddle-banner',
   '.later-menu',
   '.track-menu',
   '.tb-popup',

@@ -1,6 +1,6 @@
 import { useEffect, useRef, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowLeft, ChevronLeft } from 'lucide-react';
+import { ArrowLeft, ChevronLeft, X } from 'lucide-react';
 import { useFocusedScreen } from '../../mobile/chrome';
 import { t } from '../../i18n';
 
@@ -20,6 +20,7 @@ export function PushScreen({
   children,
   className = '',
   iconBack = false,
+  closeX = false,
 }: {
   title: ReactNode;
   onBack: () => void;
@@ -29,6 +30,7 @@ export function PushScreen({
   children: ReactNode;
   className?: string;
   iconBack?: boolean; // Gmail's back: an arrow alone (backLabel is still read out to screen readers)
+  closeX?: boolean; // a screen you close rather than go back from (Slack's New message): X alone, read out as Close
 }) {
   useFocusedScreen(true);
   const ref = useRef<HTMLDivElement>(null);
@@ -116,9 +118,9 @@ export function PushScreen({
   return createPortal(
     <div ref={ref} className={`push-screen ${className}`} role="dialog" aria-modal="true" aria-label={typeof title === 'string' ? title : undefined}>
       <header className="push-head">
-        <button type="button" className={`push-back${iconBack ? ' icon-only' : ''}`} onClick={() => backRef.current()} aria-label={named ? t('Back to {screen}', { screen: named }) : t('Back')}>
-          {iconBack ? <ArrowLeft size={22} /> : <ChevronLeft size={22} />}
-          {named && !iconBack && <span>{named}</span>}
+        <button type="button" className={`push-back${iconBack || closeX ? ' icon-only' : ''}`} onClick={() => backRef.current()} aria-label={closeX ? t('Close') : named ? t('Back to {screen}', { screen: named }) : t('Back')}>
+          {closeX ? <X size={22} /> : iconBack ? <ArrowLeft size={22} /> : <ChevronLeft size={22} />}
+          {named && !iconBack && !closeX && <span>{named}</span>}
         </button>
         <h1 className="push-title">{title}</h1>
         <div className="push-actions">{actions}</div>
