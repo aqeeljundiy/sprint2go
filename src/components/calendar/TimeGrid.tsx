@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
 import { Check, Mic, Repeat } from 'lucide-react';
 import { meetingLinkOf } from '../../meetingLinks';
 import type { CalEvent } from '../../types';
@@ -6,6 +6,7 @@ import { eventsOn, fmtTime, fmtTimeRange, hourLabel, layoutDay, minutesIntoDay, 
 import { haptic, useLongPress } from '../ui/useLongPress';
 import { isMaybe, isPending, joinable, onColor } from './calTools';
 import { swipeLock, useSwipeNav } from './useSwipeNav';
+import { eventSpan, isBar, stripLayout, type MonthPiece } from './monthLayout';
 import { t } from '../../i18n';
 import { fmtDate, fmtWeekdayLong } from '../../i18n/format';
 
@@ -185,24 +186,36 @@ export function TimeGrid(p: GridProps) {
     p.onSchedule?.(id, start);
   };
 
-  const allDay = days.map((d) => eventsOn(events, d).filter((e) => e.allDay));
-  const hasAllDay = allDay.some((a) => a.length);
+  // All-day events and timed ones of a day or more: one bar across their days in the all-day row (Month's layout),
+  // square where they go on past the view. Desktop has room for two lanes and "+N", phones one.
   const perDay = p.phone ? 1 : 2;
+  const strip = stripLayout(events, days, perDay + 1);
+  const allDay = strip.byDay;
+  const hasAllDay = allDay.some((a) => a.length);
   const today = days.findIndex((d) => sameDay(d, now));
 
   // Phones, Day: Google's band: the weekday and date in the gutter, the all-day events beside them.
   const dayBand = p.phone && days.length === 1;
-  const chip = (e: CalEvent) => (
+  const edges = (x?: Pick<MonthPiece, 'before' | 'after'>) => (x ? `${x.before ? ' tg-go-l' : ''}${x.after ? ' tg-go-r' : ''}` : '');
+  const chip = (e: CalEvent, piece?: MonthPiece, style?: CSSProperties) => (
     <button
-      key={e.id}
-      className={`pill-event ${p.selectedId === e.id ? 'picked' : ''} ${isPending(e) ? 'pending' : ''}`}
-      style={{ ['--c' as string]: color(e.calendarId), ['--on' as string]: onColor(color(e.calendarId)) }}
+      key={piece ? `${e.id}:${piece.from}` : e.id}
+      className={`pill-event${piece && piece.to > piece.from ? ' tg-span' : ''}${edges(piece)} ${p.selectedId === e.id ? 'picked' : ''} ${isPending(e) ? 'pending' : ''}`}
+      style={{ ...style, ['--c' as string]: color(e.calendarId), ['--on' as string]: onColor(color(e.calendarId)) }}
       onClick={() => p.onSelect(e.id)}
+      onContextMenu={(m) => p.onMenu && !p.phone && (m.preventDefault(), p.onMenu(e, m.clientX, m.clientY))}
+      title={e.title}
     >
       {e.rrule && <Repeat size={11} className="pe-repeat" aria-label={t('Repeats')} />}
-      {e.title}
+      {!e.allDay && (!piece || piece.first) && <span className="pe-time">{fmtTime(e.start)}</span>}
+      <span className="pe-title">{e.title}</span>
     </button>
   );
+  // The band shows one day: a bar that started before it or goes on after it is square on that side.
+  const bandEdges = (e: CalEvent) => {
+    const [from, to] = eventSpan(e, days[0]);
+    return { before: from < 0, after: to > 0 };
+  };
   return (
     <div className={`tg${p.phone ? ' tg-phone' : ''}${days.length === 7 ? ' tg-week' : ''}`} ref={rootRef} style={{ ['--cols' as string]: days.length, ['--hour' as string]: `${hour}px` }}>
       {dayBand ? (
@@ -212,7 +225,7 @@ export function TimeGrid(p: GridProps) {
             <span className="tg-num">{days[0].getDate()}</span>
           </button>
           <div className="tg-band-chips">
-            {allDay[0].slice(0, 2).map(chip)}
+            {allDay[0].slice(0, 2).map((e) => chip(e, { ...bandEdges(e), from: 0, to: 0, lane: 0, bar: true, first: !bandEdges(e).before, e }))}
             {allDay[0].length > 2 && (
               <button className="tg-allday-more" onClick={() => p.onAllDay(days[0])} aria-label={t('{n} more all-day events', { n: allDay[0].length - 2 })}>
                 +{allDay[0].length - 2}
@@ -235,16 +248,23 @@ export function TimeGrid(p: GridProps) {
       {hasAllDay && !dayBand && (
         <div className="tg-allday">
           <div className="tg-gutter">{p.phone ? '' : t('all day')}</div>
-          {allDay.map((list, i) => (
-            <div key={i} className="tg-allday-cell">
-              {list.slice(0, perDay).map(chip)}
-              {list.length > perDay && (
-                <button className="tg-allday-more" onClick={() => p.onAllDay(days[i])} aria-label={t('{n} more all-day events', { n: list.length - perDay })}>
-                  +{list.length - perDay}
-                </button>
-              )}
-            </div>
-          ))}
+          <div className="tg-allday-lanes" style={{ gridTemplateRows: `repeat(${Math.max(1, ...strip.pieces.map((x) => x.lane + 1), ...(strip.more.length ? [perDay + 1] : []))}, auto)` }}>
+            {days.map((d, i) => (
+              <div key={i} className="tg-allday-cell" style={{ gridColumn: i + 1, gridRow: '1 / -1' }} />
+            ))}
+            {strip.pieces.map((x) => chip(x.e, x, { gridColumn: `${x.from + 1} / ${x.to + 2}`, gridRow: x.lane + 1 }))}
+            {strip.more.map((m) => (
+              <button
+                key={`m${m.col}`}
+                className="tg-allday-more"
+                style={{ gridColumn: m.col + 1, gridRow: perDay + 1 }}
+                onClick={() => p.onAllDay(days[m.col])}
+                aria-label={t('{n} more all-day events', { n: m.n })}
+              >
+                +{m.n}
+              </button>
+            ))}
+          </div>
         </div>
       )}
 
@@ -263,7 +283,7 @@ export function TimeGrid(p: GridProps) {
             )}
           </div>
           {days.map((d, di) => {
-            const timed = eventsOn(live, d).filter((e) => !e.allDay);
+            const timed = eventsOn(live, d).filter((e) => !isBar(e));
             const isToday = sameDay(d, now);
             const ghost = p.quick && sameDay(p.quick.start, d) ? p.quick : null;
             return (

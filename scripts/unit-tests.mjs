@@ -2125,6 +2125,41 @@ await test('Email layout: every system email renders through the shared layout, 
   });
 }
 
+/* ---------- Calendar Day and Week: the all-day row as bars (stripLayout in src/components/calendar/monthLayout.ts) ---------- */
+
+{
+  const { stripLayout } = await import('../src/components/calendar/monthLayout.ts');
+  const { expandEvents } = await import('../src/repeat.ts');
+  const at = (d, h = 0, m = 0) => new Date(2026, 9, d, h, m).toISOString();
+  const ev = (id, start, end, more = {}) => ({ id, title: id, calendarId: 'work', start, end, ...more });
+  // Week of Monday 12 October 2026; 3 days from Wednesday 14.
+  const week = Array.from({ length: 7 }, (_, i) => new Date(2026, 9, 12 + i));
+  const three = week.slice(2, 5);
+  await test('Week: an all-day event over several days is one bar, square where it goes on past the view', () => {
+    const s = stripLayout([ev('trip', at(10), at(14), { allDay: true }), ev('conf', at(16, 9), at(20, 17))], week, 3);
+    const of = (id) => s.pieces.filter((p) => p.e.id === id).map((p) => [p.from, p.to, p.before, p.after, p.first]);
+    assert.deepEqual(of('trip'), [[0, 1, true, false, false]]);
+    assert.deepEqual(of('conf'), [[4, 6, false, true, true]]);
+  });
+  await test('Week: short timed events stay in the hour grid; a day or more joins the bars', () => {
+    const s = stripLayout([ev('call', at(13, 9), at(13, 10)), ev('late', at(13, 22), at(14, 1)), ev('long', at(13, 9), at(14, 9))], week, 3);
+    assert.deepEqual(s.pieces.map((p) => p.e.id), ['long']);
+  });
+  await test('3 days: a bar wraps at both edges; a repeating multi-day event shows each date', () => {
+    const s = stripLayout([ev('trip', at(12), at(20), { allDay: true })], three, 2);
+    assert.deepEqual(s.pieces.map((p) => [p.from, p.to, p.before, p.after]), [[0, 2, true, true]]);
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const series = ev('visit', at(3), at(6), { allDay: true, rrule: 'FREQ=WEEKLY;BYDAY=SA', timeZone: tz });
+    const shown = expandEvents([series], week[0].getTime(), new Date(2026, 9, 19).getTime());
+    const w = stripLayout(shown, week, 3);
+    assert.deepEqual(w.pieces.map((p) => [p.from, p.to, p.after]), [[0, 0, false], [5, 6, true]]);
+  });
+  await test('Week: more bars than fit on a day say "+N" on the last lane', () => {
+    const s = stripLayout(['a', 'b', 'c', 'd'].map((id) => ev(id, at(14), at(15), { allDay: true })), week, 3);
+    assert.deepEqual(s.more, [{ col: 2, n: 2 }]);
+  });
+}
+
 /* ---------- Files on task comments (server/taskFiles.ts) ---------- */
 
 {
