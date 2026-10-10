@@ -1882,3 +1882,11 @@
     transition: none;
   }
 }
+
+/* A thread is a stream: its messages are apart by space, not lines. */
+@media (max-width: 767px) {
+  .gm-reader .messages > .gm-msg {
+    border-top: 0;
+    border-bottom: 0;
+  }
+}

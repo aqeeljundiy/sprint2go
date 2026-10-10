@@ -1051,6 +1051,8 @@ const id: Record<string, string> = {
   'Remove the filter on {field}': 'Hapus filter pada {field}',
   '{n} group of conditions': '{n} kelompok syarat',
   '{n} groups of conditions': '{n} kelompok syarat',
+  // Phones: the line under "+ New row" while a table is (nearly) empty
+  'Each row is one thing you track: a lead, a video, an order. Add one, then tap it to fill in its fields.': 'Setiap baris adalah satu hal yang Anda lacak: prospek, video, pesanan. Tambahkan satu, lalu ketuk untuk mengisi kolomnya.',
 };
 
 export default id;

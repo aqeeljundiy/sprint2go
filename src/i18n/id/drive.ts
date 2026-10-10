@@ -86,7 +86,7 @@ const id: Record<string, string> = {
   'Show as a grid': 'Tampilkan sebagai kisi',
   'Show as a list': 'Tampilkan sebagai daftar',
   'This folder is empty': 'Folder ini kosong',
-  'Tap + to upload a file or make a folder.': 'Ketuk + untuk mengunggah file atau membuat folder.',
+  'Files you upload and folders you make show here.': 'File yang Anda unggah dan folder yang Anda buat muncul di sini.',
   'Deleted forever after 30 days': 'Dihapus permanen setelah 30 hari',
   'You uploaded': 'Anda unggah',
   '{name} uploaded': 'Diunggah {name}',

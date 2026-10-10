@@ -5,7 +5,7 @@ import { useActionMenu, type SheetAction } from '../ui/ActionSheet';
 import { useLeaving } from '../ui/Smooth';
 import { CellView, type CellCtx } from './Cell';
 import { cardFieldsOf } from './BoardView';
-import { groupRows, isComputed, isEmpty, noValue, rowColors, rowName, statusField, valueOf, type RowGroup } from './fields';
+import { fieldIcon, groupRows, isComputed, isEmpty, noValue, rowColors, rowName, statusField, valueOf, type RowGroup } from './fields';
 import { t } from '../../i18n';
 import { useLang } from '../../i18n/useLang';
 
@@ -66,11 +66,15 @@ function Card({ t: tb, view, row, ctx, status, meta, selecting, selected, leavin
           {(pill || shown.length > 0) && (
             <span className="tb-crd-meta">
               {pill}
-              {shown.map(({ f, v }) => (
-                <span key={f.id} className="tb-crd-f" title={f.name} style={tint.cells[f.id] ? { ['--tint' as string]: tint.cells[f.id] } : undefined} data-tinted={tint.cells[f.id] ? '' : undefined}>
-                  <CellView f={f} v={v} ctx={ctx} />
-                </span>
-              ))}
+              {shown.map(({ f, v }) => {
+                const I = fieldIcon(f.type); // which field this is, at a glance (its name is read out)
+                return (
+                  <span key={f.id} className="tb-crd-f" title={f.name} aria-label={f.name} style={tint.cells[f.id] ? { ['--tint' as string]: tint.cells[f.id] } : undefined} data-tinted={tint.cells[f.id] ? '' : undefined}>
+                    <I size={16} className="tb-crd-ficon" aria-hidden />
+                    <CellView f={f} v={v} ctx={ctx} />
+                  </span>
+                );
+              })}
             </span>
           )}
         </span>
@@ -95,7 +99,7 @@ function Cards({ rows, ...p }: { t: DataTable; view: TableViewDef; rows: TableRo
  * A grid or list view on a narrow screen: one card per row (the name, the status pill, a few fields), grouped and
  * sub-grouped like the view. Tap opens the row, long-press opens its menu (Select starts picking several).
  */
-export function CardList({ t: tb, view, rows, ctx, selecting, selected, collapsed, onCollapse, canAdd, h }: { t: DataTable; view: TableViewDef; rows: TableRow[]; ctx: CellCtx; selecting: boolean; selected: Set<string>; collapsed: Set<string>; onCollapse: (key: string) => void; canAdd: boolean; h: CardHandlers }) {
+export function CardList({ t: tb, view, rows, ctx, selecting, selected, collapsed, onCollapse, canAdd, h, total, onNew }: { t: DataTable; view: TableViewDef; rows: TableRow[]; ctx: CellCtx; selecting: boolean; selected: Set<string>; collapsed: Set<string>; onCollapse: (key: string) => void; canAdd: boolean; h: CardHandlers; total?: number; onNew?: () => void }) {
   const lang = useLang(); // group names ("No status") are words: rebuild them on a language switch
   const status = statusFieldOf(tb, view);
   const meta = useMemo(() => cardFieldsOf(tb, view, status).filter((f) => f.type !== 'files').slice(0, 3), [tb, view, status]);
@@ -118,7 +122,23 @@ export function CardList({ t: tb, view, rows, ctx, selecting, selected, collapse
       )}
     </div>
   );
-  if (!gf) return <div className="tb-crd-scroll">{cards(rows)}</div>;
+  // The end of the list: "+ New row", and while the table is (nearly) empty, a line on what a row is.
+  const end = onNew && !selecting && (
+    <div className="tb-crd-end">
+      <button type="button" className="tb-crd-new" onClick={onNew}>
+        <Plus size={20} aria-hidden />
+        <span>{t('New row')}</span>
+      </button>
+      {(total ?? rows.length) < 3 && <p className="tb-crd-guide">{t('Each row is one thing you track: a lead, a video, an order. Add one, then tap it to fill in its fields.')}</p>}
+    </div>
+  );
+  if (!gf)
+    return (
+      <div className="tb-crd-scroll">
+        {cards(rows)}
+        {end}
+      </div>
+    );
   return (
     <div className="tb-crd-scroll">
       {groups.map((g) => {
@@ -146,6 +166,7 @@ export function CardList({ t: tb, view, rows, ctx, selecting, selected, collapse
           </section>
         );
       })}
+      {end}
     </div>
   );
 }

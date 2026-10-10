@@ -123,6 +123,20 @@ span.person-cell > :first-child {
   color: var(--text-3);
 }
 
+/* ---------- Tonal button: the one action of an empty state (accent tint, accent text, a pill) ---------- */
+.ghost-btn.tonal {
+  border: 0;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  font-weight: 600;
+  transition: background 0.15s;
+}
+.ghost-btn.tonal:hover,
+.ghost-btn.tonal:active {
+  background: color-mix(in oklab, var(--accent) 18%, transparent);
+}
+
 /* ---------- Empty state ---------- */
 
 .empty.empty-state {

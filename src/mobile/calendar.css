@@ -116,12 +116,23 @@
     background: var(--accent-soft);
     color: var(--accent-text, var(--accent));
   }
+  /* The icon at the 16 gutter, the text at 56 (drawer rows, the event's detail rows). */
   .ad-icon {
     flex: none;
     display: grid;
-    place-items: center;
+    place-items: center start;
     width: 56px;
+    padding-left: 16px;
     color: var(--text-2);
+  }
+  .ad-heading .src-mark {
+    width: var(--av-xs);
+    height: var(--av-xs);
+    border-radius: var(--r-tile);
+  }
+  .ad-heading .src-mark svg {
+    width: var(--icon-s);
+    height: var(--icon-s);
   }
   .ad-row.on .ad-icon {
     color: inherit;
@@ -901,15 +912,15 @@
   .is-phone .sch {
     padding-bottom: var(--fab-space);
   }
+  /* Another month's name in the list (the bar names the one on screen): a section header, not sticky. */
   .is-phone .sch-month {
+    position: static;
     display: flex;
     align-items: center;
-    min-height: 56px;
-    padding: 8px 16px 0;
-    font-size: var(--fs-title);
-    font-weight: 600;
-    letter-spacing: -0.01em;
-    background: var(--bg);
+    padding: 24px 16px 8px;
+    font: var(--t-heading);
+    letter-spacing: 0;
+    background: none;
   }
   .is-phone .sch-week {
     display: flex;
@@ -924,18 +935,22 @@
     gap: 4px;
     padding: 4px 12px 16px 0;
   }
+  /* The date column: its 32 circle at the 16 gutter, events from 60. */
   .is-phone .sch-date {
     gap: 0;
-    padding-top: 4px;
+    align-items: flex-start;
+    justify-items: start;
+    padding: 4px 0 0 16px;
   }
   .is-phone .sch-dow {
-    font-size: var(--fs-caption);
-    font-weight: 600;
+    width: 32px;
+    text-align: center;
+    font: var(--t-chip);
     color: var(--text-3);
   }
   .is-phone .sch-num {
-    width: 36px;
-    height: 36px;
+    width: 32px;
+    height: 32px;
     font-size: var(--fs-title);
     font-weight: 400;
     color: var(--text);
@@ -1436,7 +1451,7 @@
     flex: none;
     width: 16px;
     height: 16px;
-    margin: 8px 24px 0 24px;
+    margin: 8px 24px 0 16px;
     border-radius: var(--r-tile);
     background: var(--c, var(--accent));
   }
@@ -1487,7 +1502,8 @@
   .dr-icon {
     flex: none;
     display: grid;
-    place-items: center;
+    place-items: center start;
+    padding-left: 16px;
     width: 56px;
     min-height: 40px;
     color: var(--text-3);

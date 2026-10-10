@@ -330,7 +330,16 @@ export function VaultView({
             </label>
           )}
           {shown.length === 0 ? (
-            <EmptyState icon={<KeyRound size={22} />} title={t('No logins yet')} text={t('Tap + to add a client login. Paste its 2FA setup key and the team gets the codes here.')} />
+            <EmptyState
+              icon={<KeyRound size={22} />}
+              title={t('No logins yet')}
+              text={t('Add a client login. Paste its 2FA setup key and the team gets the codes here.')}
+              action={
+                <button type="button" className="ghost-btn tonal" onClick={() => setEditing('new')}>
+                  {t('New login')}
+                </button>
+              }
+            />
           ) : (
             <VaultPhoneList items={list} clients={clients} me={me} ops={ops} onOpen={setOpenId} />
           )}

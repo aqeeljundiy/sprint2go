@@ -10,7 +10,8 @@ import { TabPane } from '../ui/Smooth';
 import { PickSelect } from '../ui/PickSelect';
 import { ProjectPicker } from '../ProjectPicker';
 import { usePhone } from '../../mobile/media';
-import { useCreateAction, useTitleMenu } from '../../mobile/chrome';
+import { useCreateAction } from '../../mobile/chrome';
+import { TopBar, TopBarBack, TopBarButton } from '../../mobile/TopBar';
 import type { SheetAction } from '../ui/ActionSheet';
 import { newOption, type CellCtx } from './Cell';
 import { GridView } from './GridView';
@@ -29,7 +30,7 @@ import { ColorRulesEditor, FieldsEditor, FilterPanel, GroupEditor, SortEditor } 
 import { BulkBar, BulkEditSheet, FilterLine, FilterSheet, QuickCreate, SettingsSheet, ViewsSheet, openWithFocus, type SettingsActions } from './PhoneBits';
 import { EditSheet } from './EditSheet';
 import { EmptyState } from '../ui/EmptyState';
-import { VIEW_KINDS, kindDefaults, newView, viewIcon } from './viewKinds';
+import { VIEW_KINDS, kindDefaults, newView, viewIcon, viewName, isDefaultViewName } from './viewKinds';
 import { NARROW_PANE, clearTableLink, readTableLink, tableLink, usePaneWidth, useTweaks } from './hooks';
 import { download, rowsToCsv } from './csv';
 import { TABLE_COLORS, cellText, convertValue, filterCount, isComputed, isEmpty, noteOf, opsFor, optionsFromValues, parseIncoming, rowName, sortsOf, templateValues, viewFields, visibleRows } from './fields';
@@ -403,7 +404,9 @@ export function TableScreen(p: ScreenProps) {
   const changeKind = (kind: TableViewDef['kind']) => {
     if (!base || base.kind === kind) return;
     const d = kindDefaults(tb, kind);
-    patchShared({ kind, groupBy: base.groupBy && (kind !== 'board' || tb.fields.find((f) => f.id === base.groupBy)?.type === 'select') ? base.groupBy : d.groupBy, dateField: base.dateField ?? d.dateField, endField: base.endField ?? d.endField, cover: base.cover ?? d.cover });
+    // A view still called by its old kind ("Table", "Grid") takes the new kind's name, so names never go stale.
+    const renamed = isDefaultViewName(base.name) ? { name: VIEW_KINDS.find((x) => x.kind === kind)!.name } : {};
+    patchShared({ ...renamed, kind, groupBy: base.groupBy && (kind !== 'board' || tb.fields.find((f) => f.id === base.groupBy)?.type === 'select') ? base.groupBy : d.groupBy, dateField: base.dateField ?? d.dateField, endField: base.endField ?? d.endField, cover: base.cover ?? d.cover });
   };
   const copyLink = (rowId?: string) => {
     void navigator.clipboard?.writeText(tableLink(tb.id, base?.id, rowId)).then(() => p.toast({ text: rowId ? t('Link to the row copied') : t('Link to the view copied') }));
@@ -510,16 +513,9 @@ export function TableScreen(p: ScreenProps) {
   // Phones: the create button adds a row (templates on a long-press); the title switches between tables.
   const templates = tb.templates ?? [];
   useCreateAction('tables', !g && canAdd && !!view && { label: t('New row'), icon: Plus, run: () => openQuick(), more: templates.map((x) => ({ label: t('New “{name}”', { name: x.name }), icon: LayoutTemplate, run: () => openQuick(templateValues(tb, x, p.me), t('New “{name}”', { name: x.name })) })) });
-  const projectName = (id?: string) => (id ? (p.clients.find((c) => c.id === id)?.name ?? term.One) : t('Company'));
-  useTitleMenu(
-    'tables',
-    !g && {
-      label: t('Tables'),
-      value: tb.id,
-      options: [{ value: '__all', label: t('All tables'), icon: <Table2 size={16} /> }, ...p.tables.filter((x) => x.workspaceId === tb.workspaceId).map((x) => ({ value: x.id, label: x.name, group: projectName(x.clientId), icon: <i className="tb-dot" style={{ background: x.color }} /> }))],
-      onChange: (v) => (v === '__all' ? p.onMenu() : p.onOpenTable(v)),
-    },
-  );
+  // Phones: a table is a sub-screen of All tables: the back arrow, its name at 17/600, row search and its settings.
+  const [settingsStart, setSettingsStart] = useState<'root' | 'sort'>('root');
+  const openSettings = (start: 'root' | 'sort') => (setSettingsStart(start), setSheet('settings'));
 
   // Picking several rows: the long-press menu's "Select", or the grid's checkboxes on a computer.
   const pickedRows = mine.filter((r) => selected.has(r.id));
@@ -590,6 +586,24 @@ export function TableScreen(p: ScreenProps) {
   return (
     <ButtonSetupCtx.Provider value={setButtonFor}>
     <section ref={paneRef} className={`tasks-pane tb-pane view-enter${narrow ? ' tb-narrow' : ''}${phone ? ' tb-phone' : ''}`}>
+      {phone && !g && (
+        <TopBar
+          app="tables"
+          lead={<TopBarBack onClick={p.onMenu} />}
+          title={
+            <h1 className="mt-title plain small">
+              <span className="mt-title-text">{tb.name}</span>
+            </h1>
+          }
+          actions={
+            <>
+              <TopBarButton icon={Search} label={t('Search rows')} onClick={() => setSearching(true)} className={q ? 'on' : ''} />
+              {view && <TopBarButton icon={MoreHorizontal} label={t('View and table settings')} onClick={() => openSettings('root')} />}
+            </>
+          }
+          search={false}
+        />
+      )}
       {g && phone && (
         <header className="tb-guest-head">
           {p.tables.length > 1 ? (
@@ -695,21 +709,28 @@ export function TableScreen(p: ScreenProps) {
             <>
               <button type="button" className="tb-vpill" onClick={() => setSheet('views')} aria-haspopup="dialog" aria-label={t('View: {name}. Switch views', { name: view?.name ?? '' })}>
                 <ViewIcon size={16} />
-                <span>{view?.name ?? t('Views')}</span>
+                <span>{view ? viewName(view, narrow && cards ? 'list' : view.kind) : t('Views')}</span>
                 <ChevronDown size={15} className="muted" />
               </button>
               <span className="spacer" />
-              <button type="button" className={`icon-btn tb-pbtn${q ? ' on' : ''}`} onClick={() => setSearching(true)} aria-label={t('Search rows')}>
-                <Search size={19} />
-              </button>
+              {!phone && (
+                <button type="button" className={`icon-btn tb-pbtn${q ? ' on' : ''}`} onClick={() => setSearching(true)} aria-label={t('Search rows')}>
+                  <Search size={19} />
+                </button>
+              )}
               {view && (
                 <button type="button" className={`icon-btn tb-pbtn${nFilters ? ' on' : ''}`} onClick={() => setSheet('filter')} aria-label={nFilters ? t('Filter, {n} on', { n: nFilters }) : t('Filter')}>
                   <Filter size={19} />
                   {nFilters > 0 && <b className="tb-pbadge">{nFilters}</b>}
                 </button>
               )}
-              {view && (
-                <button type="button" className="icon-btn tb-pbtn" onClick={() => setSheet('settings')} aria-label={t('View and table settings')}>
+              {view && phone && view.kind !== 'calendar' && (
+                <button type="button" className={`icon-btn tb-pbtn${sortsOf(view).length ? ' on' : ''}`} onClick={() => openSettings('sort')} aria-label={t('Sort')}>
+                  <ArrowUpDown size={20} />
+                </button>
+              )}
+              {view && !phone && (
+                <button type="button" className="icon-btn tb-pbtn" onClick={() => openSettings('root')} aria-label={t('View and table settings')}>
                   <SlidersHorizontal size={19} />
                 </button>
               )}
@@ -881,7 +902,7 @@ export function TableScreen(p: ScreenProps) {
 
       {view &&
         (narrow ? (
-          <FilterLine table={tb} view={view} base={base!} differs={differs} canSave={structure} onClear={() => patchView({ filters: [], filterGroups: [] })} onReset={() => base && tweaks.reset(base.id)} onSave={saveForEveryone} onOpen={() => setSheet('filter')} />
+          <FilterLine phone={phone} table={tb} view={view} base={base!} differs={differs} canSave={structure} onClear={() => patchView({ filters: [], filterGroups: [] })} onReset={() => base && tweaks.reset(base.id)} onSave={saveForEveryone} onOpen={() => setSheet('filter')} />
         ) : (
           <div className={`fold ${differs ? 'open' : ''}`}>
             <div className="fold-in">
@@ -939,6 +960,8 @@ export function TableScreen(p: ScreenProps) {
               collapsed={collapsedSet}
               onCollapse={foldGroup}
               canAdd={canAdd}
+              total={mine.length}
+              onNew={canAdd ? () => openQuick() : undefined}
               h={{ onOpen: (id) => openRowFull(id), onToggle: toggle, actions: rowActions, onPill: (r, f) => setEditCell({ rowId: r.id, fieldId: f.id }), onAdd: (v, label) => openQuick(v, inGroup(label)) }}
             />
           ) : view.kind === 'list' ? (
@@ -1002,7 +1025,19 @@ export function TableScreen(p: ScreenProps) {
               onTouchCell={touchCell}
             />
           )}
-          {view && !shown.length && (mine.length ? <p className="muted small tb-none">{q.trim() ? t('No rows match the search.') : t('No rows match the filters.')}</p> : view.kind === 'board' || view.kind === 'calendar' || view.kind === 'timeline' ? null : narrow ? <EmptyState className="tb-empty" icon={<ViewIcon size={22} />} title={t('No rows yet')} text={canAdd ? t('Tap + to add the first one.') : undefined} /> : <p className="muted small tb-none">{t('No rows yet. Add one, paste from a spreadsheet, or they’ll arrive from a form or import.')}</p>)}
+          {view && !shown.length && (mine.length ? <p className="muted small tb-none">{q.trim() ? t('No rows match the search.') : t('No rows match the filters.')}</p> : view.kind === 'board' || view.kind === 'calendar' || view.kind === 'timeline' ? null : narrow ? <EmptyState
+                className="tb-empty"
+                icon={<ViewIcon size={22} />}
+                title={t('No rows yet')}
+                text={canAdd ? t('Each row is one thing you track: a lead, a video, an order. Add one, then tap it to fill in its fields.') : undefined}
+                action={
+                  canAdd ? (
+                    <button type="button" className="ghost-btn tonal" onClick={() => openQuick()}>
+                      {t('New row')}
+                    </button>
+                  ) : undefined
+                }
+              /> : <p className="muted small tb-none">{t('No rows yet. Add one, paste from a spreadsheet, or they’ll arrive from a form or import.')}</p>)}
         </TabPane>
       </div>
 
@@ -1079,7 +1114,7 @@ export function TableScreen(p: ScreenProps) {
       )}
       {sheet === 'views' && <ViewsSheet table={tb} gridAsList={narrow && (cardsOn[base?.id ?? ''] ?? true)} current={base?.id ?? ''} onPick={(id) => (setViewId(id), setSelected(new Set()), setSelecting(false))} onAdd={structure ? addView : undefined} onClose={() => setSheet(null)} />}
       {sheet === 'filter' && view && <FilterSheet table={tb} view={view} rows={mine} ctx={textCtx} shown={shown.length} onChange={patchView} onClose={() => setSheet(null)} />}
-      {sheet === 'settings' && view && <SettingsSheet table={tb} view={view} ctx={textCtx} a={settingsActions} onClose={() => setSheet(null)} />}
+      {sheet === 'settings' && view && <SettingsSheet start={settingsStart} table={tb} view={view} ctx={textCtx} a={settingsActions} onClose={() => setSheet(null)} />}
       {sheet === 'bulk' && <BulkEditSheet table={tb} rows={pickedRows} ctx={ctx} onApply={(fieldId, v) => bulkSet([...selected], fieldId, v)} onClose={() => setSheet(null)} />}
       {quick && <QuickCreate table={tb} title={quick.title} inputRef={quickInput} onCreate={quickMade} onClose={() => setQuick(null)} />}
       {editRow && editField && <EditSheet table={tb} field={editField} row={editRow} ctx={ctx} title={editCell?.title} onSave={(v) => setCell(editRow.id, editField.id, v)} onClose={() => setEditCell(null)} canCreate={!g} />}

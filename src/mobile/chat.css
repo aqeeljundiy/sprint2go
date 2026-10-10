@@ -949,6 +949,13 @@
     border: 1px solid var(--border);
     background: none;
   }
+  .cs-body .thread-count {
+    border: 0;
+    font: var(--t-caption);
+  }
+  .cs-body .thread-count::after {
+    display: none; /* a stream: replies are apart by space, not a line */
+  }
   .push-screen .cm-task {
     padding: 8px 12px;
   }

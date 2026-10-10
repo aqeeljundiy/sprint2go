@@ -37,7 +37,12 @@
   /* ---------- Home: search, filter chips, Coming up, Past meetings (Google Meet's) ---------- */
 
   .meet-home .tracking-scroll {
-    padding: 4px 16px var(--fab-space);
+    padding: 4px 0 var(--fab-space);
+    background: var(--surface);
+  }
+  .meet-home .mh-search,
+  .meet-home .mh-head {
+    margin-inline: 16px;
   }
   .meet-home .tracking-scroll > * {
     flex-shrink: 0;
@@ -75,7 +80,7 @@
     gap: 8px;
     min-height: 48px;
     align-items: center;
-    margin: 4px -16px 0;
+    margin: 4px 0 0;
     padding: 0 16px;
     overflow-x: auto;
     scrollbar-width: none;
@@ -86,12 +91,12 @@
   .mh-chip {
     flex: none;
     min-height: 32px;
-    padding: 0 16px;
-    border-radius: var(--r-tile);
-    border: 1px solid var(--border);
-    font-size: var(--fs-caption);
-    font-weight: 600;
-    color: var(--text);
+    padding: 0 12px;
+    border-radius: var(--r-pill);
+    border: 0;
+    background: var(--surface-2);
+    font: var(--t-chip);
+    color: var(--text-2);
     transition:
       background 0.15s,
       border-color 0.15s,
@@ -102,24 +107,22 @@
     border-color: transparent;
     color: var(--accent-text, var(--accent));
   }
+  /* Past meetings: plain rows on white with the divider from the text (16 + 40 + 12), no card. */
   .mh-head {
     display: flex;
     align-items: flex-end;
-    min-height: 36px;
-    margin: 8px 0 0;
-    padding: 0 4px 8px;
-    font-size: var(--fs-heading);
-    font-weight: 600;
-    color: var(--text-3);
+    margin: 24px 16px 8px;
+    padding: 0;
   }
   .mh-card {
     overflow: hidden;
-    border-radius: var(--r-card);
-    background: var(--surface);
-    border: 1px solid var(--border);
+    border-radius: 0;
+    background: none;
+    border: 0;
   }
   .mh-card > * + * {
-    border-top: 1px solid var(--border);
+    border-top: 0;
+    box-shadow: inset 68px 0 0 var(--surface), inset 0 1px 0 var(--line);
   }
   .mh-card .swipe-face,
   .mh-swipe {
@@ -135,9 +138,9 @@
     min-width: 0;
     display: flex;
     align-items: center;
-    gap: 16px;
-    min-height: 64px;
-    padding: 0 16px;
+    gap: 12px;
+    min-height: var(--row-2);
+    padding: 12px 16px;
     text-align: left;
     color: var(--text);
     transition: background 0.15s;
@@ -149,21 +152,20 @@
     flex: 1;
     min-width: 0;
     display: grid;
-    gap: 4px;
+    gap: 0;
   }
   .mh-text strong {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-size: var(--fs-body);
-    font-weight: 600;
+    font: var(--t-body);
   }
   .mh-text small {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-size: var(--fs-secondary);
-    color: var(--text-2);
+    font: var(--t-secondary);
+    color: var(--text-3);
   }
   .mh-unfiled {
     color: var(--text-3);
@@ -173,8 +175,7 @@
     display: inline-flex;
     align-items: center;
     gap: 8px;
-    font-size: var(--fs-secondary);
-    font-weight: 600;
+    font: var(--t-chip);
     color: var(--text-2);
   }
   .mh-status.bad {
@@ -431,5 +432,18 @@
   .mh-status.live i,
   .m-live i {
     animation: none;
+  }
+}
+
+/* A meeting's page: its tabs and the line under the title on the spacing scale. */
+@media (max-width: 767px) {
+  .meet-page .m-tabs {
+    gap: 4px;
+  }
+  .meet-page .m-tabs > button {
+    gap: 8px;
+  }
+  .meet-page .m-sub {
+    gap: 8px;
   }
 }

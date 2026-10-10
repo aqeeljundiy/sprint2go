@@ -12,6 +12,14 @@ export const VIEW_KINDS: { kind: TableViewDef['kind']; name: string; icon: Lucid
   { kind: 'calendar', get name() { return tx('view', 'Calendar'); }, icon: CalendarDays, get hint() { return t('Rows on their dates'); } },
   { kind: 'timeline', get name() { return tx('view', 'Timeline'); }, icon: ChartGantt, get hint() { return t('Bars from a start date to an end date'); } },
 ];
+/** A view still called by a kind's own name, in English or the reader's language ("Grid", "Table", "Papan"). */
+export function isDefaultViewName(name: string) {
+  const n = name.trim().toLowerCase();
+  const english = ['grid', 'grid view', 'table', 'table view', 'board', 'list', 'gallery', 'calendar', 'timeline'];
+  return english.includes(n) || VIEW_KINDS.some((k) => k.name.toLowerCase() === n);
+}
+/** The name to show: a view called by its kind's name shows the kind it's shown as here (a grid shown as rows is a List). */
+export const viewName = (v: Pick<TableViewDef, 'name' | 'kind'>, shownAs: TableViewDef['kind'] = v.kind) => (isDefaultViewName(v.name) ? (VIEW_KINDS.find((x) => x.kind === shownAs)?.name ?? v.name) : v.name);
 export const viewIcon = (k: TableViewDef['kind']) => VIEW_KINDS.find((x) => x.kind === k)?.icon ?? LayoutGrid;
 
 /** What a view of a kind needs to work straight away: a choice field for a board, dates for a calendar or timeline. */

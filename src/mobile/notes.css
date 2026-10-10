@@ -390,3 +390,9 @@
     transition: none;
   }
 }
+
+@media (max-width: 767px) {
+  .note-doc .note-meta {
+    gap: 8px;
+  }
+}

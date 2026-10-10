@@ -167,7 +167,7 @@ export function TablesHome({ tables, rows, clients, onOpen, onNew, onMenu }: { t
   useTableLinkOpen(null, onOpen); // a link to a table, a view or a row
   const groups = [{ id: '', name: t('Company'), list: tables.filter((tb) => !tb.clientId) }, ...clients.map((c) => ({ id: c.id, name: c.name, list: tables.filter((tb) => tb.clientId === c.id) }))].filter((g) => g.list.length);
   const phone = usePhone();
-  // Phones: Notion's home, as iOS grouped rows under who they belong to. No counts.
+  // Phones: Notion's home, as iOS grouped rows under who they belong to: the table's tile, its name, how many rows.
   if (phone && tables.length)
     return (
       <section className="tasks-pane view-enter g-page tb-home-phone">
@@ -182,6 +182,7 @@ export function TablesHome({ tables, rows, clients, onOpen, onNew, onMenu }: { t
                   <span className="g-label">
                     <span className="g-text">{tb.name}</span>
                   </span>
+                  <span className="g-val">{tn(rows.filter((r) => r.tableId === tb.id).length, '{n} row', '{n} rows')}</span>
                   <ChevronRight size={18} className="g-chev" aria-hidden />
                 </button>
               ))}

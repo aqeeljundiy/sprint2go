@@ -125,7 +125,21 @@
     border-radius: var(--r-pill);
   }
 
+  /* ---------- Search pills: the field fills the pill, no padding of its own ---------- */
+  :is(.dp-search, .mh-search, .nl-search, .tdir-search, .vp-search) input {
+    padding: 0;
+  }
+
   /* ---------- Anything you press is a pill or a circle ---------- */
+  .ghost-btn.sm {
+    gap: 4px;
+    padding: 0 12px;
+    font: var(--t-segment);
+  }
+  .ghost-btn.tonal {
+    min-height: var(--tap);
+    padding: 0 16px;
+  }
   .icon-btn {
     border-radius: var(--r-pill);
   }

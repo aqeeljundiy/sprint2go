@@ -3,6 +3,8 @@ import { SmoothHeight, TabPane } from './ui/Smooth';
 import { term, brand as product } from '../terms';
 import { AlertCircle, ArrowLeft, CalendarDays, Check, Globe, Info, Link2, Loader2, X } from 'lucide-react';
 import type { CalendarDef, CalendarSource } from '../types';
+import { isPhone } from '../mobile/media';
+import { phoneAvatar } from './Avatar';
 import { Select } from './ui/Select';
 import { HOLIDAY_COUNTRIES, holidayCountry } from '../data/holidays';
 import { calendarLinkKey } from '../calendarLink';
@@ -25,7 +27,9 @@ export const SOURCE_NAME: Record<CalendarSource, string> = {
 };
 
 /** Small brand-neutral marks for each source (no logos, just colour and a letter). */
-export function SourceMark({ source, size = 22 }: { source: CalendarSource; size?: number }) {
+export function SourceMark({ source, size: asked = 22 }: { source: CalendarSource; size?: number }) {
+  const phone = isPhone(); // phones: the picture sizes of the system, a 16 icon
+  const size = phone ? phoneAvatar(asked) : asked;
   const look: Record<CalendarSource, [string, string]> = {
     sprint2go: ['#2448ff', 'S'],
     google: ['#4285f4', 'G'],
@@ -37,7 +41,7 @@ export function SourceMark({ source, size = 22 }: { source: CalendarSource; size
   const [bg, letter] = look[source];
   return (
     <span className="src-mark" style={{ background: bg, width: size, height: size, fontSize: size * 0.5 }}>
-      {source === 'ics' ? <Link2 size={size * 0.55} /> : source === 'holidays' ? <Globe size={size * 0.55} /> : letter}
+      {source === 'ics' ? <Link2 size={phone ? 16 : size * 0.55} /> : source === 'holidays' ? <Globe size={phone ? 16 : size * 0.55} /> : letter}
     </span>
   );
 }

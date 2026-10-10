@@ -555,7 +555,7 @@ function DrivePhone(props: Props & { live: DriveItem[]; q: string; query: string
         <EmptyState
           icon={section === 'trash' ? <Trash2 size={40} /> : q ? <Search size={40} /> : <Folder size={48} />}
           title={q ? t('No files found') : section === 'trash' ? t('Trash is empty') : section === 'my' ? t('This folder is empty') : t('Nothing here yet')}
-          text={q ? t('Nothing matches “{q}”.', { q: props.query.trim() }) : section === 'my' ? t('Tap + to upload a file or make a folder.') : ''}
+          text={q ? t('Nothing matches “{q}”.', { q: props.query.trim() }) : section === 'my' ? t('Files you upload and folders you make show here.') : ''}
         />
       );
     return (

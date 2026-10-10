@@ -145,7 +145,7 @@ const id: Record<string, string> = {
   // Phones: Apple Passwords' list, a login's own screen, the locked screen
   'Which logins': 'Login mana',
   'No logins yet': 'Belum ada login',
-  'Tap + to add a client login. Paste its 2FA setup key and the team gets the codes here.': 'Ketuk + untuk menambah login klien. Tempel kunci penyiapan 2FA-nya, dan tim mendapat kodenya di sini.',
+  'Add a client login. Paste its 2FA setup key and the team gets the codes here.': 'Tambahkan login klien. Tempel kunci penyiapan 2FA-nya, dan tim mendapat kodenya di sini.',
   'Search logins': 'Cari login',
   'No logins with “{query}”.': 'Tidak ada login dengan “{query}”.',
   'End-to-end encrypted. Copying a password is logged.': 'Terenkripsi end-to-end. Setiap salinan kata sandi tercatat.',

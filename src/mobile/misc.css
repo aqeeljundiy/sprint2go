@@ -714,20 +714,19 @@
 /* ---------- Teams on phones (teams/TeamsApp.tsx): Slack's people directory ---------- */
 
 @media (max-width: 767px) {
-  .tasks-pane.tdir-pane > .tracking-scroll {
-    padding-top: 8px;
-    padding-left: 0;
-    padding-right: 0;
+  .tasks-pane.tdir-pane > .tracking-scroll,
+  .tasks-pane.tdir-pane:not(.has-list):not(.scope-briefs):not(.tasks-browse) > .tracking-scroll {
+    padding: 8px 0 var(--fab-space);
   }
   .tdir-search {
     display: flex;
     align-items: center;
-    gap: 8px;
-    height: 40px;
+    gap: 12px;
+    height: 48px;
     margin: 0 16px 8px;
-    padding: 0 8px 0 12px;
-    border-radius: var(--r-tile);
-    background: var(--hover);
+    padding: 0 8px 0 16px;
+    border-radius: var(--r-pill);
+    background: var(--surface);
     color: var(--text-3);
   }
   .tdir-search input {
@@ -741,26 +740,31 @@
     color: var(--text);
     outline: none;
   }
+  .tdir-search input {
+    padding: 0;
+  }
   .tdir-search button {
     display: grid;
     place-items: center;
-    width: 32px;
-    height: 32px;
+    width: var(--tap);
+    height: var(--tap);
     color: var(--text-3);
   }
+  /* Grouped cards at 16 from the edge, each header at the card's text column (32), 24 above and 8 below. */
   .tdir-sec {
-    margin-top: 16px;
+    margin-top: 24px;
   }
   .tdir-pane .tdir-head {
-    padding: 0;
+    padding: 0 16px;
     border: 0;
     background: none;
-    margin: 0 16px 4px;
-    font-size: var(--fs-secondary);
-    font-weight: 600;
-    letter-spacing: 0.02em;
-    text-transform: uppercase;
-    color: var(--text-3);
+    margin: 0 16px 8px;
+  }
+  .tdir-pane .tdir-list {
+    overflow: hidden;
+    margin: 0 16px;
+    border-radius: var(--r-card);
+    background: var(--surface);
   }
   .tdir-row {
     position: relative;
@@ -769,8 +773,8 @@
     min-width: 0;
     align-items: center;
     gap: 12px;
-    min-height: 64px;
-    padding: 8px 16px;
+    min-height: var(--row-2);
+    padding: 12px 16px;
     cursor: pointer;
     color: var(--text);
     transition: background 0.15s;
@@ -782,17 +786,17 @@
     content: '';
     position: absolute;
     top: 0;
-    left: 64px;
+    left: 68px;
     right: 0;
     height: 1px;
-    background: var(--border);
+    background: var(--line);
   }
   .tdir-tile {
     flex: none;
     display: grid;
     place-items: center;
-    width: 36px;
-    height: 36px;
+    width: var(--av-m);
+    height: var(--av-m);
     border-radius: var(--r-tile);
     color: #fff;
     font-size: var(--fs-body);
@@ -810,16 +814,13 @@
     align-items: center;
     gap: 8px;
     min-width: 0;
-    font-size: var(--fs-body);
-    font-weight: 600;
-    line-height: 22px;
+    font: var(--t-body);
     overflow: hidden;
     white-space: nowrap;
     text-overflow: ellipsis;
   }
   .tdir-text small {
-    font-size: var(--fs-body);
-    line-height: 20px;
+    font: var(--t-secondary);
     color: var(--text-3);
     overflow: hidden;
     white-space: nowrap;
@@ -827,8 +828,7 @@
   }
   .tdir-state {
     flex: none;
-    font-size: var(--fs-secondary);
-    font-weight: 600;
+    font: var(--t-chip);
   }
   .tdir-state.bad {
     color: var(--danger);
@@ -840,7 +840,9 @@
   .tdir-row .primary-btn.sm {
     flex: none;
     min-height: 32px;
-    border-radius: var(--r-card);
+    gap: 4px;
+    padding: 0 12px;
+    border-radius: var(--r-pill);
   }
   .tdir-none {
     margin: 24px 16px;
@@ -877,5 +879,35 @@
   }
   .team-page .team-row:hover {
     background: none;
+  }
+}
+
+/* ---------- Vault on the system: the gate's lock in an empty state's circle, team chips as pills ---------- */
+@media (max-width: 767px) {
+  .vault-gate-card > svg.lucide {
+    box-sizing: content-box;
+    width: var(--icon-l);
+    height: var(--icon-l);
+    padding: 12px;
+    border-radius: var(--r-round);
+    background: var(--accent-soft);
+  }
+  .vp-form .team-toggles {
+    gap: 8px;
+  }
+  .vp-form .team-toggles button {
+    min-height: 32px;
+    gap: 8px;
+    padding: 0 12px;
+    border-radius: var(--r-pill);
+  }
+  .vp-form .team-toggles .team-square {
+    border-radius: var(--r-round);
+  }
+  .vp-form .field {
+    gap: 8px;
+  }
+  .vp-form small.muted {
+    font: var(--t-secondary);
   }
 }

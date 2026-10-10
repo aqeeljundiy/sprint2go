@@ -553,7 +553,7 @@ export function SettingsPage({ email, settings: s, update, section, onSection, u
                 })}
                 {canManage && (
                   <button className="acct-add" onClick={onInvite}>
-                    <UserPlus size={16} /> {t('Invite someone')}
+                    <UserPlus size={16} /> <span>{t('Invite someone')}</span>
                   </button>
                 )}
               </div>
@@ -666,7 +666,7 @@ export function SettingsPage({ email, settings: s, update, section, onSection, u
                 ))}
                 {canManage && (
                   <button className="acct-add" onClick={onAddAccount}>
-                    <Plus size={16} /> {t('Add an email account')}
+                    <Plus size={16} /> <span>{t('Add an email account')}</span>
                   </button>
                 )}
               </div>

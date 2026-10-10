@@ -21,6 +21,9 @@
   .settings-body {
     flex-direction: column;
   }
+  .settings-pane {
+    border-radius: 0;
+  }
 
   .set-list {
     display: block;
@@ -90,17 +93,6 @@
   .set-edit .push-head {
     position: relative;
   }
-  .settings-push .push-title,
-  .set-edit .push-title {
-    position: absolute;
-    left: 104px;
-    right: 104px;
-    bottom: 4px;
-    line-height: 44px;
-    text-align: center;
-    font-weight: 600;
-    pointer-events: none;
-  }
   .settings-push .push-actions,
   .set-edit .push-actions {
     margin-left: auto;
@@ -122,11 +114,6 @@
   }
   .settings-push .set-block > h3 {
     margin: 0 16px 8px;
-    font-size: var(--fs-secondary);
-    font-weight: 600;
-    letter-spacing: 0.02em;
-    text-transform: uppercase;
-    color: var(--text-3);
   }
   .settings-push .set-block > :not(h3) {
     background: var(--surface);
@@ -141,25 +128,20 @@
     border-bottom-right-radius: var(--r-card);
   }
   .settings-push .set-block .set-row {
-    min-height: 48px;
+    position: relative;
+    min-height: var(--row-1);
     padding: 12px 16px;
     border-bottom: 0;
-    box-shadow: inset 0 -0.5px 0 var(--border);
-  }
-  .settings-push .set-block > .set-row:last-child,
-  .settings-push .set-block > .fold:last-child .set-row:last-child {
     box-shadow: none;
   }
   .settings-push .set-row strong {
-    font-size: var(--fs-body);
-    font-weight: 400;
-    line-height: 22px;
+    font: var(--t-body);
   }
   .settings-push .set-row small {
     display: block;
-    margin-top: 4px;
-    font-size: var(--fs-secondary);
-    line-height: 18px;
+    margin-top: 0;
+    font: var(--t-secondary);
+    color: var(--text-3);
   }
   .settings-push .set-row > .badge.is-neutral {
     padding: 0;
@@ -183,7 +165,7 @@
     transform: translateX(19px);
   }
   :root[data-theme='dark'] .settings-push .set-block > :not(h3) {
-    background: #1c1c1f;
+    background: var(--surface);
   }
   .set-rows .g-row {
     min-height: 48px;
@@ -413,3 +395,295 @@
 .settings-content .set-row strong > svg {
   vertical-align: -0.15em;
 }
+
+/* ---------- Every section as iOS rows (the sprint2go system) ----------
+   Headers 15/600 in sentence case over white cards at 16 from the edge; rows of 48 (one line) or more with the
+   value, a switch or a chevron on the right; a divider from the text (32), none after the last row; the hint under a
+   group is its footer, 13 px. Rows that sit straight in a section (Notifications, Appearance) group themselves. */
+@media (max-width: 767px) {
+  .settings-push .settings-content > :is(h2, h3),
+  .settings-push .set-block > h2 {
+    margin: 24px 0 8px;
+    padding: 0 16px;
+    font: var(--t-heading);
+    letter-spacing: 0;
+    text-transform: none;
+    color: var(--text);
+  }
+  .settings-push .settings-content > :is(h2, h3):first-child,
+  .settings-push .settings-content > h2:first-child + h3 {
+    margin-top: 8px;
+  }
+  /* Loose rows: a card per run. */
+  .settings-push .settings-content > .set-row {
+    position: relative;
+    min-height: var(--row-1);
+    margin: 0;
+    padding: 12px 16px;
+    border: 0;
+    border-radius: 0;
+    background: var(--surface);
+  }
+  .settings-push .settings-content > :not(.set-row) + .set-row,
+  .settings-push .settings-content > .set-row:first-child {
+    border-top-left-radius: var(--r-card);
+    border-top-right-radius: var(--r-card);
+  }
+  .settings-push .settings-content > .set-row:not(:has(+ .set-row)) {
+    border-bottom-left-radius: var(--r-card);
+    border-bottom-right-radius: var(--r-card);
+  }
+  /* One divider rule: from the text, none after the last row. */
+  .settings-push :is(.settings-content, .set-block) > .set-row + .set-row::before,
+  .settings-push .acct-list > * + *::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 16px;
+    right: 0;
+    height: 1px;
+    background: var(--line);
+  }
+  .settings-push .set-row {
+    gap: 12px;
+  }
+  .settings-push .set-row > span:first-child {
+    display: grid;
+    gap: 0;
+  }
+  /* Hints and notes under a group are its footer. */
+  .settings-push .settings-content > :is(p, small).set-hint,
+  .settings-push .settings-content > p.small,
+  .settings-push .set-block > p.small,
+  .settings-push .g-foot {
+    display: block;
+    margin: 8px 0 0;
+    padding: 0 16px;
+    font: var(--t-secondary);
+    color: var(--text-3);
+  }
+  .settings-push .set-hint .link-btn {
+    font: var(--t-segment);
+    text-decoration: none;
+  }
+  .settings-push .set-rows .g-foot {
+    padding: 0 32px;
+  }
+  .settings-push .g-row:has(.set-choice) {
+    min-height: var(--row-1);
+    padding-block: 0;
+  }
+  /* Guest access: its rows are one card. */
+  .settings-push .ca-form {
+    overflow: hidden;
+    border-radius: var(--r-card);
+    background: var(--surface);
+  }
+  .settings-push .ca-form > .set-row {
+    position: relative;
+    padding: 12px 16px;
+    border: 0;
+  }
+  .settings-push .ca-form > .set-row + .set-row::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 16px;
+    right: 0;
+    height: 1px;
+    background: var(--line);
+  }
+  .settings-push .ca-form .sel {
+    width: 100%;
+    min-height: var(--tap);
+    padding: 0;
+    border: 0;
+    background: none;
+    box-shadow: none;
+    font: var(--t-body);
+    color: var(--text-3);
+  }
+  .settings-push .access-types {
+    gap: 8px;
+    margin-bottom: 24px;
+  }
+  .settings-push .access-types > .small {
+    padding: 0 16px;
+    font: var(--t-heading);
+    color: var(--text);
+  }
+  .settings-push .access-types .sel {
+    min-height: var(--row-1);
+    padding: 0 16px;
+    border: 0;
+    border-radius: var(--r-card);
+    background: var(--surface);
+    font: var(--t-body);
+  }
+  /* A choice in a row: plain text on the right, no frame. */
+  .settings-push .set-row .sel {
+    min-height: var(--tap);
+    padding: 0 0 0 8px;
+    border: 0;
+    background: none;
+    box-shadow: none;
+    font: var(--t-body);
+    color: var(--text-3);
+  }
+  /* A whole-width choice under a label (Guest access, Meetings): a row of its own in the card. */
+  .settings-push .set-block > .sel,
+  .settings-push .set-block .sel:not(.sel-flat):not(.role-select) {
+    width: 100%;
+    min-height: var(--row-1);
+    padding: 0 16px;
+    border: 0;
+    border-radius: 0;
+    background: var(--surface);
+    box-shadow: none;
+    font: var(--t-body);
+  }
+
+  /* Appearance: the theme previews are tiles, the density a segmented control. */
+  .settings-push .theme-card {
+    gap: 8px;
+    padding: 8px;
+    border-radius: var(--r-card);
+    font: var(--t-segment);
+  }
+  .settings-push .theme-card > span:last-child {
+    font: var(--t-segment);
+  }
+  .settings-push .tc-preview {
+    padding: 8px;
+    border-radius: var(--r-tile);
+  }
+  .settings-push .tc-preview > i {
+    border-radius: var(--r-tile);
+  }
+
+  /* Members: two-line rows (64) with the role on the right as a value. */
+  .settings-push .acct-list {
+    display: grid;
+    gap: 0;
+    overflow: hidden;
+    border: 0;
+    border-radius: var(--r-card);
+    background: var(--surface);
+  }
+  .settings-push .acct-row,
+  .settings-push .acct-add {
+    position: relative;
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 12px;
+    min-height: var(--row-2);
+    margin: 0;
+    padding: 8px 16px;
+    border: 0;
+    border-radius: 0;
+    background: none;
+  }
+  .settings-push .acct-list > * + *::before {
+    left: 68px;
+  }
+  .settings-push .acct-list > .acct-add::before {
+    left: 48px;
+  }
+  .settings-push .acct-block {
+    position: relative;
+    margin: 0;
+    padding: 0;
+    border: 0;
+  }
+  .settings-push .acct-block > .acct-row::before {
+    display: none;
+  }
+  .settings-push .acct-row .acct-info {
+    flex: 1;
+    min-width: 0;
+    display: grid;
+    gap: 0;
+  }
+  /* Connected is the normal state of a mailbox: only a problem gets a word on the row. */
+  .settings-push .acct-row .badge.is-good {
+    display: none;
+  }
+  .settings-push .acct-add svg {
+    width: var(--icon-m);
+    height: var(--icon-m);
+  }
+  .settings-push .acct-row .person-cell {
+    flex: 1;
+    min-width: 0;
+    gap: 12px;
+  }
+  .settings-push .acct-row .person-cell .avatar {
+    width: var(--av-m) !important;
+    height: var(--av-m) !important;
+  }
+  .settings-push .acct-row .person-text {
+    gap: 0;
+  }
+  .settings-push .acct-row .person-name {
+    gap: 8px;
+  }
+  .settings-push .acct-row .person-name-text,
+  .settings-push .acct-row .acct-info strong {
+    font: var(--t-body);
+  }
+  .settings-push .acct-row .person-sub,
+  .settings-push .acct-row .acct-info small {
+    font: var(--t-secondary);
+    color: var(--text-3);
+  }
+  .settings-push .acct-row .role-tag,
+  .settings-push .acct-row .role-select {
+    flex: none;
+    width: auto;
+    min-height: var(--tap);
+    padding: 0;
+    border: 0;
+    background: none;
+    font: var(--t-secondary);
+    color: var(--text-3);
+  }
+  .settings-push .acct-row .role-tag {
+    display: inline-flex;
+    align-items: center;
+  }
+  .settings-push .acct-row .acct-icon {
+    width: var(--av-m);
+    height: var(--av-m);
+    border-radius: var(--r-round);
+  }
+  .settings-push .acct-row .ghost-btn.sm {
+    min-height: 32px;
+    padding: 0 12px;
+    gap: 4px;
+  }
+  .settings-push .acct-add {
+    min-height: var(--row-compact);
+    gap: 12px;
+    font: var(--t-label);
+    color: var(--accent-text);
+  }
+
+  /* Notifications: this device's card. */
+  .settings-push .push-card {
+    border: 0;
+    border-radius: var(--r-card);
+  }
+  .settings-push .push-card .push-text {
+    gap: 4px;
+    padding: 0;
+  }
+  .settings-push .push-card .push-text strong {
+    font: var(--t-heading);
+  }
+  .settings-push .push-card .push-actions .ghost-btn {
+    min-height: var(--tap);
+    padding: 0 16px;
+  }
+}
+

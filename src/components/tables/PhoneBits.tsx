@@ -12,7 +12,7 @@ import type { CellCtx } from './Cell';
 import { CardSettings, cardFieldsOf } from './BoardView';
 import { ColorRulesEditor, FieldsEditor, FilterPanel, GroupEditor, SortEditor } from './ViewTools';
 import { EditSheet } from './EditSheet';
-import { VIEW_KINDS, viewIcon } from './viewKinds';
+import { VIEW_KINDS, viewIcon, viewName } from './viewKinds';
 import { TABLE_COLORS, fieldIcon, filterCount, isComputed, quickFilters, repeatWords, sortsOf, viewFields, type TCtx } from './fields';
 import { statusFieldOf } from './CardList';
 import { t, tn, tx, textOf } from '../../i18n';
@@ -41,7 +41,7 @@ export function ViewsSheet({ table, current, onPick, onAdd, onClose, gridAsList 
                 return (
                   <button key={v.id} type="button" className="as-item" aria-current={v.id === current} onClick={() => (onPick(v.id), onClose())}>
                     <I size={18} className="as-icon" />
-                    <span className="as-label">{v.name}</span>
+                    <span className="as-label">{viewName(v, v.kind === 'grid' && gridAsList ? 'list' : v.kind)}</span>
                     {v.id === current && <Check size={18} className="as-check" />}
                   </button>
                 );
@@ -178,12 +178,13 @@ export function FilterSheet({ table, view, rows, ctx, shown, onChange, onClose }
 }
 
 /** "2 filters · Clear": the line under a narrow toolbar while something is filtered or sorted. */
-export function FilterLine({ table, view, base, differs, canSave, onClear, onReset, onSave, onOpen }: { table: DataTable; view: TableViewDef; base: TableViewDef; differs: boolean; canSave: boolean; onClear: () => void; onReset: () => void; onSave: () => void; onOpen: () => void }) {
+export function FilterLine({ phone, table, view, base, differs, canSave, onClear, onReset, onSave, onOpen }: { phone?: boolean; table: DataTable; view: TableViewDef; base: TableViewDef; differs: boolean; canSave: boolean; onClear: () => void; onReset: () => void; onSave: () => void; onOpen: () => void }) {
   const n = filterCount(table, view);
   const sorts = sortsOf(view);
   // Reset is only worth showing when it does something Clear doesn't: everyone's view has filters, or the sort differs.
   const resetDiffers = filterCount(table, base) > 0 || JSON.stringify(sorts) !== JSON.stringify(sortsOf(base));
-  const on = n > 0 || differs;
+  // Phones: "2 filters · Clear" only while something is filtered (the Sort button shows its own state).
+  const on = phone ? n > 0 : n > 0 || differs;
   const sortName = sorts[0] ? table.fields.find((f) => f.id === sorts[0].fieldId)?.name : '';
   return (
     <div className={`fold ${on ? 'open' : ''}`}>
@@ -193,7 +194,7 @@ export function FilterLine({ table, view, base, differs, canSave, onClear, onRes
             <Filter size={14} />
             <span>
               {n ? tn(n, '{n} filter', '{n} filters') : t('No filters')}
-              {sortName ? ` · ${t('by {field}', { field: sortName })}` : ''}
+              {sortName && !phone ? ` · ${t('by {field}', { field: sortName })}` : ''}
             </span>
           </button>
           {n > 0 && (
@@ -202,12 +203,12 @@ export function FilterLine({ table, view, base, differs, canSave, onClear, onRes
             </button>
           )}
           <span className="spacer" />
-          {differs && (resetDiffers || !n) && (
+          {!phone && differs && (resetDiffers || !n) && (
             <button type="button" className="link-btn small" onClick={onReset} title={t('Back to what everyone sees')}>
               {t('Reset')}
             </button>
           )}
-          {differs && canSave && (
+          {!phone && differs && canSave && (
             <button type="button" className="link-btn small strong" onClick={onSave}>
               {t('Save for everyone')}
             </button>
@@ -259,8 +260,8 @@ type Page = 'root' | 'sort' | 'group' | 'fields' | 'cards' | 'colors' | 'view' |
  * Everything about the view and the table on a phone, in one sheet: sort, group, fields, what cards show, colours,
  * the view itself, then the table (automations, sharing, templates, download, delete). Each opens a page in the sheet.
  */
-export function SettingsSheet({ table: tb, view, ctx, a, onClose }: { table: DataTable; view: TableViewDef; ctx: TCtx; a: SettingsActions; onClose: () => void }) {
-  const [page, setPage] = useState<Page>('root');
+export function SettingsSheet({ table: tb, view, ctx, a, onClose, start = 'root' }: { table: DataTable; view: TableViewDef; ctx: TCtx; a: SettingsActions; onClose: () => void; start?: 'root' | 'sort' }) {
+  const [page, setPage] = useState<Page>(start);
   const sorts = sortsOf(view);
   const fname = (id?: string) => tb.fields.find((f) => f.id === id)?.name;
   const hidden = view.hidden?.length ?? 0;
@@ -292,7 +293,7 @@ export function SettingsSheet({ table: tb, view, ctx, a, onClose }: { table: Dat
                 {t('Cards')}
               </button>
               <button type="button" className={!a.layout.cards ? 'on' : ''} onClick={() => a.layout!.set(false)}>
-                {view.kind === 'list' ? tx('view', 'List') : tx('view', 'Grid')}
+                {view.kind === 'list' ? tx('view', 'List') : tx('view', 'Table')}
               </button>
             </div>
           </div>

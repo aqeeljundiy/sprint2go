@@ -42,6 +42,7 @@
   }
   .tasks-switch.segmented {
     display: flex;
+    width: 100%;
     height: 36px;
   }
   .tasks-switch.segmented > button {
@@ -147,7 +148,31 @@
     border-radius: 0;
   }
   .tasks-pane .brief-rows {
-    margin: 4px 16px 0;
+    margin: 8px 0 0;
+  }
+  .tasks-pane .brief-rows-head {
+    gap: 8px;
+    padding: 0 16px;
+  }
+  .tasks-pane .brief-row {
+    gap: 12px;
+    min-height: var(--row-2);
+    padding: 12px 16px;
+  }
+  .tasks-pane .brief-row .br-text {
+    gap: 0;
+  }
+  .tasks-pane .brief-row .br-text strong {
+    font: var(--t-body);
+  }
+  .tasks-pane .brief-row .br-text small {
+    font: var(--t-secondary);
+  }
+  .tasks-pane .brief-row .bc-progress {
+    gap: 8px;
+  }
+  .t-h-label .dot {
+    border-radius: var(--r-round);
   }
 
   /* ---------- Rows: the ring at 16, the title 15 at 56, a 13 line of details; 48 one line, 64 with details ---------- */
@@ -785,6 +810,49 @@
   .tdp > .smooth-height {
     margin: 0 16px 8px;
   }
+  /* The brief this task is part of: a real object, a card with no frame. */
+  .tdp > .parent-brief {
+    gap: 8px;
+    padding: 16px;
+    border: 0;
+    border-radius: var(--r-card);
+  }
+  .tdp > .parent-brief :is(.pb-head, .pb-owner) {
+    gap: 8px;
+  }
+  .tdp > .parent-brief .pb-open {
+    font: var(--t-segment);
+  }
+  .tdp .td-crumbs {
+    gap: 4px;
+  }
+  .tdp .td-crumb {
+    gap: 8px;
+  }
+  .td-crumb .dot {
+    border-radius: var(--r-round);
+  }
+  .tdp > .drawer-meta {
+    gap: 16px;
+    border: 0;
+  }
+  .td-c-foot {
+    padding-left: 16px;
+  }
+  .td-c-foot .cb-toggle {
+    gap: 8px;
+    font: var(--t-secondary);
+  }
+  .sheet-title .td-crumbs {
+    gap: 4px;
+  }
+  .sheet-title .td-crumb {
+    gap: 8px;
+  }
+  .td-c-foot .cb-toggle input,
+  .vp-form .check-row input {
+    border-radius: var(--r-round);
+  }
 
   /* Set fields: an icon at 16 and the value at 56, no labels; hairlines from the value. */
   .tdp-rows {
@@ -794,8 +862,8 @@
     position: relative;
     display: flex;
     align-items: center;
-    gap: 16px;
-    min-height: 48px;
+    gap: 12px;
+    min-height: var(--row-1);
     padding: 0 16px;
     animation: fadeIn 0.2s ease-out backwards;
   }
@@ -803,7 +871,7 @@
     content: '';
     position: absolute;
     top: 0;
-    left: 56px;
+    left: 48px;
     right: 0;
     height: 1px;
     background: var(--line);
@@ -1177,7 +1245,7 @@
     height: var(--tap);
   }
   .tdp-comment .td-c-foot {
-    padding: 8px 4px 0;
+    padding: 8px 0 0;
   }
   .tdp-comment .td-c-foot small:empty {
     display: none;

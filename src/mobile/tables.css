@@ -44,9 +44,9 @@
   display: flex;
   align-items: center;
   gap: 4px;
-  min-height: 56px;
-  padding: 8px 8px 8px 12px;
-  border-bottom: 1px solid var(--border);
+  min-height: 52px;
+  padding: 8px 4px 8px 16px;
+  border-bottom: 1px solid var(--line);
 }
 .tb-vpill {
   display: inline-flex;
@@ -54,14 +54,13 @@
   gap: 8px;
   min-width: 0;
   max-width: 60%;
-  min-height: var(--tap, 44px);
+  min-height: 36px;
   padding: 0 12px;
   border-radius: var(--r-pill);
-  font-size: var(--fs-body);
-  font-weight: 600;
+  font: var(--t-segment);
   color: var(--text);
   background: var(--surface-2);
-  box-shadow: inset 0 0 0 1px var(--border);
+  box-shadow: none;
   transition: background 0.15s ease, box-shadow 0.15s ease;
 }
 .tb-vpill > span {
@@ -72,7 +71,7 @@
 }
 .tb-vpill > svg:first-child {
   flex: none;
-  color: var(--accent-text);
+  color: var(--text-2);
 }
 .tb-vpill:active {
   background: var(--hover);
@@ -82,7 +81,7 @@
   flex: none;
   width: var(--tap, 44px);
   height: var(--tap, 44px);
-  border-radius: var(--r-tile);
+  border-radius: var(--r-pill);
   color: var(--text-2);
   transition: background 0.15s ease, color 0.15s ease;
 }
@@ -151,9 +150,9 @@
   display: flex;
   align-items: center;
   gap: 4px 12px;
-  padding: 4px 12px 4px 8px;
-  font-size: var(--fs-secondary);
-  border-bottom: 1px solid var(--border);
+  padding: 0 16px 0 8px;
+  font: var(--t-segment);
+  border-bottom: 1px solid var(--line);
   background: color-mix(in srgb, var(--accent) 6%, var(--surface));
 }
 .tb-fline-what {
@@ -170,7 +169,7 @@
   min-height: var(--tap, 44px);
   display: inline-flex;
   align-items: center;
-  font-size: var(--fs-secondary);
+  font: var(--t-segment);
 }
 
 /* ---------- rows: a grid or list view on a narrow screen (Notion's List view) ---------- */
@@ -224,7 +223,7 @@
   left: 16px;
   right: 0;
   height: 1px;
-  background: var(--border);
+  background: var(--line);
 }
 .tb-crd:active {
   background: var(--hover);
@@ -263,7 +262,7 @@
   flex: 1;
   min-width: 0;
   display: grid;
-  gap: 4px;
+  gap: 0;
 }
 .tb-crd-top {
   display: flex;
@@ -274,9 +273,7 @@
 .tb-crd-name {
   flex: 1;
   min-width: 0;
-  font-size: var(--fs-body);
-  font-weight: 600;
-  line-height: 21px;
+  font: var(--t-body);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -287,9 +284,8 @@
   max-width: 45%;
   height: 20px;
   padding: 0 8px;
-  border-radius: var(--r-tile);
-  font-size: var(--fs-caption);
-  font-weight: 600;
+  border-radius: var(--r-pill);
+  font: var(--t-chip);
   line-height: 20px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -312,8 +308,8 @@
   flex-wrap: nowrap;
   align-items: center;
   gap: 12px;
-  font-size: var(--fs-secondary);
-  line-height: 20px;
+  margin-top: 4px;
+  font: var(--t-secondary);
   color: var(--text-2);
   min-width: 0;
   overflow: hidden;
@@ -321,10 +317,50 @@
 }
 .tb-crd-f {
   display: inline-flex;
+  align-items: center;
+  gap: 4px;
   flex: none;
   min-width: 0;
   max-width: 70%;
   white-space: nowrap;
+}
+.tb-crd-ficon {
+  flex: none;
+  color: var(--text-3);
+}
+/* The end of a list: "+ New row" at the gutter, then what a row is while the table is nearly empty. */
+.tb-crd-end {
+  padding: 0 0 16px;
+}
+.tb-crd-new {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: var(--row-1);
+  padding: 0 16px;
+  font: var(--t-label);
+  color: var(--accent-text);
+  text-align: left;
+  transition: background 0.15s ease;
+}
+.tb-crd-new::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 16px;
+  right: 0;
+  height: 1px;
+  background: var(--line);
+}
+.tb-crd-new:active {
+  background: var(--hover);
+}
+.tb-crd-guide {
+  margin: 4px 16px 0;
+  font: var(--t-secondary);
+  color: var(--text-3);
 }
 .tb-crd-f .tb-person span,
 .tb-crd-f .tb-text {
@@ -350,7 +386,7 @@
 .tb-crd-ghead .tb-group-toggle {
   flex: 1;
   min-height: var(--tap, 44px);
-  font-size: var(--fs-secondary);
+  font: var(--t-heading);
 }
 .tb-crd-ghead.sub {
   position: static;
@@ -394,7 +430,11 @@
   font-weight: 700;
 }
 .tb-home-row + .tb-home-row::before {
-  left: 62px;
+  left: 60px;
+}
+.tb-home-row .g-val {
+  font: var(--t-secondary);
+  color: var(--text-3);
 }
 
 /* An empty table: the empty state in place of the list, centred in the room there is. */
@@ -1258,4 +1298,41 @@ button.tb-page-title:active {
   .tb-crd-wrap {
     transition: none;
   }
+}
+
+/* ---------- The board and the row page on the system ---------- */
+.tb-board-wrap.phone .tb-col {
+  border-radius: var(--r-card);
+}
+.tb-board-wrap.phone .tb-col-head {
+  padding: 8px 12px;
+}
+.tb-board-wrap.phone .tb-col-head .small {
+  font: var(--t-caption);
+}
+.tb-board-wrap.phone .tb-card-f,
+.tb-board-wrap.phone .tb-card-f > * {
+  font: var(--t-secondary);
+}
+:is(.tb-board-wrap.phone, .tb-page) .tb-chip {
+  padding: 0 8px;
+  border-radius: var(--r-pill);
+  font: var(--t-chip);
+  line-height: 20px;
+}
+.tb-page .tb-person,
+.tb-board-wrap.phone .tb-person,
+.tb-board-wrap.phone .tb-card {
+  gap: 8px;
+}
+.tb-page .tb-rd-sec {
+  gap: 8px;
+}
+.tb-page .tb-comment-new input {
+  padding: 0 12px;
+}
+.tb-page-title {
+  width: 100%;
+  margin: 0 0 12px;
+  padding: 4px 0;
 }

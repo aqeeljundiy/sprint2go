@@ -73,7 +73,8 @@ export function ScheduleView({
     while (row.previousElementSibling?.classList.contains('sch-week')) row = row.previousElementSibling;
     // The month's name sticks to the top: the day goes just under it (or the name itself when the day starts a month).
     const opens = row.previousElementSibling?.classList.contains('sch-month');
-    const sticky = opens ? 0 : (box.querySelector<HTMLElement>('.sch-month')?.offsetHeight ?? 0);
+    const head = box.querySelector<HTMLElement>('.sch-month');
+    const sticky = opens || !head || getComputedStyle(head).position !== 'sticky' ? 0 : head.offsetHeight;
     const top = (opens ? (row.previousElementSibling as HTMLElement) : (row as HTMLElement)).offsetTop - sticky;
     box.scrollTo({ top: Math.max(0, top), behavior: instant || matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
   }
@@ -147,7 +148,9 @@ export function ScheduleView({
       </button>
       {days.map(({ day, list, tasks }) => {
         const isToday = sameDay(day, today);
-        const mh = day.getMonth() !== month ? fmtDate(day, { month: 'long', year: day.getFullYear() !== today.getFullYear() ? 'numeric' : undefined }) : null;
+        // Phones: the bar already says the month on screen, so the list names only the other months.
+        const barMonth = kit.phone && day.getMonth() === cursor.getMonth() && day.getFullYear() === cursor.getFullYear();
+        const mh = day.getMonth() !== month && !barMonth ? fmtDate(day, { month: 'long', year: day.getFullYear() !== today.getFullYear() ? 'numeric' : undefined }) : null;
         month = day.getMonth();
         // Today: the "now" line goes before the first thing that hasn't ended.
         const nowAt = isToday ? list.findIndex((e) => !e.allDay && new Date(e.end).getTime() > now) : -2;
