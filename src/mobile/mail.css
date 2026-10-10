@@ -1899,6 +1899,7 @@
   }
 }
 
+/* ==========================================================================
    Mail for teams on phones (src/components/mail/: Contacts, Mailbox access, Mail storage, Groups, Mail rules).
    Contacts is a plain list under the app's top bar (Gmail's people list); the Settings sections read as iOS groups
    through src/mobile/settings.css, with these fixes for their own rows.
