@@ -1,4 +1,4 @@
-// Quick Add: reads a task as it's typed ("Send invoice tomorrow 3pm #kopi +intan p1") and pulls out the due date,
+// Quick Add: reads a task as it's typed ("Send invoice tomorrow 3pm #kopi +isabel p1") and pulls out the due date,
 // time, repeat, project, stage, people, priority and reminder. Each piece it understood is a token with its place in
 // the text, so the field can highlight it and show it again as a chip; tapping a highlight turns it back into plain
 // words (its key goes in `off`). Pure: no React, no browser, the unit tests run it (scripts/unit-tests.mjs).
@@ -18,7 +18,7 @@ export interface QuickToken {
   text: string; // as typed
   key: string; // stays the same while the rest of the text changes; put it in `off` to keep these words as words
   keys: string[]; // a date and its time are one token with two keys: turning it off turns off both
-  label: string; // what the chip says ("Tomorrow 15:00", "Lereng Coffee", "Intan", "P1")
+  label: string; // what the chip says ("Tomorrow 15:00", "Lereng Coffee", "Isabel", "P1")
 }
 
 export interface QuickParsed {

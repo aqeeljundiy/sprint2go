@@ -217,25 +217,25 @@ try {
       sync: (coll, upserts, deletes = []) => call('POST', '/api/sync', { coll, upserts, deletes }).then(async (x) => ({ status: x.status, ...(await x.json().catch(() => ({}))) })),
     };
   };
-  const raka = await signIn('raka@demo.sprint2go.com');
-  const intan = await signIn('intan@demo.sprint2go.com');
-  const laras = await signIn('laras@kopinara.example');
-  await test('the owner, a member and a guest sign in', () => assert.ok(raka.ok && intan.ok && laras.ok));
+  const james = await signIn('james@demo.sprint2go.com');
+  const isabel = await signIn('isabel@demo.sprint2go.com');
+  const laura = await signIn('laura@kopinara.example');
+  await test('the owner, a member and a guest sign in', () => assert.ok(james.ok && isabel.ok && laura.ok));
 
   const tableOf = async (who, id) => (await who.state()).tables.find((t) => t.id === id);
-  const s0 = await raka.state();
+  const s0 = await james.state();
   const pnp = s0.workspaces.find((w) => w.id === 'pnp');
-  // A company table Intan didn't make, with a template and a row page layout, and the company's "Change how tables work" off.
+  // A company table Isabel didn't make, with a template and a row page layout, and the company's "Change how tables work" off.
   const t0 = s0.tables.find((t) => !t.clientId && t.workspaceId === 'pnp');
   const first = t0.fields[0].id;
-  await raka.sync('tables', [{ ...t0, templates: [{ id: 'tp', name: 'Idea', values: {} }], page: { pinned: [t0.fields[1].id] } }]);
-  await raka.sync('workspaces', [{ ...pnp, permissions: { ...(pnp.permissions ?? {}), editTables: false } }]);
+  await james.sync('tables', [{ ...t0, templates: [{ id: 'tp', name: 'Idea', values: {} }], page: { pinned: [t0.fields[1].id] } }]);
+  await james.sync('workspaces', [{ ...pnp, permissions: { ...(pnp.permissions ?? {}), editTables: false } }]);
 
-  const before = await tableOf(intan, t0.id);
+  const before = await tableOf(isabel, t0.id);
   await test('a member without "Change how tables work" sees the table', () => assert.ok(before));
   const changed = { ...before, name: before.name, views: before.views.map((v, i) => (i === 0 ? { ...v, filters: [{ fieldId: first, op: 'filled' }], sorts: [{ fieldId: first, dir: 'desc' }] } : v)), page: { pinned: [] }, templates: [], templateRuns: { tp: '2099-01-01' } };
-  await intan.sync('tables', [changed]);
-  const after = await tableOf(raka, t0.id);
+  await isabel.sync('tables', [changed]);
+  const after = await tableOf(james, t0.id);
   await test('…her filter and sort on a shared view don\'t change it for everyone', () => assert.deepEqual(after.views, before.views));
   await test('…nor the row page layout or the templates', () => {
     assert.deepEqual(after.page, { pinned: [t0.fields[1].id] });
@@ -243,40 +243,40 @@ try {
   });
   await test('…and the server\'s own record of repeating templates can\'t be written from an app', () => assert.equal(after.templateRuns?.tp, undefined));
 
-  const someRow = (await intan.state()).rows.find((r) => r.tableId === t0.id);
-  await intan.sync('rows', [{ ...someRow, values: { ...someRow.values, [first]: 'Changed by Intan' } }]);
-  await test('…while her changes to rows still save', async () => assert.equal((await raka.state()).rows.find((r) => r.id === someRow.id).values[first], 'Changed by Intan'));
+  const someRow = (await isabel.state()).rows.find((r) => r.tableId === t0.id);
+  await isabel.sync('rows', [{ ...someRow, values: { ...someRow.values, [first]: 'Changed by Isabel' } }]);
+  await test('…while her changes to rows still save', async () => assert.equal((await james.state()).rows.find((r) => r.id === someRow.id).values[first], 'Changed by Isabel'));
 
   const key = `s2g-table-view:mine:${t0.id}`;
   const mine = { [before.views[0].id]: { filters: [{ fieldId: first, op: 'filled' }] } };
-  await intan.sync('prefs', [{ id: 'u-intan', value: { [key]: mine } }]);
+  await isabel.sync('prefs', [{ id: 'u-isabel', value: { [key]: mine } }]);
   await test('her own filters are kept in her prefs, for her only', async () => {
-    const d = await intan.state();
-    assert.deepEqual(d.prefs.find((p) => p.id === 'u-intan')?.value?.[key], mine);
-    const a = await raka.state();
-    assert.ok(!a.prefs.some((p) => p.id === 'u-intan'), 'nobody else gets her prefs');
+    const d = await isabel.state();
+    assert.deepEqual(d.prefs.find((p) => p.id === 'u-isabel')?.value?.[key], mine);
+    const a = await james.state();
+    assert.ok(!a.prefs.some((p) => p.id === 'u-isabel'), 'nobody else gets her prefs');
   });
-  await intan.sync('prefs', [{ id: 'u-raka', value: { [key]: mine } }]);
-  await test('nobody writes someone else\'s prefs', async () => assert.equal((await raka.state()).prefs.find((p) => p.id === 'u-raka')?.value?.[key], undefined));
+  await isabel.sync('prefs', [{ id: 'u-james', value: { [key]: mine } }]);
+  await test('nobody writes someone else\'s prefs', async () => assert.equal((await james.state()).prefs.find((p) => p.id === 'u-james')?.value?.[key], undefined));
 
   // "Save for everyone": the owner, and then a member once the company allows it.
   const saved = { ...after, views: after.views.map((v, i) => (i === 0 ? { ...v, filters: [{ fieldId: first, op: 'filled' }] } : v)) };
-  await raka.sync('tables', [saved]);
-  await test('the owner saves a view\'s filter for everyone', async () => assert.deepEqual((await tableOf(intan, t0.id)).views[0].filters, [{ fieldId: first, op: 'filled' }]));
-  await raka.sync('workspaces', [{ ...(await raka.state()).workspaces.find((w) => w.id === 'pnp'), permissions: { ...(pnp.permissions ?? {}), editTables: true } }]);
-  const allowed = await tableOf(intan, t0.id);
-  await intan.sync('tables', [{ ...allowed, views: allowed.views.map((v, i) => (i === 0 ? { ...v, filters: [] } : v)) }]);
-  await test('with "Change how tables work" on, a member saves a view for everyone too', async () => assert.deepEqual((await tableOf(raka, t0.id)).views[0].filters, []));
+  await james.sync('tables', [saved]);
+  await test('the owner saves a view\'s filter for everyone', async () => assert.deepEqual((await tableOf(isabel, t0.id)).views[0].filters, [{ fieldId: first, op: 'filled' }]));
+  await james.sync('workspaces', [{ ...(await james.state()).workspaces.find((w) => w.id === 'pnp'), permissions: { ...(pnp.permissions ?? {}), editTables: true } }]);
+  const allowed = await tableOf(isabel, t0.id);
+  await isabel.sync('tables', [{ ...allowed, views: allowed.views.map((v, i) => (i === 0 ? { ...v, filters: [] } : v)) }]);
+  await test('with "Change how tables work" on, a member saves a view for everyone too', async () => assert.deepEqual((await tableOf(james, t0.id)).views[0].filters, []));
 
   // A table shared with Kopinara's guests: they see Name and Status, not Value.
-  const kopi = { id: 'tb-kopi', workspaceId: 'pnp', name: 'Shoots', color: '#111', clientId: 'c-kopinara', createdBy: 'u-raka', createdAt: new Date().toISOString(),
+  const kopi = { id: 'tb-kopi', workspaceId: 'pnp', name: 'Shoots', color: '#111', clientId: 'c-kopinara', createdBy: 'u-james', createdAt: new Date().toISOString(),
     fields: [{ id: 'k-name', name: 'Name', type: 'text' }, { id: 'k-status', name: 'Status', type: 'select', options: [opt('a', 'Planned')] }, { id: 'k-value', name: 'Value', type: 'money' }],
     views: [{ id: 'kv', name: 'All', kind: 'grid', filters: [{ fieldId: 'k-value', op: 'gt', value: '1000' }], filterGroups: [{ id: 'g', mode: 'or', filters: [{ fieldId: 'k-value', op: 'lt', value: '5' }, { fieldId: 'k-status', op: 'filled' }] }], colors: [{ id: 'c', when: { fieldId: 'k-value', op: 'gt', value: '99' }, color: '#f00', target: 'row' }], sorts: [{ fieldId: 'k-value', dir: 'asc' }], subGroupBy: 'k-value' }],
     templates: [{ id: 'kt', name: 'Secret', values: { 'k-value': 5 } }],
     page: { pinned: ['k-status', 'k-value'], sections: [{ id: 's', name: 'Money', fields: ['k-value'] }] },
     share: { enabled: true, fields: ['k-status'], edit: [], buttons: [] } };
-  await raka.sync('tables', [kopi]);
-  const g = await tableOf(laras, 'tb-kopi');
+  await james.sync('tables', [kopi]);
+  const g = await tableOf(laura, 'tb-kopi');
   await test('a guest gets the shared table', () => assert.ok(g));
   await test('…with no view pointing at a field she can\'t see (filters, groups, colours, sorts, sub-groups)', () => {
     const v = g.views[0];
@@ -291,10 +291,10 @@ try {
     assert.deepEqual(g.page.pinned, ['k-status']);
     assert.equal(g.page.sections, undefined);
   });
-  await laras.sync('tables', [{ ...g, views: [{ ...g.views[0], filters: [{ fieldId: 'k-status', op: 'empty' }] }] }]);
-  await test('…and her changes to the table itself are refused', async () => assert.deepEqual((await tableOf(raka, 'tb-kopi')).views[0].filters, kopi.views[0].filters));
-  await laras.sync('prefs', [{ id: 'cu-laras-c-kopinara', value: { 's2g-table-view:mine:tb-kopi': { kv: { filters: [{ fieldId: 'k-status', op: 'empty' }] } } } }]);
-  await test('…while her own filters save in her own prefs', async () => assert.ok((await laras.state()).prefs.find((p) => p.id === 'cu-laras-c-kopinara')?.value?.['s2g-table-view:mine:tb-kopi']));
+  await laura.sync('tables', [{ ...g, views: [{ ...g.views[0], filters: [{ fieldId: 'k-status', op: 'empty' }] }] }]);
+  await test('…and her changes to the table itself are refused', async () => assert.deepEqual((await tableOf(james, 'tb-kopi')).views[0].filters, kopi.views[0].filters));
+  await laura.sync('prefs', [{ id: 'cu-laura-c-kopinara', value: { 's2g-table-view:mine:tb-kopi': { kv: { filters: [{ fieldId: 'k-status', op: 'empty' }] } } } }]);
+  await test('…while her own filters save in her own prefs', async () => assert.ok((await laura.state()).prefs.find((p) => p.id === 'cu-laura-c-kopinara')?.value?.['s2g-table-view:mine:tb-kopi']));
 } catch (e) {
   failed++;
   console.log('FAIL', e);

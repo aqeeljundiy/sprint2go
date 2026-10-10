@@ -270,13 +270,13 @@ export function InviteMember({
               setName(e.target.value);
               if (!local || local === name.split(' ')[0].toLowerCase()) setLocal(e.target.value.split(' ')[0].toLowerCase());
             }}
-            placeholder={t('e.g. Intan Kusnadi')}
+            placeholder={t('e.g. Isabel Hayes')}
           />
         </div>
         <div className="field">
           <label>{t('Their email address')}</label>
           <div className="email-split">
-            <input value={local} onChange={(e) => setLocal(e.target.value)} placeholder="intan" onKeyDown={(e) => e.key === 'Enter' && invite()} />
+            <input value={local} onChange={(e) => setLocal(e.target.value)} placeholder="isabel" onKeyDown={(e) => e.key === 'Enter' && invite()} />
             <span>@{domain || t('add a domain in settings')}</span>
           </div>
           {exists && <small className="err">{t('Someone already uses that address.')}</small>}
@@ -401,7 +401,7 @@ export function RemoveMailbox({ account, workspace, conversations, onRemove, onC
 }
 
 /**
- * Another address for mail: sales@ into Intan's and Tomas's mailboxes (each gets a copy), or info@ into the hello@
+ * Another address for mail: sales@ into Isabel's and Thomas's mailboxes (each gets a copy), or info@ into the hello@
  * shared inbox. With "Some of each", the provider must not have the address, or it keeps the mail.
  */
 export function AliasDialog({ workspace, alias, onSave, onClose }: { workspace: Workspace; alias?: MailAlias; onSave: (a: MailAlias) => Promise<string | null>; onClose: () => void }) {

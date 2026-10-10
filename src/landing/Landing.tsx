@@ -289,14 +289,14 @@ function GuestMock() {
             HW
           </span>
           <span>
-            <strong>Hendra Wijaya</strong>
+            <strong>Henry Walsh</strong>
             <small>{g.guest}</small>
           </span>
           <span className="av" style={{ background: '#0f766e' }}>
             YH
           </span>
           <span>
-            <strong>Yusuf Halim</strong>
+            <strong>Ethan Brooks</strong>
             <small>Rimba Group</small>
           </span>
         </div>

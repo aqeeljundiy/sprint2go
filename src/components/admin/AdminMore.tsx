@@ -1213,10 +1213,10 @@ export function SecuritySection({ ws, me, isOwner, canManage, onWorkspace, onExp
 
 /** The demo's sample log (no server: nothing has really happened). Translated where it's shown. */
 const DEMO_LOG = [
-  ['Raka', mark('changed the AI setup to Balanced'), mark('2 hours ago')],
-  ['Hendra', mark('added an Anthropic key'), mark('3 days ago')],
-  ['Raka', mark('invited Laras Anindita as a guest in #kopinara'), mark('2 weeks ago')],
-  ['Intan', mark('downloaded the September invoice'), mark('1 month ago')],
+  ['James', mark('changed the AI setup to Balanced'), mark('2 hours ago')],
+  ['Henry', mark('added an Anthropic key'), mark('3 days ago')],
+  ['James', mark('invited Laura Anderson as a guest in #kopinara'), mark('2 weeks ago')],
+  ['Isabel', mark('downloaded the September invoice'), mark('1 month ago')],
 ];
 
 /** Confirming a reset: what happens to them, and a nudge to be sure it's really them asking. */

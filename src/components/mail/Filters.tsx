@@ -231,7 +231,7 @@ export function FilterEditor(p: EditorProps) {
           <Select value={home} options={p.homes} onChange={(v) => (setHome(v), setA((x) => ({ ...x, labels: undefined, assign: undefined, forward: undefined })))} title={t('Whose email')} />
         </div>
       )}
-      <Field id="from" label={t('From')} value={c.from} onChange={(v) => set('from', v)} placeholder={t('laras@kopinara.example, @dokploy.com, *@bank.co.id')} />
+      <Field id="from" label={t('From')} value={c.from} onChange={(v) => set('from', v)} placeholder={t('laura@kopinara.example, @dokploy.com, *@bank.co.id')} />
       <Field id="to" label={t('To or Cc')} value={c.to} onChange={(v) => set('to', v)} placeholder={t('An address, a domain or a name')} />
       <Field id="subject" label={t('Subject')} value={c.subject} onChange={(v) => set('subject', v)} />
       <Field id="has" label={t('Has the words')} value={c.hasWords} onChange={(v) => set('hasWords', v)} placeholder={t('invoice OR receipt, “purchase order”')} />

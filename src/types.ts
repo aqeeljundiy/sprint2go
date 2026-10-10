@@ -196,7 +196,7 @@ export interface CalendarDef {
   name: string;
   color: string;
   source?: CalendarSource; // missing = a sprint2go calendar
-  account?: string; // the connected account, e.g. raka@gmail.com
+  account?: string; // the connected account, e.g. james@gmail.com
   ownerId?: string; // whose connection it is (outside calendars are personal)
   readOnly?: boolean; // calendar links and holidays
   url?: string; // .ics address (only its owner ever gets it from the server)
@@ -352,7 +352,7 @@ export interface AwayReply {
   since?: string; // set by the server when it was switched on or changed: everyone gets the new answer
 }
 
-/** Another address that delivers into mailboxes: sales@ into Intan's and Tomas's, or info@ into the hello@ shared inbox. */
+/** Another address that delivers into mailboxes: sales@ into Isabel's and Thomas's, or info@ into the hello@ shared inbox. */
 export interface MailAlias {
   id: string;
   address: string;
@@ -521,7 +521,7 @@ export interface User {
   color: string;
   photo?: string; // profile photo, a small square JPEG data URL
   hiddenApps?: AppId[]; // apps this person hid from their own sidebar (the company still has them)
-  nicknames?: string[]; // "Bim" for Bima; used by the brain dump
+  nicknames?: string[]; // "Bim" for Owen; used by the brain dump
   clientOf?: { workspaceId: string; clientId: string }; // someone at a client: signs in to their portal only
   suspended?: { at: string; by: string; reason: string }; // set by an operator: can't sign in
   deletedAt?: string; // the account was deleted; the record stays so old messages keep a name

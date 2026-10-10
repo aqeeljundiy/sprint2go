@@ -204,7 +204,7 @@ export function HomeView(p: Props) {
           : hour < 19
             ? tx('after 6 pm', 'Good evening, {name}.', { name })
             : t('Working late, {name}.', { name });
-  // Phones: the bar says "Good afternoon, Raka" when it fits; otherwise "Good afternoon", with the name in the line under.
+  // Phones: the bar says "Good afternoon, James" when it fits; otherwise "Good afternoon", with the name in the line under.
   const [nameBelow, setNameBelow] = useState(false);
 
   const d = useMemo(() => {
@@ -1081,7 +1081,7 @@ const dueWord = (day: string) => {
 };
 
 /**
- * Home's greeting in the phone's top bar (24/700): the whole "Good afternoon, Raka" when it fits beside the logo and
+ * Home's greeting in the phone's top bar (24/700): the whole "Good afternoon, James" when it fits beside the logo and
  * search, else just "Good afternoon" (the name then leads the line under it). Checked against the full text on every
  * resize, so turning the phone or a shorter greeting brings the name back.
  */

@@ -1,6 +1,6 @@
 import type { DataTable, TableRow } from '../types';
 
-/** Demo tables for sprint2go Studio: a client's leads (the lead-gen work) and the team's content pipeline. */
+/** Demo tables for sprint2go demo: a client's leads (the lead-gen work) and the team's content pipeline. */
 const at = (daysAgo: number) => new Date(Date.UTC(2026, 9, 8 - daysAgo, 3)).toISOString();
 
 const S = { new: 'o-new', contacted: 'o-contacted', qualified: 'o-qualified', won: 'o-won', lost: 'o-lost' };
@@ -29,7 +29,7 @@ export const TABLES: DataTable[] = [
       { id: 'v-grid', name: 'All leads', kind: 'grid' },
       { id: 'v-board', name: 'Pipeline', kind: 'board', groupBy: 'f-status' },
     ],
-    createdBy: 'u-sofia',
+    createdBy: 'u-sophie',
     createdAt: at(12),
   },
   {
@@ -50,7 +50,7 @@ export const TABLES: DataTable[] = [
       { id: 'v-cboard', name: 'Board', kind: 'board', groupBy: 'c-stage' },
       { id: 'v-cgrid', name: 'All content', kind: 'grid' },
     ],
-    createdBy: 'u-raka',
+    createdBy: 'u-james',
     createdAt: at(20),
   },
 ];
@@ -61,7 +61,7 @@ const lead = (n: number, name: string, email: string, phone: string, source: str
   tableId: 'tb-brightleaf-leads',
   values: { 'f-name': name, 'f-email': email, 'f-phone': phone, 'f-source': source, 'f-status': status, 'f-value': value, 'f-owner': owner, 'f-follow': follow, 'f-notes': notes },
   order: n,
-  createdBy: 'u-sofia',
+  createdBy: 'u-sophie',
   createdAt: at(daysAgo),
   updatedAt: at(Math.max(0, daysAgo - 1)),
 });
@@ -72,24 +72,24 @@ const post = (n: number, title: string, stage: string, platform: string[], owner
   tableId: 'tb-content',
   values: { 'c-title': title, 'c-stage': stage, 'c-platform': platform, 'c-owner': owner, 'c-due': due, 'c-brief': brief },
   order: n,
-  createdBy: 'u-raka',
+  createdBy: 'u-james',
   createdAt: at(15 - n),
   updatedAt: at(Math.max(0, 10 - n)),
 });
 
 export const ROWS: TableRow[] = [
-  lead(1, 'Nina Sasmita', 'nina.k@example.com', '+62 812 3456 7801', SRC.fb, S.qualified, 4_500_000, 'u-sofia', '2026-10-09', 'Wants the bundle for her clinic. Asked for a price list.'),
-  lead(2, 'Dian Kusuma', 'dian.kusuma@example.com', '+62 813 2233 4410', SRC.ig, S.contacted, 1_200_000, 'u-bima', '2026-10-10'),
-  lead(3, 'Putri Anggraini', 'putri.ang@example.com', '+62 857 1100 2299', SRC.fb, S.new, null, 'u-bima', null),
-  lead(4, 'Sari Rahmawati', 'sari@beautyhaus.example', '+62 811 9090 1212', SRC.web, S.won, 9_800_000, 'u-sofia', null, 'Reseller, 3 stores in Bandung.'),
-  lead(5, 'Ayu Lestari', 'ayu.lestari@example.com', '+62 878 5544 3322', SRC.ig, S.new, null, 'u-bima', '2026-10-08'),
-  lead(6, 'Laras Hasan', 'laras.h@example.com', '+62 812 7766 5544', SRC.ref, S.qualified, 3_000_000, 'u-sofia', '2026-10-12', 'Referred by Sari.'),
-  lead(7, 'Maya Sinta', 'maya.sinta@example.com', '+62 815 3322 1100', SRC.fb, S.lost, null, 'u-bima', null, 'Price too high for now.'),
-  lead(8, 'Lia Permata', 'lia.permata@example.com', '+62 819 8877 6655', SRC.fb, S.new, null, 'u-bima', null, '', 0),
-  post(1, 'Kopinara: barista day in the life', 'o-edit', ['o-insta', 'o-tiktok'], 'u-joko', '2026-10-10', 'Morning rush, 30s, hook in the first 2s.'),
+  lead(1, 'Nina Sasmita', 'nina.k@example.com', '+62 812 3456 7801', SRC.fb, S.qualified, 4_500_000, 'u-sophie', '2026-10-09', 'Wants the bundle for her clinic. Asked for a price list.'),
+  lead(2, 'Diana King', 'diana.king@example.com', '+62 813 2233 4410', SRC.ig, S.contacted, 1_200_000, 'u-owen', '2026-10-10'),
+  lead(3, 'Paige Adams', 'paige.ang@example.com', '+62 857 1100 2299', SRC.fb, S.new, null, 'u-owen', null),
+  lead(4, 'Sarah Reynolds', 'sarah@beautyhaus.example', '+62 811 9090 1212', SRC.web, S.won, 9_800_000, 'u-sophie', null, 'Reseller, 3 stores in Bandung.'),
+  lead(5, 'Amy Lewis', 'amy.lewis@example.com', '+62 878 5544 3322', SRC.ig, S.new, null, 'u-owen', '2026-10-08'),
+  lead(6, 'Laura Hughes', 'laura.h@example.com', '+62 812 7766 5544', SRC.ref, S.qualified, 3_000_000, 'u-sophie', '2026-10-12', 'Referred by Sarah.'),
+  lead(7, 'Maya Sinta', 'maya.sinta@example.com', '+62 815 3322 1100', SRC.fb, S.lost, null, 'u-owen', null, 'Price too high for now.'),
+  lead(8, 'Lia Permata', 'lia.permata@example.com', '+62 819 8877 6655', SRC.fb, S.new, null, 'u-owen', null, '', 0),
+  post(1, 'Kopinara: barista day in the life', 'o-edit', ['o-insta', 'o-tiktok'], 'u-jack', '2026-10-10', 'Morning rush, 30s, hook in the first 2s.'),
   post(2, 'Selara: serum before and after', 'o-review', ['o-insta'], 'u-emma', '2026-10-09'),
-  post(3, 'Brightleaf launch: 3 hooks', 'o-script', ['o-insta', 'o-tiktok'], 'u-joko', '2026-10-18'),
-  post(4, 'Teduh: room tour', 'o-idea', ['o-yt'], 'u-raka', null),
+  post(3, 'Brightleaf launch: 3 hooks', 'o-script', ['o-insta', 'o-tiktok'], 'u-jack', '2026-10-18'),
+  post(4, 'Teduh: room tour', 'o-idea', ['o-yt'], 'u-james', null),
   post(5, 'Kopinara: new menu carousel', 'o-posted', ['o-insta'], 'u-emma', '2026-10-03'),
-  post(6, 'Selara: dermatologist Q&A', 'o-shoot', ['o-yt', 'o-insta'], 'u-joko', '2026-10-14'),
+  post(6, 'Selara: dermatologist Q&A', 'o-shoot', ['o-yt', 'o-insta'], 'u-jack', '2026-10-14'),
 ];

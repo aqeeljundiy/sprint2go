@@ -343,7 +343,7 @@ const id: Record<string, string> = {
   'It’s ready once mail for it arrives here. Settings, Email delivery shows whether it receives and sends.': 'Siap dipakai begitu email untuknya tiba di sini. Pengaturan, Pengiriman email menunjukkan apakah akun ini bisa menerima dan mengirim.',
   'Add account': 'Tambah akun',
   'Invite someone to {company}': 'Undang seseorang ke {company}',
-  'e.g. Intan Kusnadi': 'mis. Intan Kusnadi',
+  'e.g. Isabel Hayes': 'mis. Isabel Hayes',
   'Their email address': 'Alamat email mereka',
   'add a domain in settings': 'tambahkan domain di pengaturan',
   'Someone already uses that address.': 'Alamat itu sudah dipakai orang lain.',

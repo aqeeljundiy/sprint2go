@@ -45,17 +45,17 @@ process.env.S2G_DATA = unitDir;
   check(hits.length === 2 && compliance.blocking(hits).length === 1, 'an email breaking two rules finds both, one of them blocking');
 
   const contacts = await import('../server/mailContacts.ts');
-  const vcf = 'BEGIN:VCARD\r\nVERSION:3.0\r\nFN:Laras Anindita\r\nEMAIL;TYPE=INTERNET:laras@client.test\r\nTEL:+62 812 0000 111\r\nORG:Client Co\r\nCATEGORIES:Clients,myContacts\r\nNOTE:Likes\\, mango\r\nEND:VCARD\r\nBEGIN:VCARD\r\nVERSION:2.1\r\nN:Stone;Bob\r\nEMAIL:bob@example.test\r\nEND:VCARD\r\n';
+  const vcf = 'BEGIN:VCARD\r\nVERSION:3.0\r\nFN:Laura Anderson\r\nEMAIL;TYPE=INTERNET:laura@client.test\r\nTEL:+62 812 0000 111\r\nORG:Client Co\r\nCATEGORIES:Clients,myContacts\r\nNOTE:Likes\\, mango\r\nEND:VCARD\r\nBEGIN:VCARD\r\nVERSION:2.1\r\nN:Stone;Bob\r\nEMAIL:bob@example.test\r\nEND:VCARD\r\n';
   const parsed = contacts.parseVcf(vcf);
-  check(parsed.length === 2 && parsed[0].name === 'Laras Anindita' && parsed[0].labels.join() === 'Clients' && parsed[0].notes === 'Likes, mango' && parsed[1].name === 'Bob Stone', 'vCard files are read (names, emails, phones, labels, notes)');
-  const csv = 'Name,E-mail 1 - Value,Phone 1 - Value,Labels\r\n"Bima, Jr",bima@client.test,0812,Vendors ::: * starred\r\n';
+  check(parsed.length === 2 && parsed[0].name === 'Laura Anderson' && parsed[0].labels.join() === 'Clients' && parsed[0].notes === 'Likes, mango' && parsed[1].name === 'Bob Stone', 'vCard files are read (names, emails, phones, labels, notes)');
+  const csv = 'Name,E-mail 1 - Value,Phone 1 - Value,Labels\r\n"Owen, Jr",owen@client.test,0812,Vendors ::: * starred\r\n';
   const fromCsv = contacts.parseCsv(csv);
-  check(fromCsv.length === 1 && fromCsv[0].name === 'Bima, Jr' && fromCsv[0].emails[0] === 'bima@client.test' && fromCsv[0].labels.join() === 'Vendors', 'Google’s CSV is read (quoted commas, ::: lists)');
-  const semi = contacts.parseCsv('Name;Email\nIntan;intan@x.test\n');
-  check(semi.length === 1 && semi[0].emails[0] === 'intan@x.test', 'a CSV with semicolons (Excel in some countries) is read too');
+  check(fromCsv.length === 1 && fromCsv[0].name === 'Owen, Jr' && fromCsv[0].emails[0] === 'owen@client.test' && fromCsv[0].labels.join() === 'Vendors', 'Google’s CSV is read (quoted commas, ::: lists)');
+  const semi = contacts.parseCsv('Name;Email\nIntan;isabel@x.test\n');
+  check(semi.length === 1 && semi[0].emails[0] === 'isabel@x.test', 'a CSV with semicolons (Excel in some countries) is read too');
   const back = contacts.parseVcf(contacts.toVcf([contacts.cleanContact({ name: 'A; B', emails: ['a@b.test'], labels: ['X'], notes: 'line1\nline2' })]));
   check(back[0]?.name === 'A; B' && back[0]?.notes === 'line1\nline2', 'contacts written as vCard read back the same');
-  const dupes = contacts.duplicates([contacts.cleanContact({ name: 'Laras P', emails: ['n@x.test'] }), contacts.cleanContact({ name: 'Laras Anindita', emails: ['n@x.test'] }), contacts.cleanContact({ name: 'Other', emails: ['o@x.test'] })]);
+  const dupes = contacts.duplicates([contacts.cleanContact({ name: 'Laura P', emails: ['n@x.test'] }), contacts.cleanContact({ name: 'Laura Anderson', emails: ['n@x.test'] }), contacts.cleanContact({ name: 'Other', emails: ['o@x.test'] })]);
   check(dupes.length === 1 && dupes[0].length === 2, 'duplicates are found by a shared email');
 
   const ex = await import('../server/mailExport.ts');
@@ -180,11 +180,21 @@ try {
     w.mailReady = ready(w.accounts);
     put('workspaces', w);
   };
-  const laras = { name: 'Laras Client', email: 'laras@client.test' };
+  // A send, with the test's "ready to send" state put back first: the server's own background mail check can overwrite it
+  // a moment earlier (this test company has no real DNS), which made the data loss checks fail now and then.
+  const sendReady = async (who, body) => {
+    for (let i = 0; i < 3; i++) {
+      canSend();
+      const r = await who.json('POST', '/api/mail/send', body);
+      if (!(r.status === 409 && !r.dlp && /set up/.test(r.error ?? ''))) return r;
+    }
+    return who.json('POST', '/api/mail/send', body);
+  };
+  const laura = { name: 'Laura Client', email: 'laura@client.test' };
   const aliceP = { name: 'Alice Martin', email: 'alice@acme.test' };
-  put('threads', { id: 'th-a1', accountId: 'a-alice', workspaceId: 'w-acme', subject: 'Mango launch', location: 'inbox', starred: false, unread: true, labels: [], messages: [{ id: 'm1', from: laras, to: [aliceP], date: ago(2), body: 'Can we launch the mango on Friday?', mid: '<mango1@client.test>' }, { id: 'm2', from: aliceP, to: [laras], date: ago(1), body: 'Friday works.', mid: '<mango2@acme.test>' }] });
-  put('threads', { id: 'th-a-old', accountId: 'a-alice', workspaceId: 'w-acme', subject: 'Old kiwi', location: 'archive', starred: false, unread: false, labels: [], messages: [{ id: 'm3', from: laras, to: [aliceP], date: ago(400), body: 'Kiwi from last year', mid: '<kiwi@client.test>' }] });
-  put('threads', { id: 'th-c-old', accountId: 'a-carol', workspaceId: 'w-acme', subject: 'Old papaya', location: 'archive', starred: false, unread: false, labels: [], messages: [{ id: 'm4', from: laras, to: [{ name: 'Carol', email: 'carol@acme.test' }], date: ago(400), body: 'Papaya from last year', mid: '<papaya@client.test>' }] });
+  put('threads', { id: 'th-a1', accountId: 'a-alice', workspaceId: 'w-acme', subject: 'Mango launch', location: 'inbox', starred: false, unread: true, labels: [], messages: [{ id: 'm1', from: laura, to: [aliceP], date: ago(2), body: 'Can we launch the mango on Friday?', mid: '<mango1@client.test>' }, { id: 'm2', from: aliceP, to: [laura], date: ago(1), body: 'Friday works.', mid: '<mango2@acme.test>' }] });
+  put('threads', { id: 'th-a-old', accountId: 'a-alice', workspaceId: 'w-acme', subject: 'Old kiwi', location: 'archive', starred: false, unread: false, labels: [], messages: [{ id: 'm3', from: laura, to: [aliceP], date: ago(400), body: 'Kiwi from last year', mid: '<kiwi@client.test>' }] });
+  put('threads', { id: 'th-c-old', accountId: 'a-carol', workspaceId: 'w-acme', subject: 'Old papaya', location: 'archive', starred: false, unread: false, labels: [], messages: [{ id: 'm4', from: laura, to: [{ name: 'Carol', email: 'carol@acme.test' }], date: ago(400), body: 'Papaya from last year', mid: '<papaya@client.test>' }] });
 
   const signIn = async (email) => {
     const r = await fetch(`${base}/api/login`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email, password }) });
@@ -218,7 +228,7 @@ try {
   check(bobAfter.threads.some((t) => t.id === 'th-a1'), 'Bob now sees Alice’s mail');
   canSend();
   const subj = `Mango plan ${randomBytes(3).toString('hex')}`;
-  const sent = await bob.json('POST', '/api/mail/send', { workspaceId: 'w-acme', accountId: 'a-alice', threadId: 'th-new1', messageId: 'mm1', to: [laras], cc: [], subject: subj, text: 'The plan is ready.', files: [] });
+  const sent = await bob.json('POST', '/api/mail/send', { workspaceId: 'w-acme', accountId: 'a-alice', threadId: 'th-new1', messageId: 'mm1', to: [laura], cc: [], subject: subj, text: 'The plan is ready.', files: [] });
   check(sent.status === 200, `Bob sends from Alice’s mailbox (${sent.error ?? 'ok'})`);
   const out1 = await waitFor(() => sunk.find((x) => x.raw.includes(subj)));
   check(!!out1 && /^From: .*alice@acme\.test/im.test(out1.raw) && /^Sender: "?Bob Stone"? <bob@acme\.test>/im.test(out1.raw), 'it leaves From Alice with Bob as the Sender ("sent by Bob on behalf of Alice")');
@@ -232,7 +242,7 @@ try {
   check(!doc('workspaces', 'w-acme').accounts.find((a) => a.id === 'a-carol').delegates && !!doc('workspaces', 'w-acme').accounts.find((a) => a.id === 'a-alice').delegates, 'saving the company can’t add delegates to someone’s mailbox (or drop the real ones)');
   const revoke = await alice.json('POST', '/api/mail/delegates', { workspaceId: 'w-acme', accountId: 'a-alice', delegates: [] });
   const bobGone = await bob.state();
-  const afterRevoke = await bob.json('POST', '/api/mail/send', { workspaceId: 'w-acme', accountId: 'a-alice', threadId: 'th-new2', messageId: 'mm2', to: [laras], cc: [], subject: 'again', text: 'x', files: [] });
+  const afterRevoke = await bob.json('POST', '/api/mail/send', { workspaceId: 'w-acme', accountId: 'a-alice', threadId: 'th-new2', messageId: 'mm2', to: [laura], cc: [], subject: 'again', text: 'x', files: [] });
   check(revoke.status === 200 && !bobGone.threads.some((t) => t.accountId === 'a-alice') && afterRevoke.status === 403, 'once Alice takes it back, Bob can’t read or send from her mailbox');
   check((await alice.json('GET', '/api/mail/access?ws=w-acme')).log.some((l) => l.action === 'delegate.revoke'), 'taking it back is logged');
 
@@ -317,10 +327,10 @@ try {
   /* ---------- 4. data loss rules ---------- */
   await alice.json('POST', '/api/mail/policy', { workspaceId: 'w-acme', policy: { dlp: [{ name: 'Card numbers', kind: 'card', action: 'block', on: true }, { name: 'KTP numbers', kind: 'nik', action: 'warn', on: true }] } });
   canSend();
-  const card = await alice.json('POST', '/api/mail/send', { workspaceId: 'w-acme', accountId: 'a-alice', threadId: 'th-dlp1', messageId: 'md1', to: [laras], cc: [], subject: 'Payment', text: 'My card is 4111 1111 1111 1111', files: [] });
-  check(card.status === 409 && card.dlp?.action === 'block', 'an email with a card number is blocked');
-  const nik = await alice.json('POST', '/api/mail/send', { workspaceId: 'w-acme', accountId: 'a-alice', threadId: 'th-dlp2', messageId: 'md2', to: [laras], cc: [], subject: 'KTP', text: 'NIK 3201234508900001', files: [] });
-  const nikOk = await alice.json('POST', '/api/mail/send', { workspaceId: 'w-acme', accountId: 'a-alice', threadId: 'th-dlp2', messageId: 'md2', to: [laras], cc: [], subject: 'KTP', text: 'NIK 3201234508900001', files: [], dlpAck: true });
+  const card = await sendReady(alice, { workspaceId: 'w-acme', accountId: 'a-alice', threadId: 'th-dlp1', messageId: 'md1', to: [laura], cc: [], subject: 'Payment', text: 'My card is 4111 1111 1111 1111', files: [] });
+  check(card.status === 409 && card.dlp?.action === 'block', 'an email with a card number is blocked' + (card.status === 409 && card.dlp ? '' : ` (got ${card.status} ${card.error ?? ''})`));
+  const nik = await sendReady(alice, { workspaceId: 'w-acme', accountId: 'a-alice', threadId: 'th-dlp2', messageId: 'md2', to: [laura], cc: [], subject: 'KTP', text: 'NIK 3201234508900001', files: [] });
+  const nikOk = await sendReady(alice, { workspaceId: 'w-acme', accountId: 'a-alice', threadId: 'th-dlp2', messageId: 'md2', to: [laura], cc: [], subject: 'KTP', text: 'NIK 3201234508900001', files: [], dlpAck: true });
   check(nik.status === 409 && nik.dlp?.action === 'warn' && nikOk.status === 200, 'one with a NIK warns, and goes once the sender confirms');
   const plog = await alice.json('GET', '/api/mail/policy?ws=w-acme');
   check(['dlp.block', 'dlp.warn', 'dlp.warn-sent'].every((a) => plog.log.some((l) => l.action === a)) && !JSON.stringify(plog.log).includes('4111'), 'all three are in the company’s mail log, without the numbers');
@@ -340,17 +350,17 @@ try {
   check(!!ran && !doc('threads', 'th-c-old') && !!doc('threads', 'th-a-old') && !!doc('threads', 'th-a1'), 'the daily run deletes year-old mail, except Alice’s (on hold)');
 
   /* ---------- 6. contacts ---------- */
-  const imp = await carol.json('POST', '/api/mail/contacts/import', { workspaceId: 'w-acme', format: 'vcf', text: 'BEGIN:VCARD\r\nFN:Laras Client\r\nEMAIL:laras@client.test\r\nCATEGORIES:Clients\r\nEND:VCARD\r\nBEGIN:VCARD\r\nFN:Laras C\r\nEMAIL:laras.c@client.test\r\nEND:VCARD\r\n' });
-  const imp2 = await carol.json('POST', '/api/mail/contacts/import', { workspaceId: 'w-acme', format: 'csv', text: 'Name,E-mail 1 - Value,Phone 1 - Value\nLaras Client,laras@client.test,+62 811 222 333\n' });
+  const imp = await carol.json('POST', '/api/mail/contacts/import', { workspaceId: 'w-acme', format: 'vcf', text: 'BEGIN:VCARD\r\nFN:Laura Client\r\nEMAIL:laura@client.test\r\nCATEGORIES:Clients\r\nEND:VCARD\r\nBEGIN:VCARD\r\nFN:Laura C\r\nEMAIL:laura.c@client.test\r\nEND:VCARD\r\n' });
+  const imp2 = await carol.json('POST', '/api/mail/contacts/import', { workspaceId: 'w-acme', format: 'csv', text: 'Name,E-mail 1 - Value,Phone 1 - Value\nLaras Client,laura@client.test,+62 811 222 333\n' });
   check(imp.added === 2 && imp2.updated === 1, 'contacts come in from vCard and CSV; the same email updates instead of doubling');
   const list = await carol.json('GET', '/api/mail/contacts?ws=w-acme');
-  const larasC = list.contacts.find((x) => x.emails.includes('laras@client.test'));
+  const larasC = list.contacts.find((x) => x.emails.includes('laura@client.test'));
   check(larasC?.phones.includes('+62 811 222 333') && larasC.labels.includes('Clients') && list.team.some((m) => m.email === 'alice@acme.test') && list.frequent.some((f) => f.email === 'alice@acme.test'), 'her contacts, the team, and everyone she’s emailed');
-  const both = list.contacts.filter((x) => x.name.startsWith('Laras')).map((x) => x.id);
+  const both = list.contacts.filter((x) => x.name.startsWith('Laura')).map((x) => x.id);
   const merged = await carol.json('POST', '/api/mail/contacts/merge', { workspaceId: 'w-acme', ids: both });
   check(merged.contact?.emails.length === 2 && (await carol.json('GET', '/api/mail/contacts?ws=w-acme')).contacts.length === 1, 'two contacts merge into one with both emails');
   const vcfOut = await (await carol.call('GET', '/api/mail/contacts/export?ws=w-acme&format=vcf')).text();
-  check(vcfOut.includes('BEGIN:VCARD') && vcfOut.includes('laras.c@client.test'), 'they export as vCard');
+  check(vcfOut.includes('BEGIN:VCARD') && vcfOut.includes('laura.c@client.test'), 'they export as vCard');
   check(!(await alice.json('GET', '/api/mail/contacts?ws=w-acme')).contacts.length, 'someone else’s contacts are their own');
 
   /* ---------- 7. export and import ---------- */
@@ -378,7 +388,7 @@ try {
   check(started.status === 200 && doneJob?.status === 'done' && carolMail.some((t) => t.subject === 'Mango launch' && t.messages.length === 2 && t.location === 'inbox'), 'it goes into Carol’s mailbox, conversations joined and in their places');
   const undone = await alice.json('POST', `/api/import/${upl.job.id}/undo`);
   check(undone.status === 200 && !threadsOf('a-carol').some((t) => t.subject === 'Mango launch'), 'Undo takes it back out');
-  const takeout = Buffer.from(['From 1@xxx Mon Jan 05 10:00:00 +0000 2026', 'X-GM-THRID: 1', 'X-Gmail-Labels: Spam', 'From: spammer@else.test', 'To: carol@acme.test', 'Subject: Cheap stuff', 'Message-ID: <spam1@else.test>', '', 'buy', '', 'From 2@xxx Mon Jan 05 11:00:00 +0000 2026', 'X-Gmail-Labels: Sent,Starred', 'From: carol@acme.test', 'To: laras@client.test', 'Subject: Sent from Gmail', 'Message-ID: <sent1@acme.test>', '', 'hi', ''].join('\n'));
+  const takeout = Buffer.from(['From 1@xxx Mon Jan 05 10:00:00 +0000 2026', 'X-GM-THRID: 1', 'X-Gmail-Labels: Spam', 'From: spammer@else.test', 'To: carol@acme.test', 'Subject: Cheap stuff', 'Message-ID: <spam1@else.test>', '', 'buy', '', 'From 2@xxx Mon Jan 05 11:00:00 +0000 2026', 'X-Gmail-Labels: Sent,Starred', 'From: carol@acme.test', 'To: laura@client.test', 'Subject: Sent from Gmail', 'Message-ID: <sent1@acme.test>', '', 'hi', ''].join('\n'));
   const up2 = await alice.json('POST', '/api/import/upload?workspaceId=w-acme&source=mail', takeout, { 'content-type': 'application/octet-stream', 'x-file-name': 'All mail.mbox' });
   await waitFor(async () => (await alice.json('GET', `/api/import/${up2.job?.id}`)).job?.status === 'ready', 20_000);
   await alice.json('POST', `/api/import/${up2.job.id}/start`, { choices: { people: {}, mailbox: 'a-carol' } });

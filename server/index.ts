@@ -114,7 +114,7 @@ if (db.isEmpty() && (process.env.S2G_DEMO === '1' || process.env.NODE_ENV !== 'p
   if (!pw) throw new Error('Set SEED_PASSWORD in .env (see .env.example) before the first run.');
   // Client people who already joined can sign in to their portal (same demo password).
   const known = new Set(s.users.map((u) => u.email.toLowerCase()));
-  // People who already have a sign-in (e.g. Yusuf at Rimba) just get the portal on their existing account.
+  // People who already have a sign-in (e.g. Ethan at Rimba) just get the portal on their existing account.
   const clientUsers = s.clients.flatMap((c) =>
     (c.people ?? []).filter((x) => x.status === 'joined' && !known.has(x.email.toLowerCase())).map((x) => ({ id: `cu-${x.email.split('@')[0]}-${c.id}`, name: x.name, email: x.email, title: c.name, color: c.color, clientOf: { workspaceId: c.workspaceId, clientId: c.id } })),
   );
@@ -3772,6 +3772,11 @@ const housekeeping = () => {
   try {
     const gone = sandbox.cleanup();
     if (gone.length) console.log(`[sandbox] ${gone.length} unused demo companies removed`);
+    const remade = sandbox.refreshStale((owner) => {
+      const u = db.getDoc('users', owner) as { name?: string; timeZone?: string } | undefined;
+      return { name: u?.name ?? 'You', tz: u?.timeZone };
+    });
+    if (remade) console.log(`[sandbox] ${remade} demo companies remade from today's demo data`);
   } catch (e) {
     console.error('[sandbox]', e instanceof Error ? e.message : e);
   }

@@ -92,13 +92,13 @@ test('left-out dates, changed dates and a date moved in from far away', () => {
 test('"This event": a change of its own, and back to the series again', () => {
   const e = weekly();
   const occ = '2026-10-12T08:00:00.000Z';
-  const a = changeSeries(e, occ, { title: 'Sync with Intan', start: '2026-10-12T10:00:00.000Z', end: '2026-10-12T11:00:00.000Z' }, 'one', newId);
-  assert.deepEqual(a.upserts[0].overrides, [{ occurrence: occ, start: '2026-10-12T10:00:00.000Z', end: '2026-10-12T11:00:00.000Z', title: 'Sync with Intan' }]);
+  const a = changeSeries(e, occ, { title: 'Sync with Isabel', start: '2026-10-12T10:00:00.000Z', end: '2026-10-12T11:00:00.000Z' }, 'one', newId);
+  assert.deepEqual(a.upserts[0].overrides, [{ occurrence: occ, start: '2026-10-12T10:00:00.000Z', end: '2026-10-12T11:00:00.000Z', title: 'Sync with Isabel' }]);
   assert.equal(a.upserts[0].start, e.start);
   // The editor sends every field; only what changed for this date is kept.
   const cur = findEvent(a.upserts, occId('ev1', occ))!;
   const b = changeSeries(a.upserts[0], occ, { title: 'Team sync', start: occ, end: '2026-10-12T08:30:00.000Z', location: undefined, notes: undefined }, 'one', newId);
-  assert.equal(cur.title, 'Sync with Intan');
+  assert.equal(cur.title, 'Sync with Isabel');
   assert.equal(b.upserts[0].overrides, undefined);
   // Deleting one date leaves it out.
   const c = removeFromSeries(e, occ, 'one');
@@ -269,7 +269,7 @@ test('an invite we send carries the series, and reads back as the same dates (RR
   const { inviteCalendarTimes, inviteSeries } = await import('../src/inviteTimes.ts');
   const e = weekly({ exdates: ['2026-10-19T08:00:00.000Z'], overrides: [{ occurrence: '2026-11-02T09:00:00.000Z', start: '2026-11-03T14:00:00.000Z', end: '2026-11-03T15:00:00.000Z', title: 'Sync (Tuesday)' }] });
   const ics = buildInvite(
-    { method: 'REQUEST', uid: 'ev1@sprint2go.test', sequence: 2, organizer: { name: 'Raka', email: 'raka@pnp.test' }, attendees: [{ name: 'Laras', email: 'laras@kopinara.test' }], title: e.title, start: e.start, end: e.end, tz: LONDON, rrule: e.rrule, exdates: e.exdates, overrides: e.overrides, url: 'https://meet.google.com/abc-defg-hij' },
+    { method: 'REQUEST', uid: 'ev1@sprint2go.test', sequence: 2, organizer: { name: 'James', email: 'james@pnp.test' }, attendees: [{ name: 'Laura', email: 'laura@kopinara.test' }], title: e.title, start: e.start, end: e.end, tz: LONDON, rrule: e.rrule, exdates: e.exdates, overrides: e.overrides, url: 'https://meet.google.com/abc-defg-hij' },
     Date.parse('2026-10-01T00:00:00Z'),
   );
   // What Google, Outlook and Apple read: London wall-clock times with the zone's rules, the rule, the left-out date and
@@ -281,7 +281,7 @@ test('an invite we send carries the series, and reads back as the same dates (RR
   assert.match(ics, /RECURRENCE-ID;TZID=Europe\/London:20261102T090000\r\nDTSTART;TZID=Europe\/London:20261103T140000/);
   assert.match(ics, /BEGIN:VTIMEZONE\r\nTZID:Europe\/London\r\nBEGIN:DAYLIGHT\r\nDTSTART:20260329T010000\r\nTZOFFSETFROM:\+0000\r\nTZOFFSETTO:\+0100\r\nRRULE:FREQ=YEARLY;BYMONTH=3;BYDAY=-1SU/);
   assert.match(ics, /BEGIN:STANDARD\r\nDTSTART:20261025T020000\r\nTZOFFSETFROM:\+0100\r\nTZOFFSETTO:\+0000\r\nRRULE:FREQ=YEARLY;BYMONTH=10;BYDAY=-1SU/);
-  assert.match(ics.replace(/\r\n /g, ''), /ATTENDEE;CUTYPE=INDIVIDUAL;ROLE=REQ-PARTICIPANT;PARTSTAT=NEEDS-ACTION;RSVP=TRUE;CN="Laras":mailto:laras@kopinara.test/); // (long lines fold)
+  assert.match(ics.replace(/\r\n /g, ''), /ATTENDEE;CUTYPE=INDIVIDUAL;ROLE=REQ-PARTICIPANT;PARTSTAT=NEEDS-ACTION;RSVP=TRUE;CN="Laura":mailto:laura@kopinara.test/); // (long lines fold)
   // Read back by our own parser (the way a guest using sprint2go gets it), it's the same series.
   const inv = parseInvite(ics)!;
   assert.equal(inv.uid, 'ev1@sprint2go.test');
@@ -304,12 +304,12 @@ test('an invite we send carries the series, and reads back as the same dates (RR
   assert.match(vtimezone('America/New_York', 2026).join('\n'), /BYMONTH=3;BYDAY=2SU[\s\S]*BYMONTH=11;BYDAY=1SU/);
   assert.match(vtimezone('Australia/Sydney', 2026).join('\n'), /BEGIN:STANDARD\nDTSTART:20260405T030000[\s\S]*BYMONTH=4;BYDAY=1SU[\s\S]*BEGIN:DAYLIGHT\nDTSTART:20261004T020000[\s\S]*BYMONTH=10;BYDAY=1SU/);
   // A guest's answer to one date, and to a date and the ones after it, reads back as such.
-  const one = parseInvite(buildReply(inv, { name: 'Laras', email: 'laras@kopinara.test' }, 'declined', 0, { recurrenceId: '2026-10-26T09:00:00.000Z' }))!;
+  const one = parseInvite(buildReply(inv, { name: 'Laura', email: 'laura@kopinara.test' }, 'declined', 0, { recurrenceId: '2026-10-26T09:00:00.000Z' }))!;
   assert.equal(one.method, 'REPLY');
   assert.equal(one.recurrenceId, '2026-10-26T09:00:00.000Z');
   assert.equal(one.thisAndFuture, undefined);
   assert.equal(one.attendees[0].status, 'declined');
-  const following = parseInvite(buildReply(inv, { name: 'Laras', email: 'laras@kopinara.test' }, 'accepted', 0, { recurrenceId: '2026-10-26T09:00:00.000Z', following: true }))!;
+  const following = parseInvite(buildReply(inv, { name: 'Laura', email: 'laura@kopinara.test' }, 'accepted', 0, { recurrenceId: '2026-10-26T09:00:00.000Z', following: true }))!;
   assert.equal(following.recurrenceId, '2026-10-26T09:00:00.000Z');
   assert.equal(following.thisAndFuture, true);
 });

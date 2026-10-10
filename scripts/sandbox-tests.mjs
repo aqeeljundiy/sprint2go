@@ -149,12 +149,12 @@ try {
   check(myMail.length >= 10 && myMail.some((t) => t.unread), `her mailbox has the demo’s mail (${myMail.length} conversations)`);
   check(s1.channels.filter((c) => c.workspaceId === ws.id).length >= 8 && s1.todos.filter((t) => t.workspaceId === ws.id).length >= 15 && s1.clients.filter((c) => c.workspaceId === ws.id).length >= 5, 'channels, tasks and projects are there');
   const mates = s1.users.filter((u) => u.id.startsWith('demo-u-alice-'));
-  check(mates.length === 6 && mates.some((u) => u.name === 'Bima Anggara'), 'the made-up teammates exist only inside it');
+  check(mates.length === 6 && mates.some((u) => u.name === 'Owen Mitchell'), 'the made-up teammates exist only inside it');
   const standup = s1.events.find((e) => e.workspaceId === ws.id && e.title === 'Daily standup' && Math.abs(Date.parse(e.start) - Date.now()) < 7 * 86_400_000);
   check(!!standup && new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Jakarta', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(standup.start)) === '09:30', 'its calendar is this week’s, at her hours (standup 9:30 in Jakarta)');
   const newest = Math.max(...myMail.flatMap((t) => t.messages.map((m) => Date.parse(m.date))));
   check(Date.now() - newest < 60 * 60_000, 'and its newest email arrived within the hour');
-  check(!JSON.stringify(s1).includes('u-raka') && /Hi Alice,/.test(JSON.stringify(myMail)), 'the demo owner’s name is hers');
+  check(!JSON.stringify(s1).includes('u-james') && /Hi Alice,/.test(JSON.stringify(myMail)), 'the demo owner’s name is hers');
 
   /* ---------- 2. never a real document ---------- */
   check(realDemo() === 0, 'nothing of it is in the real documents, so the jobs, the mail engine and the operator numbers can’t see it');
@@ -188,7 +188,7 @@ try {
   check(mailR.status === 403, `no mail out (${mailR.status})`);
   const upR = await alice.post('/api/upload', 'hello', { 'content-type': 'text/plain', 'x-file-name': 'a.txt', 'x-workspace': 'demo-u-alice' });
   check(upR.status === 403 && db.prepare("SELECT COUNT(*) AS n FROM files WHERE workspace_id LIKE 'demo-%'").get().n === 0, `no uploads on our server (${upR.status})`);
-  const invR = await alice.post('/api/invite', { userId: 'demo-u-alice-u-bima', email: 'bima@example.com' });
+  const invR = await alice.post('/api/invite', { userId: 'demo-u-alice-u-owen', email: 'owen@example.com' });
   check(invR.status === 403, `no invites to its made-up people (${invR.status})`);
   const botR = await alice.post('/api/meet/bot', { meeting: { id: 'mt-demo-x', workspaceId: 'demo-u-alice', url: 'https://meet.google.com/abc-defg-hij' } });
   check(botR.status === 403, `no notetaker (${botR.status})`);
@@ -231,9 +231,9 @@ try {
   const adm = (path) => op.get(`/api/admin/${path}`).then(async (r) => ({ status: r.status, body: await r.json().catch(() => ({})) }));
   const sys = await adm('system');
   check(sys.status === 200 && sys.body.demoCompanies?.total === 2 && sys.body.demoCompanies.bytes > 0, `the Platform page counts them (${sys.body.demoCompanies?.total})`);
-  for (const path of ['companies', 'people', 'today', 'growth', 'revenue', 'search?q=bima', 'search?q=pixel']) {
+  for (const path of ['companies', 'people', 'today', 'growth', 'revenue', 'search?q=owen', 'search?q=pixel']) {
     const r = await adm(path);
-    check(r.status === 200 && !/demo-u-|Bima|demo\.sprint2go\.com/i.test(JSON.stringify(r.body)), `and ${path.split('?')[0]}${path.includes('?') ? ` (${path.split('=')[1]})` : ''} never shows them`);
+    check(r.status === 200 && !/demo-u-|Owen|demo\.sprint2go\.com/i.test(JSON.stringify(r.body)), `and ${path.split('?')[0]}${path.includes('?') ? ` (${path.split('=')[1]})` : ''} never shows them`);
   }
 
   /* ---------- 7. deleting the account ---------- */

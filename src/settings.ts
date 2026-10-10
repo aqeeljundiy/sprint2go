@@ -43,10 +43,10 @@ export interface Settings {
 export const ACCENTS = ['#5b5bf6', '#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#d946ef', '#111827'];
 
 export const DEFAULT_SETTINGS: Settings = {
-  name: 'Raka',
-  title: 'COO · sprint2go Studio',
+  name: 'James',
+  title: 'COO · sprint2go demo',
   avatarColor: '#5b5bf6',
-  signature: '<p><b>Raka</b><br>COO · sprint2go Studio</p>',
+  signature: '<p><b>James</b><br>COO · sprint2go demo</p>',
   theme: 'system',
   accent: '#5b5bf6',
   density: 'comfortable',
@@ -108,7 +108,7 @@ export function useSettings(user: { id: string; name: string; title: string; col
         avatarColor: user.color,
         signature: `<p><b>${esc(user.name)}</b>${user.title ? `<br>${esc(user.title)}` : ''}</p>`,
       },
-      user.id === 'u-raka' ? 'pm-settings' : undefined, // keep settings saved before users existed
+      user.id === 'u-james' ? 'pm-settings' : undefined, // keep settings saved before users existed
     ),
   );
 

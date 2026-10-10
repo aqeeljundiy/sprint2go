@@ -42,9 +42,9 @@ export function nextWeekday(weekday: number, h: number, m = 0) {
 }
 
 const hannah: Person = { name: 'Hannah Koh', email: 'hannah@selaraskin.example' };
-const hendra: Person = { name: 'Hendra Wijaya', email: 'hendra@demo.sprint2go.com' };
-const sofia: Person = { name: 'Sofia Ramadhani', email: 'sofia@demo.sprint2go.com' };
-const bima: Person = { name: 'Bima Anggara', email: 'bima@demo.sprint2go.com' };
+const henry: Person = { name: 'Henry Walsh', email: 'henry@demo.sprint2go.com' };
+const sophie: Person = { name: 'Sophie Turner', email: 'sophie@demo.sprint2go.com' };
+const owen: Person = { name: 'Owen Mitchell', email: 'owen@demo.sprint2go.com' };
 
 let n = 0;
 const ev = (e: Omit<CalEvent, 'id'>): CalEvent => ({ id: `e${++n}`, ...e });
@@ -57,21 +57,21 @@ const standups = [0, 1, 2, 3, 4, 7, 8, 9, 10, 11].map((d) =>
     end: at(d, 9, 45),
     location: 'Google Meet',
     meetUrl: 'https://meet.google.com/pnp-stnd-upx',
-    guests: [hendra, sofia, bima],
+    guests: [henry, sophie, owen],
   }),
 );
 
 export const EVENTS: CalEvent[] = [
   ...standups,
-  ev({ title: 'Brand workshop', calendarId: 'work', start: at(2, 14), end: at(2, 15, 30), location: 'Office, Room 2', guests: [hendra, sofia], notes: 'Decide on palette and retire the gradient.' }),
+  ev({ title: 'Brand workshop', calendarId: 'work', start: at(2, 14), end: at(2, 15, 30), location: 'Office, Room 2', guests: [henry, sophie], notes: 'Decide on palette and retire the gradient.' }),
   ev({ title: 'Focus: sprint2go UI', calendarId: 'work', start: at(3, 13), end: at(3, 16) }),
   ev({ title: 'Gym', calendarId: 'personal', start: at(5, 8), end: at(5, 9) }),
   ev({ title: 'Family dinner', calendarId: 'personal', start: at(5, 19), end: at(5, 21) }),
   ev({ title: 'Selara Skin: 11.11 & 12.12 budget', calendarId: 'clients', start: at(7, 10, 30), end: at(7, 11, 15), location: 'Zoom', meetUrl: 'https://us02web.zoom.us/j/81234567890', guests: [hannah], threadId: 't5' }),
-  ev({ title: 'Interviews: performance marketer', calendarId: 'work', start: at(8, 10), end: at(8, 12), guests: [hendra, sofia], threadId: 't3' }),
+  ev({ title: 'Interviews: performance marketer', calendarId: 'work', start: at(8, 10), end: at(8, 12), guests: [henry, sophie], threadId: 't3' }),
   ev({ title: 'Invoice review', calendarId: 'work', start: at(8, 11), end: at(8, 11, 45) }),
-  ev({ title: 'Studio staging review', calendarId: 'work', start: at(9, 15), end: at(9, 16), guests: [bima] }),
-  ev({ title: 'Lunch at the bakmi place 🍜', calendarId: 'personal', start: at(11, 12, 30), end: at(11, 13, 30), location: 'Bakmi place near the office', guests: [bima], threadId: 't7' }),
+  ev({ title: 'Studio staging review', calendarId: 'work', start: at(9, 15), end: at(9, 16), guests: [owen] }),
+  ev({ title: 'Lunch at the bakmi place 🍜', calendarId: 'personal', start: at(11, 12, 30), end: at(11, 13, 30), location: 'Bakmi place near the office', guests: [owen], threadId: 't7' }),
   ev({ title: 'Figma plan renews', calendarId: 'reminders', start: at(11, 0), end: at(12, 0), allDay: true }),
   ev({ title: 'Contabo invoice due', calendarId: 'reminders', start: at(12, 0), end: at(13, 0), allDay: true }),
 ];
@@ -79,8 +79,8 @@ export const EVENTS: CalEvent[] = [
 /* ---------- Outside calendars (Google, Outlook, iCloud, links, holidays) ---------- */
 
 export const EXTERNAL_CALENDARS: CalendarDef[] = [
-  { id: 'g-raka', name: 'Personal', color: '#4285f4', source: 'google', account: 'raka.personal@example.com', ownerId: 'u-raka', share: 'busy', syncedAt: new Date(Date.now() - 4 * 60_000).toISOString() },
-  { id: 'ms-hendra', name: 'Calendar', color: '#0078d4', source: 'microsoft', account: 'hendra@wijaya.example', ownerId: 'u-hendra', share: 'busy', syncedAt: new Date(Date.now() - 9 * 60_000).toISOString() },
+  { id: 'g-james', name: 'Personal', color: '#4285f4', source: 'google', account: 'james.personal@example.com', ownerId: 'u-james', share: 'busy', syncedAt: new Date(Date.now() - 4 * 60_000).toISOString() },
+  { id: 'ms-henry', name: 'Calendar', color: '#0078d4', source: 'microsoft', account: 'henry@walsh.example', ownerId: 'u-henry', share: 'busy', syncedAt: new Date(Date.now() - 9 * 60_000).toISOString() },
 ];
 
 let x = 0;

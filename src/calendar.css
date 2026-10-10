@@ -2148,3 +2148,50 @@ a.ghost-btn {
     transform: none;
   }
 }
+
+/* Day and Week: the all-day row as lanes (Month's layout, src/components/calendar/monthLayout.ts). An event over
+   several days is one bar across them, flat on the side where it goes on past the view. */
+.tg-allday-lanes {
+  grid-column: 2 / -1;
+  display: grid;
+  grid-template-columns: repeat(var(--cols), minmax(0, 1fr));
+  row-gap: 2px;
+  padding: 4px 0;
+  min-width: 0;
+}
+.tg-allday-lanes > .tg-allday-cell {
+  margin: -4px 0;
+  padding: 0;
+}
+.tg-allday-lanes > .pill-event,
+.tg-allday-lanes > .tg-allday-more {
+  position: relative;
+  z-index: 1;
+  margin: 0 2px;
+  min-width: 0;
+}
+.pill-event .pe-time {
+  margin-right: 4px;
+  color: var(--text-2);
+}
+.pill-event.picked .pe-time {
+  color: inherit;
+}
+.tg-go-l {
+  margin-left: 0 !important;
+  border-top-left-radius: 0 !important;
+  border-bottom-left-radius: 0 !important;
+}
+.tg-go-r {
+  margin-right: 0 !important;
+  border-top-right-radius: 0 !important;
+  border-bottom-right-radius: 0 !important;
+}
+.tg-phone .pill-event .pe-time {
+  color: inherit;
+}
+.pill-event .pe-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

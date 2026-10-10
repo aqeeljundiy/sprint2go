@@ -14,14 +14,14 @@ const GOOGLE = [
   'DTSTART:20261014T030000Z',
   'DTEND:20261014T040000Z',
   'DTSTAMP:20261009T081500Z',
-  'ORGANIZER;CN=Laras Anindita:mailto:laras@kopinara.example',
+  'ORGANIZER;CN=Laura Anderson:mailto:laura@kopinara.example',
   'UID:4hq0s1v2k3m4n5o6p7q8r9s0t1@google.com',
   'ATTENDEE;CUTYPE=INDIVIDUAL;ROLE=REQ-PARTICIPANT;PARTSTAT=ACCEPTED;RSVP=TRUE',
-  ' ;CN=Laras Anindita;X-NUM-GUESTS=0:mailto:laras@kopinara.example',
+  ' ;CN=Laura Anderson;X-NUM-GUESTS=0:mailto:laura@kopinara.example',
   'ATTENDEE;CUTYPE=INDIVIDUAL;ROLE=REQ-PARTICIPANT;PARTSTAT=NEEDS-ACTION;RSVP=',
-  ' TRUE;CN=raka@demo.sprint2go.com;X-NUM-GUESTS=0:mailto:raka@demo.sprint2go.com',
+  ' TRUE;CN=james@demo.sprint2go.com;X-NUM-GUESTS=0:mailto:james@demo.sprint2go.com',
   'ATTENDEE;CUTYPE=INDIVIDUAL;ROLE=OPT-PARTICIPANT;PARTSTAT=TENTATIVE;RSVP=TRUE',
-  ' ;CN="Putra, Tomas";X-NUM-GUESTS=0:mailto:tomas@kopinara.example',
+  ' ;CN="Putra, Thomas";X-NUM-GUESTS=0:mailto:thomas@kopinara.example',
   'X-GOOGLE-CONFERENCE:https://meet.google.com/abc-defg-hij',
   'CREATED:20261009T081400Z',
   'DESCRIPTION:Agenda: concepts\\, timing\\; budget.\\nSecond line\\n\\nJoin with Google',
@@ -50,12 +50,12 @@ test('reads a Google Calendar invite', () => {
   assert.equal(ev.start, '2026-10-14T03:00:00.000Z');
   assert.equal(ev.end, '2026-10-14T04:00:00.000Z');
   assert.equal(ev.url, 'https://meet.google.com/abc-defg-hij');
-  assert.deepEqual(ev.organizer, { name: 'Laras Anindita', email: 'laras@kopinara.example' });
+  assert.deepEqual(ev.organizer, { name: 'Laura Anderson', email: 'laura@kopinara.example' });
   assert.equal(ev.attendees.length, 3);
-  assert.equal(ev.attendees[1].email, 'raka@demo.sprint2go.com');
+  assert.equal(ev.attendees[1].email, 'james@demo.sprint2go.com');
   assert.equal(ev.attendees[1].status, 'needs-action');
   assert.equal(ev.attendees[1].rsvp, true);
-  assert.equal(ev.attendees[2].name, 'Putra, Tomas');
+  assert.equal(ev.attendees[2].name, 'Putra, Thomas');
   assert.equal(ev.attendees[2].status, 'tentative');
   assert.equal(ev.attendees[2].optional, true);
   assert.equal(ev.description, 'Agenda: concepts, timing; budget.\nSecond line\n\nJoin with Google Meet: https://meet.google.com/abc-defg-hij');
@@ -83,7 +83,7 @@ END:DAYLIGHT
 END:VTIMEZONE
 BEGIN:VEVENT
 ORGANIZER;CN=Hannah Koh:mailto:hannah@selaraskin.example
-ATTENDEE;ROLE=REQ-PARTICIPANT;PARTSTAT=NEEDS-ACTION;RSVP=TRUE;CN=Raka:mailto:Raka@Demo.sprint2go.com
+ATTENDEE;ROLE=REQ-PARTICIPANT;PARTSTAT=NEEDS-ACTION;RSVP=TRUE;CN=James:mailto:James@Demo.sprint2go.com
 DESCRIPTION;LANGUAGE=en-US:Microsoft Teams meeting\\nJoin: https://teams.microsoft.com/l/meetup-join/19%3ameeting_abc%40thread.v2/0?context=%7b%22Tid%22%7d\\n
 UID:040000008200E00074C5B7101A82E00800000000
 SUMMARY;LANGUAGE=en-US:Selara launch check-in
@@ -102,7 +102,7 @@ test('reads an Outlook invite with a Windows zone and a Teams link', () => {
   assert.equal(ev.tz, 'Asia/Jakarta');
   assert.equal(ev.sequence, 2);
   assert.match(ev.url!, /^https:\/\/teams\.microsoft\.com\/l\/meetup-join\//);
-  assert.equal(ev.attendees[0].email, 'raka@demo.sprint2go.com');
+  assert.equal(ev.attendees[0].email, 'james@demo.sprint2go.com');
   assert.equal(ev.location, 'Microsoft Teams Meeting');
 });
 
@@ -158,7 +158,7 @@ test('all-day events land on the same date everywhere', () => {
   assert.equal(ev.allDay, true);
   assert.equal(ev.start, '2026-10-20T12:00:00.000Z');
   assert.equal(ev.end, '2026-10-21T12:01:00.000Z'); // last day is the 21st
-  const reply = buildReply(ev, { name: 'Raka', email: 'raka@x.co' }, 'accepted', Date.parse('2026-10-09T10:00:00Z'));
+  const reply = buildReply(ev, { name: 'James', email: 'james@x.co' }, 'accepted', Date.parse('2026-10-09T10:00:00Z'));
   assert.match(reply, /DTSTART;VALUE=DATE:20261020\r\n/);
   assert.match(reply, /DTEND;VALUE=DATE:20261022\r\n/);
 });
@@ -177,7 +177,7 @@ test('cancel and reply', () => {
   assert.equal(cancel.sequence, 1);
   assert.equal(cancel.cancelled, true);
   const ev = parseInvite(GOOGLE)!;
-  const reply = buildReply(ev, { name: 'Raka Jundiy', email: 'raka@demo.sprint2go.com' }, 'tentative', Date.parse('2026-10-09T10:00:00Z'));
+  const reply = buildReply(ev, { name: 'James Jundiy', email: 'james@demo.sprint2go.com' }, 'tentative', Date.parse('2026-10-09T10:00:00Z'));
   assert.ok(reply.split('\r\n').every((l) => Buffer.byteLength(l) <= 75), 'lines are folded at 75 octets');
   const back = parseInvite(reply)!;
   assert.equal(back.method, 'REPLY');
@@ -186,8 +186,8 @@ test('cancel and reply', () => {
   assert.equal(back.end, ev.end);
   assert.equal(back.attendees.length, 1);
   assert.equal(back.attendees[0].status, 'tentative');
-  assert.equal(back.attendees[0].email, 'raka@demo.sprint2go.com');
-  assert.equal(back.organizer?.email, 'laras@kopinara.example');
+  assert.equal(back.attendees[0].email, 'james@demo.sprint2go.com');
+  assert.equal(back.organizer?.email, 'laura@kopinara.example');
   assert.ok(parseIcs(reply)?.children.some((c) => c.type === 'VEVENT'));
 });
 

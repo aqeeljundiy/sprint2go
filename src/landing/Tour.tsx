@@ -48,7 +48,7 @@ function ChatMock({ m }: { m: Dict['tm'] }) {
         <span className="tm-av" style={{ background: '#b45309' }}>L</span>
         <span>
           <b>
-            Laras Anindita <em className="tm-guest">{m.guestTag}</em>
+            Laura Anderson <em className="tm-guest">{m.guestTag}</em>
           </b>
           <p>{m.msg1}</p>
         </span>
@@ -56,7 +56,7 @@ function ChatMock({ m }: { m: Dict['tm'] }) {
       <div className="tm-msg">
         <span className="tm-av" style={{ background: '#5b5bf6' }}>R</span>
         <span>
-          <b>Raka</b>
+          <b>James</b>
           <span className="tm-voice">
             <Mic size={12} />
             {[6, 11, 8, 14, 9, 12, 5, 10].map((h, i) => (
@@ -69,7 +69,7 @@ function ChatMock({ m }: { m: Dict['tm'] }) {
       <div className="tm-msg">
         <span className="tm-av" style={{ background: '#f97316' }}>J</span>
         <span>
-          <b>Joko</b>
+          <b>Jack</b>
           <p>
             {m.msg3} <Paperclip size={11} /> <u>Kopinara_ritual_15s.mp4</u>
           </p>

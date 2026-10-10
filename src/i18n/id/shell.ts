@@ -317,7 +317,7 @@ const id: Record<string, string> = {
   'Show the Try this list': 'Tampilkan daftar Coba ini',
   'Open the Try this list': 'Buka daftar Coba ini',
   'Reply to a client email': 'Balas email dari klien',
-  'Laras at Kopinara asked to move the review call': 'Laras dari Kopinara minta jadwal review dipindah',
+  'Laura at Kopinara asked to move the review call': 'Laura dari Kopinara minta jadwal review dipindah',
   'Turn an email into a task': 'Jadikan email sebagai tugas',
   'Open an email and press Make a task': 'Buka sebuah email lalu tekan Jadikan tugas',
   'Move a task to another stage': 'Pindahkan tugas ke tahap lain',

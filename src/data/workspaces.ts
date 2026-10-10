@@ -35,19 +35,19 @@ const PNP_LOGO = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(
 )}`;
 
 export const USERS: User[] = [
-  { id: 'u-raka', name: 'Raka Hartono', email: 'raka@demo.sprint2go.com', title: 'COO · sprint2go Studio', color: '#6366f1' },
-  { id: 'u-bima', name: 'Bima Anggara', email: 'bima@demo.sprint2go.com', title: 'Performance Marketer', color: '#059669', nicknames: ['Bim'] },
-  { id: 'u-hendra', name: 'Hendra Wijaya', email: 'hendra@demo.sprint2go.com', title: 'CEO · sprint2go Studio', color: '#d97706', nicknames: ['Hen'] },
-  { id: 'u-sofia', name: 'Sofia Ramadhani', email: 'sofia@demo.sprint2go.com', title: 'Head of Accounts', color: '#0284c7', nicknames: ['Sofi'] },
-  { id: 'u-joko', name: 'Joko Prasetyo', email: 'joko@demo.sprint2go.com', title: 'Video Editor', color: '#ea580c' },
+  { id: 'u-james', name: 'James Carter', email: 'james@demo.sprint2go.com', title: 'COO · sprint2go demo', color: '#6366f1' },
+  { id: 'u-owen', name: 'Owen Mitchell', email: 'owen@demo.sprint2go.com', title: 'Performance Marketer', color: '#059669', nicknames: ['Bim'] },
+  { id: 'u-henry', name: 'Henry Walsh', email: 'henry@demo.sprint2go.com', title: 'CEO · sprint2go demo', color: '#d97706', nicknames: ['Hen'] },
+  { id: 'u-sophie', name: 'Sophie Turner', email: 'sophie@demo.sprint2go.com', title: 'Head of Accounts', color: '#0284c7', nicknames: ['Sofi'] },
+  { id: 'u-jack', name: 'Jack Morgan', email: 'jack@demo.sprint2go.com', title: 'Video Editor', color: '#ea580c' },
   { id: 'u-emma', name: 'Emma Larsen', email: 'emma@demo.sprint2go.com', title: 'Graphic Designer', color: '#7c3aed' },
-  { id: 'u-intan', name: 'Intan Kusnadi', email: 'intan@demo.sprint2go.com', title: 'Finance & Ops', color: '#c026d3' },
-  { id: 'u-yusuf', name: 'Yusuf Halim', email: 'yusuf@rimbagroup.example', title: 'Brand Manager', color: '#0d9488' },
-  { id: 'u-tomas', name: 'Tomas Reyes', email: 'tomas@rimbagroup.example', title: 'Web & Systems', color: '#dc2626' },
+  { id: 'u-isabel', name: 'Isabel Hayes', email: 'isabel@demo.sprint2go.com', title: 'Finance & Ops', color: '#c026d3' },
+  { id: 'u-ethan', name: 'Ethan Brooks', email: 'ethan@rimbagroup.example', title: 'Brand Manager', color: '#0d9488' },
+  { id: 'u-thomas', name: 'Thomas Reyes', email: 'thomas@rimbagroup.example', title: 'Web & Systems', color: '#dc2626' },
 ];
 
 /** People signed in on this device when the demo first opens. */
-export const SIGNED_IN_DEFAULT = ['u-raka', 'u-bima'];
+export const SIGNED_IN_DEFAULT = ['u-james', 'u-owen'];
 
 /** Rimba Group's made-up mark: a leaf on forest green. */
 const RIMBA_LOGO = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(
@@ -62,39 +62,39 @@ export const WORKSPACES: Workspace[] = [
     logo: RIMBA_LOGO,
     domains: ['rimbagroup.example'],
     members: [
-      { userId: 'u-raka', role: 'owner' },
-      { userId: 'u-yusuf', role: 'member' },
-      { userId: 'u-tomas', role: 'admin' },
+      { userId: 'u-james', role: 'owner' },
+      { userId: 'u-ethan', role: 'member' },
+      { userId: 'u-thomas', role: 'admin' },
     ],
     emailSetup: 'hosted',
     holidays: { country: 'ID' },
-    plan: { ...trialPlan('Rimba Group', 'raka@rimbagroup.example'), trialEnds: days(9), since: days(-5) },
+    plan: { ...trialPlan('Rimba Group', 'james@rimbagroup.example'), trialEnds: days(9), since: days(-5) },
     ai: defaultAI(false),
     meetings: DEFAULT_MEETINGS,
     storage: { askOver: 500 },
     accounts: [
-      { id: 'elk-yusuf', email: 'yusuf@rimbagroup.example', name: 'Yusuf Halim', kind: 'personal', connected: true, users: ['u-yusuf'] },
-      { id: 'elk-tomas', email: 'tomas@rimbagroup.example', name: 'Tomas Reyes', kind: 'personal', connected: true, users: ['u-tomas'] },
-      { id: 'elk-raka', email: 'raka@rimbagroup.example', name: 'Raka', kind: 'personal', connected: true, users: ['u-raka'] },
-      { id: 'elk-connect', email: 'connect@rimbagroup.example', name: 'Rimba Group', kind: 'shared', connected: true, users: ['u-raka'] },
+      { id: 'elk-ethan', email: 'ethan@rimbagroup.example', name: 'Ethan Brooks', kind: 'personal', connected: true, users: ['u-ethan'] },
+      { id: 'elk-thomas', email: 'thomas@rimbagroup.example', name: 'Thomas Reyes', kind: 'personal', connected: true, users: ['u-thomas'] },
+      { id: 'elk-james', email: 'james@rimbagroup.example', name: 'James', kind: 'personal', connected: true, users: ['u-james'] },
+      { id: 'elk-connect', email: 'connect@rimbagroup.example', name: 'Rimba Group', kind: 'shared', connected: true, users: ['u-james'] },
     ],
   },
   {
     id: 'pnp',
-    name: 'sprint2go Studio',
+    name: 'sprint2go demo',
     color: '#f97316',
     logo: PNP_LOGO,
     domains: ['demo.sprint2go.com'],
     members: [
-      { userId: 'u-raka', role: 'owner' },
-      { userId: 'u-hendra', role: 'owner' },
-      { userId: 'u-sofia', role: 'admin' },
-      { userId: 'u-bima', role: 'member' },
-      { userId: 'u-intan', role: 'member' },
-      { userId: 'u-joko', role: 'member' },
+      { userId: 'u-james', role: 'owner' },
+      { userId: 'u-henry', role: 'owner' },
+      { userId: 'u-sophie', role: 'admin' },
+      { userId: 'u-owen', role: 'member' },
+      { userId: 'u-isabel', role: 'member' },
+      { userId: 'u-jack', role: 'member' },
       { userId: 'u-emma', role: 'member' },
     ],
-    // sprint2go Studio keeps its domain on Google Workspace and moves some people to Sprint2go.
+    // sprint2go demo keeps its domain on Google Workspace and moves some people to Sprint2go.
     emailSetup: 'mix',
     holidays: { country: 'ID' },
     plan: {
@@ -103,14 +103,14 @@ export const WORKSPACES: Workspace[] = [
       cycle: 'monthly',
       addons: { mailboxes: 2, storage50: 0, meetHours10: 1, branding: false },
       payment: { method: 'va', label: 'BCA virtual account' },
-      billing: { company: 'sprint2go Studio', npwp: '', address: 'Jakarta Selatan', emails: ['intan@demo.sprint2go.com', 'raka@demo.sprint2go.com'] },
+      billing: { company: 'sprint2go demo', npwp: '', address: 'Jakarta Selatan', emails: ['isabel@demo.sprint2go.com', 'james@demo.sprint2go.com'] },
       since: '2026-07-01T00:00:00.000Z',
     },
     ai: {
       payer: 'own',
       providers: [
-        { id: 'sumopod', keyLast4: '9F2a', addedAt: '2026-10-01T03:00:00.000Z', addedBy: 'u-raka', status: 'ok', capUsd: 25, spentUsd: 4.1 },
-        { id: 'anthropic', keyLast4: 'x7Qe', addedAt: '2026-10-02T03:00:00.000Z', addedBy: 'u-hendra', status: 'ok', capUsd: 40, spentUsd: 6.8 },
+        { id: 'sumopod', keyLast4: '9F2a', addedAt: '2026-10-01T03:00:00.000Z', addedBy: 'u-james', status: 'ok', capUsd: 25, spentUsd: 4.1 },
+        { id: 'anthropic', keyLast4: 'x7Qe', addedAt: '2026-10-02T03:00:00.000Z', addedBy: 'u-henry', status: 'ok', capUsd: 40, spentUsd: 6.8 },
       ],
       preset: 'custom',
       jobs: {
@@ -140,12 +140,12 @@ export const WORKSPACES: Workspace[] = [
     emailProvider: 'google',
     meetUrl: 'https://meet.demo.sprint2go.com',
     accounts: [
-      { id: 'pnp-raka', email: 'raka@demo.sprint2go.com', name: 'Raka', kind: 'personal', connected: true, users: ['u-raka'] },
-      { id: 'pnp-hello', email: 'hello@demo.sprint2go.com', name: 'sprint2go Studio', kind: 'shared', connected: true, users: ['u-raka', 'u-bima', 'u-sofia', 'u-hendra'] },
-      { id: 'pnp-bima', email: 'bima@demo.sprint2go.com', name: 'Bima Anggara', kind: 'personal', connected: true, users: ['u-bima'] },
-      { id: 'pnp-hendra', email: 'hendra@demo.sprint2go.com', name: 'Hendra Wijaya', kind: 'personal', connected: true, users: ['u-hendra'], provider: 'google' },
-      { id: 'pnp-sofia', email: 'sofia@demo.sprint2go.com', name: 'Sofia Ramadhani', kind: 'personal', connected: true, users: ['u-sofia'], provider: 'google' },
-      { id: 'pnp-intan', email: 'intan@demo.sprint2go.com', name: 'Intan Kusnadi', kind: 'personal', connected: true, users: ['u-intan'] },
+      { id: 'pnp-james', email: 'james@demo.sprint2go.com', name: 'James', kind: 'personal', connected: true, users: ['u-james'] },
+      { id: 'pnp-hello', email: 'hello@demo.sprint2go.com', name: 'sprint2go demo', kind: 'shared', connected: true, users: ['u-james', 'u-owen', 'u-sophie', 'u-henry'] },
+      { id: 'pnp-owen', email: 'owen@demo.sprint2go.com', name: 'Owen Mitchell', kind: 'personal', connected: true, users: ['u-owen'] },
+      { id: 'pnp-henry', email: 'henry@demo.sprint2go.com', name: 'Henry Walsh', kind: 'personal', connected: true, users: ['u-henry'], provider: 'google' },
+      { id: 'pnp-sophie', email: 'sophie@demo.sprint2go.com', name: 'Sophie Turner', kind: 'personal', connected: true, users: ['u-sophie'], provider: 'google' },
+      { id: 'pnp-isabel', email: 'isabel@demo.sprint2go.com', name: 'Isabel Hayes', kind: 'personal', connected: true, users: ['u-isabel'] },
     ],
   },
 ];

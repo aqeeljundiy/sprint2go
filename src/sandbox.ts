@@ -16,9 +16,9 @@ export const isSandbox = (ws: { id?: string; sandbox?: unknown } | null | undefi
 
 /** Which of the demo's two companies is copied (the richer one), and whose seat the person takes in it. */
 export const SAMPLE_COMPANY = 'pnp';
-export const SAMPLE_SEAT = 'u-raka';
+export const SAMPLE_SEAT = 'u-james';
 /** The demo company's name in the switcher (a "Demo" badge sits next to it). */
-export const SANDBOX_NAME = 'sprint2go Studio';
+export const SANDBOX_NAME = 'sprint2go demo';
 
 /** What the server keeps on the demo company's workspace: whose it is and when it was made, and the "Try this" list. */
 export interface SandboxMark {
@@ -37,7 +37,7 @@ export interface DemoState {
 /** "Try this": concrete things to do in the demo company, ticked off when the person really does them there. */
 // Shown with t(label) and t(hint): mark() lets the language check find the words (docs/i18n.md).
 export const TRY_THIS = [
-  { key: 'reply', label: mark('Reply to a client email'), hint: mark('Laras at Kopinara asked to move the review call') },
+  { key: 'reply', label: mark('Reply to a client email'), hint: mark('Laura at Kopinara asked to move the review call') },
   { key: 'email-task', label: mark('Turn an email into a task'), hint: mark('Open an email and press Make a task') },
   { key: 'stage', label: mark('Move a task to another stage'), hint: mark('Drag a card on the board, or change its stage') },
   { key: 'ask', label: mark('Ask AI about a project'), hint: mark('For example: what’s late at Kopinara?') },
@@ -124,8 +124,8 @@ export function buildSandbox(seed: Seed, me: { id: string; name: string }, now =
   // The company's holiday calendar has a fixed name the app looks for (Settings, General: public holidays).
   ids.set(holidayCalendarId(SAMPLE_COMPANY), holidayCalendarId(wsId));
   const { first, slug } = names(me.name);
-  const seatEmail = /\braka@demo\.sprint2go\.com\b/gi;
-  const text = (s: string) => s.replace(seatEmail, `${slug}@demo.sprint2go.com`).replace(/\bRaka Hartono\b/g, () => me.name.trim() || first).replace(/\bRaka\b/g, () => first);
+  const seatEmail = /\bjames@demo\.sprint2go\.com\b/gi;
+  const text = (s: string) => s.replace(seatEmail, `${slug}@demo.sprint2go.com`).replace(/\bJames Carter\b/g, () => me.name.trim() || first).replace(/\bJames\b/g, () => first);
   const move = (v: unknown): unknown => {
     if (typeof v === 'string') return ids.get(v) ?? text(v);
     if (Array.isArray(v)) return v.map(move);

@@ -58,7 +58,7 @@ const deviceLabel = (name: string) => {
   return m ? t('{app} on {os}', { app: app(m[1]), os: m[2] }) : name === 'A browser' ? t('A browser') : app(name);
 };
 const list = (names: string[]) => (names.length ? fmtList(names) : t('Your company'));
-/** "sprint2go Studio requires it from 16 Oct" or "...requires it now". */
+/** "sprint2go demo requires it from 16 Oct" or "...requires it now". */
 export const requiredText = (r: NonNullable<TwoStepStatus['required']>) => {
   const n = r.companies.length || 1; // no names: "Your company requires it"
   return r.from > new Date().toISOString()

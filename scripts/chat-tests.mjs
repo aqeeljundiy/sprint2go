@@ -172,79 +172,79 @@ try {
       sync: (coll, upserts, deletes = []) => call('POST', '/api/sync', { coll, upserts, deletes }).then(async (x) => ({ status: x.status, ...(await x.json().catch(() => ({}))) })),
     };
   };
-  const raka = await signIn('raka@demo.sprint2go.com'); // owner
-  const bima = await signIn('bima@demo.sprint2go.com');
-  const intan = await signIn('intan@demo.sprint2go.com');
-  const laras = await signIn('laras@kopinara.example'); // a guest at Kopinara (joined)
-  check(raka.ok && bima.ok && intan.ok && laras.ok, 'the owner, two members and a guest sign in');
+  const james = await signIn('james@demo.sprint2go.com'); // owner
+  const owen = await signIn('owen@demo.sprint2go.com');
+  const isabel = await signIn('isabel@demo.sprint2go.com');
+  const laura = await signIn('laura@kopinara.example'); // a guest at Kopinara (joined)
+  check(james.ok && owen.ok && isabel.ok && laura.ok, 'the owner, two members and a guest sign in');
   const sees = async (who, id) => (await who.state()).channels.some((c) => c.id === id);
 
   /* who's in it */
-  const g = { id: 'gdm-1', workspaceId: 'pnp', kind: 'dm', name: '', members: ['u-bima', 'u-hendra', 'u-joko'] };
-  await bima.sync('channels', [g]);
+  const g = { id: 'gdm-1', workspaceId: 'pnp', kind: 'dm', name: '', members: ['u-owen', 'u-henry', 'u-jack'] };
+  await owen.sync('channels', [g]);
   const saved = doc('channels', 'gdm-1');
   check(saved?.kind === 'dm' && saved.members.length === 3, 'a member starts a group message with two others');
-  check((await sees(bima, 'gdm-1')) && !(await sees(intan, 'gdm-1')) && !(await sees(raka, 'gdm-1')), 'only its people see it, not even the owner');
-  put('messages', { id: 'gm-1', channelId: 'gdm-1', userId: 'u-hendra', text: 'secret mango plan', at: now() });
-  check(!(await intan.state()).messages.some((m) => m.id === 'gm-1') && (await bima.state()).messages.some((m) => m.id === 'gm-1'), 'and only they read its messages');
-  const ten = await bima.sync('channels', [{ ...g, id: 'gdm-big', members: ['u-bima', 'u-raka', 'u-hendra', 'u-sofia', 'u-joko', 'u-emma', 'u-intan', 'u-yusuf', 'u-tomas', 'u-x'] }]);
+  check((await sees(owen, 'gdm-1')) && !(await sees(isabel, 'gdm-1')) && !(await sees(james, 'gdm-1')), 'only its people see it, not even the owner');
+  put('messages', { id: 'gm-1', channelId: 'gdm-1', userId: 'u-henry', text: 'secret mango plan', at: now() });
+  check(!(await isabel.state()).messages.some((m) => m.id === 'gm-1') && (await owen.state()).messages.some((m) => m.id === 'gm-1'), 'and only they read its messages');
+  const ten = await owen.sync('channels', [{ ...g, id: 'gdm-big', members: ['u-owen', 'u-james', 'u-henry', 'u-sophie', 'u-jack', 'u-emma', 'u-isabel', 'u-ethan', 'u-thomas', 'u-x'] }]);
   check(!doc('channels', 'gdm-big') && /up to 9/.test(ten.why ?? ''), 'more than 8 others is refused, with why');
-  const outside = await bima.sync('channels', [{ ...g, id: 'gdm-out', members: ['u-bima', 'u-hendra', 'u-yusuf'] }]);
+  const outside = await owen.sync('channels', [{ ...g, id: 'gdm-out', members: ['u-owen', 'u-henry', 'u-ethan'] }]);
   check(!doc('channels', 'gdm-out') && /team/.test(outside.why ?? ''), 'someone who isn’t on the team is refused');
-  await bima.sync('channels', [{ ...g, id: 'gdm-not-me', members: ['u-hendra', 'u-joko', 'u-emma'] }]);
+  await owen.sync('channels', [{ ...g, id: 'gdm-not-me', members: ['u-henry', 'u-jack', 'u-emma'] }]);
   check(!doc('channels', 'gdm-not-me'), 'nobody starts a group message they aren’t in');
-  await bima.sync('channels', [{ ...doc('channels', 'gdm-1'), members: ['u-bima', 'u-hendra', 'u-joko', 'u-intan'] }]);
-  check(doc('channels', 'gdm-1').members.length === 3 && !(await sees(intan, 'gdm-1')), 'nobody is added to it later (that’s a new group)');
-  const huddle = { by: 'u-bima', at: now(), members: ['u-bima'] };
-  await bima.sync('channels', [{ ...doc('channels', 'gdm-1'), huddle }]);
-  check(doc('channels', 'gdm-1').huddle?.members?.[0] === 'u-bima', 'its people still start a huddle in it');
-  const hendra = await signIn('hendra@demo.sprint2go.com');
-  await hendra.sync('channels', [{ ...doc('channels', 'gdm-1'), members: ['u-bima', 'u-joko'] }]);
-  check(JSON.stringify(doc('channels', 'gdm-1').members) === JSON.stringify(['u-bima', 'u-joko']) && !(await sees(hendra, 'gdm-1')), 'someone leaves it, and stops seeing it');
-  await bima.sync('channels', [{ ...doc('channels', 'gdm-1'), members: ['u-bima'] }]);
+  await owen.sync('channels', [{ ...doc('channels', 'gdm-1'), members: ['u-owen', 'u-henry', 'u-jack', 'u-isabel'] }]);
+  check(doc('channels', 'gdm-1').members.length === 3 && !(await sees(isabel, 'gdm-1')), 'nobody is added to it later (that’s a new group)');
+  const huddle = { by: 'u-owen', at: now(), members: ['u-owen'] };
+  await owen.sync('channels', [{ ...doc('channels', 'gdm-1'), huddle }]);
+  check(doc('channels', 'gdm-1').huddle?.members?.[0] === 'u-owen', 'its people still start a huddle in it');
+  const henry = await signIn('henry@demo.sprint2go.com');
+  await henry.sync('channels', [{ ...doc('channels', 'gdm-1'), members: ['u-owen', 'u-jack'] }]);
+  check(JSON.stringify(doc('channels', 'gdm-1').members) === JSON.stringify(['u-owen', 'u-jack']) && !(await sees(henry, 'gdm-1')), 'someone leaves it, and stops seeing it');
+  await owen.sync('channels', [{ ...doc('channels', 'gdm-1'), members: ['u-owen'] }]);
   check(doc('channels', 'gdm-1').members.length === 2, 'but can’t take others out');
 
   /* convert to a private channel */
-  put('channels', { id: 'gdm-2', workspaceId: 'pnp', kind: 'dm', name: '', members: ['u-bima', 'u-joko', 'u-emma'] });
-  await intan.sync('channels', [{ ...doc('channels', 'gdm-2'), kind: 'channel', name: 'hijack', members: ['u-intan'] }]);
+  put('channels', { id: 'gdm-2', workspaceId: 'pnp', kind: 'dm', name: '', members: ['u-owen', 'u-jack', 'u-emma'] });
+  await isabel.sync('channels', [{ ...doc('channels', 'gdm-2'), kind: 'channel', name: 'hijack', members: ['u-isabel'] }]);
   check(doc('channels', 'gdm-2').kind === 'dm', 'someone outside it can’t convert it');
-  await bima.sync('channels', [{ ...doc('channels', 'gdm-2'), kind: 'channel', name: 'launch-crew', members: ['u-bima', 'u-intan'], private: false }]);
+  await owen.sync('channels', [{ ...doc('channels', 'gdm-2'), kind: 'channel', name: 'launch-crew', members: ['u-owen', 'u-isabel'], private: false }]);
   const conv = doc('channels', 'gdm-2');
-  check(conv.kind === 'channel' && conv.private === true && conv.name === 'launch-crew' && ['u-bima', 'u-joko', 'u-emma', 'u-intan'].every((x) => conv.members.includes(x)) && conv.ownerId === 'u-bima', 'one of its people converts it to a private channel: everyone stays, more may come in');
-  check(await sees(intan, 'gdm-2'), 'and the person added sees it now');
+  check(conv.kind === 'channel' && conv.private === true && conv.name === 'launch-crew' && ['u-owen', 'u-jack', 'u-emma', 'u-isabel'].every((x) => conv.members.includes(x)) && conv.ownerId === 'u-owen', 'one of its people converts it to a private channel: everyone stays, more may come in');
+  check(await sees(isabel, 'gdm-2'), 'and the person added sees it now');
 
   /* guests */
   const pnp = doc('workspaces', 'pnp');
   put('workspaces', { ...pnp, permissions: { ...(pnp.permissions ?? {}), inviteGuests: false } });
-  const gg = { id: 'gdm-guest', workspaceId: 'pnp', kind: 'dm', name: '', members: ['u-intan', 'u-bima'], clientId: 'c-kopinara', guests: [{ email: 'laras@kopinara.example', name: 'Laras Anindita', status: 'joined', invitedBy: 'u-intan', at: now() }] };
-  const notAllowed = await intan.sync('channels', [gg]);
+  const gg = { id: 'gdm-guest', workspaceId: 'pnp', kind: 'dm', name: '', members: ['u-isabel', 'u-owen'], clientId: 'c-kopinara', guests: [{ email: 'laura@kopinara.example', name: 'Laura Anderson', status: 'joined', invitedBy: 'u-isabel', at: now() }] };
+  const notAllowed = await isabel.sync('channels', [gg]);
   check(!doc('channels', 'gdm-guest') && /Lead/.test(notAllowed.why ?? ''), 'a member who may not invite guests can’t message one (and is told why)');
   put('workspaces', { ...doc('workspaces', 'pnp'), permissions: { ...(pnp.permissions ?? {}), inviteGuests: true } });
-  const pending = await intan.sync('channels', [{ ...gg, guests: [{ email: 'gilang@kopinara.example', name: 'Gilang', status: 'joined', invitedBy: 'u-intan', at: now() }] }]);
+  const pending = await isabel.sync('channels', [{ ...gg, guests: [{ email: 'graham@kopinara.example', name: 'Graham', status: 'joined', invitedBy: 'u-isabel', at: now() }] }]);
   check(!doc('channels', 'gdm-guest') && /joined/.test(pending.why ?? ''), 'a guest who hasn’t joined the project yet is refused');
-  await intan.sync('channels', [{ ...gg, clientId: 'c-selara' }]);
+  await isabel.sync('channels', [{ ...gg, clientId: 'c-selara' }]);
   check(!doc('channels', 'gdm-guest'), 'a guest from another project is refused');
-  await intan.sync('channels', [gg]);
-  check(doc('channels', 'gdm-guest')?.guests?.[0]?.email === 'laras@kopinara.example' && doc('channels', 'gdm-guest').clientId === 'c-kopinara', 'allowed to invite guests: a group message with a guest who joined the project');
-  const ns = await laras.state();
+  await isabel.sync('channels', [gg]);
+  check(doc('channels', 'gdm-guest')?.guests?.[0]?.email === 'laura@kopinara.example' && doc('channels', 'gdm-guest').clientId === 'c-kopinara', 'allowed to invite guests: a group message with a guest who joined the project');
+  const ns = await laura.state();
   const named = ns.channels.find((c) => c.id === 'gdm-guest');
-  check(!!named && named.kind === 'dm' && /Intan/.test(named.name) && /Bima/.test(named.name), `the guest sees it, named after its people (${named?.name})`);
+  check(!!named && named.kind === 'dm' && /Isabel/.test(named.name) && /Owen/.test(named.name), `the guest sees it, named after its people (${named?.name})`);
   check(!ns.channels.some((c) => c.id === 'gdm-1' || c.id === 'gdm-2'), 'and none of the team’s other group messages');
-  const gw = await laras.sync('messages', [{ id: 'gm-guest', channelId: 'gdm-guest', userId: 'guest', guestEmail: 'laras@kopinara.example', text: 'Hi both', at: now() }]);
+  const gw = await laura.sync('messages', [{ id: 'gm-guest', channelId: 'gdm-guest', userId: 'guest', guestEmail: 'laura@kopinara.example', text: 'Hi both', at: now() }]);
   check(gw.saved === 1 && !!doc('messages', 'gm-guest'), 'the guest writes in it');
-  await laras.sync('messages', [{ id: 'gm-guest-2', channelId: 'gdm-1', userId: 'guest', guestEmail: 'laras@kopinara.example', text: 'sneak', at: now() }]);
+  await laura.sync('messages', [{ id: 'gm-guest-2', channelId: 'gdm-1', userId: 'guest', guestEmail: 'laura@kopinara.example', text: 'sneak', at: now() }]);
   check(!doc('messages', 'gm-guest-2'), 'but not in a group message she isn’t in');
 
   /* follow choices */
-  put('channels', { id: 'ch-follow', workspaceId: 'pnp', kind: 'channel', name: 'follow', members: ['u-raka', 'u-intan', 'u-bima'] });
-  put('messages', { id: 'fm-root', channelId: 'ch-follow', userId: 'u-raka', text: 'Root', at: now(), follow: { 'u-raka': false } });
-  await intan.sync('messages', [{ ...doc('messages', 'fm-root'), text: 'changed', follow: { 'u-raka': true, 'u-intan': true, 'u-bima': false } }]);
+  put('channels', { id: 'ch-follow', workspaceId: 'pnp', kind: 'channel', name: 'follow', members: ['u-james', 'u-isabel', 'u-owen'] });
+  put('messages', { id: 'fm-root', channelId: 'ch-follow', userId: 'u-james', text: 'Root', at: now(), follow: { 'u-james': false } });
+  await isabel.sync('messages', [{ ...doc('messages', 'fm-root'), text: 'changed', follow: { 'u-james': true, 'u-isabel': true, 'u-owen': false } }]);
   const fm = doc('messages', 'fm-root');
-  check(fm.text === 'Root' && JSON.stringify(fm.follow) === JSON.stringify({ 'u-raka': false, 'u-intan': true }), 'someone follows another person’s thread: only their own choice changes');
-  await raka.sync('messages', [{ ...doc('messages', 'fm-root'), follow: { 'u-intan': false } }]);
-  check(JSON.stringify(doc('messages', 'fm-root').follow) === JSON.stringify({ 'u-intan': true }), 'even its author changes only their own (clearing it)');
-  await bima.sync('messages', [{ id: 'fm-new', channelId: 'ch-follow', userId: 'u-bima', text: 'new', at: now(), follow: { 'u-raka': true, 'u-bima': true } }]);
-  check(JSON.stringify(doc('messages', 'fm-new')?.follow) === JSON.stringify({ 'u-bima': true }), 'a new message carries only its author’s choice');
+  check(fm.text === 'Root' && JSON.stringify(fm.follow) === JSON.stringify({ 'u-james': false, 'u-isabel': true }), 'someone follows another person’s thread: only their own choice changes');
+  await james.sync('messages', [{ ...doc('messages', 'fm-root'), follow: { 'u-isabel': false } }]);
+  check(JSON.stringify(doc('messages', 'fm-root').follow) === JSON.stringify({ 'u-isabel': true }), 'even its author changes only their own (clearing it)');
+  await owen.sync('messages', [{ id: 'fm-new', channelId: 'ch-follow', userId: 'u-owen', text: 'new', at: now(), follow: { 'u-james': true, 'u-owen': true } }]);
+  check(JSON.stringify(doc('messages', 'fm-new')?.follow) === JSON.stringify({ 'u-owen': true }), 'a new message carries only its author’s choice');
 } catch (e) {
   failed++;
   console.log(`FAIL ${e instanceof Error ? e.stack : e}`);

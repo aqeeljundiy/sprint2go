@@ -85,7 +85,7 @@ export function fmtMoney(amount: number, currency = 'IDR', opts?: Intl.NumberFor
   return fmtNumber(amount, { style: 'currency', currency, ...opts });
 }
 
-/** "Laras, Tomas and Intan" / "Laras, Tomas, dan Intan". `or`: "Laras or Tomas" / "Laras atau Tomas". */
+/** "Laura, Thomas and Isabel" / "Laura, Thomas, dan Isabel". `or`: "Laura or Thomas" / "Laura atau Thomas". */
 export function fmtList(items: string[], kind: 'and' | 'or' = 'and'): string {
   try {
     return new Intl.ListFormat(locale(), { type: kind === 'or' ? 'disjunction' : 'conjunction' }).format(items);

@@ -133,7 +133,7 @@ const id: Record<string, string> = {
   'No messages yet.': 'Belum ada pesan.',
   'Write to the team…': 'Tulis ke tim…',
 
-  // What happened on a task, saved with msg() (clientActions) and read after a name: "Laras menyetujuinya"
+  // What happened on a task, saved with msg() (clientActions) and read after a name: "Laura menyetujuinya"
   'approved it': 'menyetujuinya',
   'approved it: “{note}”': 'menyetujuinya: “{note}”',
   'asked for changes: “{note}”': 'meminta perubahan: “{note}”',

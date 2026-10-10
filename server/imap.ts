@@ -1171,7 +1171,7 @@ class Session {
           return (c) => day(hitOf(c)?.m.date ?? '') >= d;
         }
         case 'X-GM-RAW': {
-          // Gmail's search operators, as in the app (src/mailQuery.ts): X-GM-RAW "from:laras has:attachment".
+          // Gmail's search operators, as in the app (src/mailQuery.ts): X-GM-RAW "from:laura has:attachment".
           // The folder is already chosen, so Spam and Trash aren't left out here.
           const qn = parseQuery(utf8Of(arg()) ?? '');
           return (c) => {
