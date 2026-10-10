@@ -241,7 +241,7 @@ function TeamsPhone({ teams, users, tasks, me, actions, onOpen, people: everyone
     const s = teamState(tm, tasks);
     return (
       <div key={tm.id} className="tdir-row" role="button" tabIndex={0} onClick={() => onOpen(tm.id)} onKeyDown={(e) => e.key === 'Enter' && e.target === e.currentTarget && onOpen(tm.id)}>
-        <IconTile letter={tm.name} color={tm.color} size={40} className="tdir-tile" />
+        <IconTile letter={tm.name} color={tm.color} size={32} className="tdir-tile" />
         <span className="tdir-text">
           <strong className="tdir-name">{tm.name}</strong>
           {/* What needs attention leads the second line, so the name keeps the row's width (up to two lines) next to Join. */}

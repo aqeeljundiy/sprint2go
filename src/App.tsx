@@ -13,7 +13,7 @@ import { ProjectsCtx } from './components/ProjectPicker';
 import { ProjectsSidebar } from './components/ProjectsSidebar';
 import { ProjectsHome } from './components/ProjectsHome';
 import { Popover } from './components/ui/Popover';
-import { Brain, Briefcase, Building2, CalendarPlus, Copy, FileText, Hash, ListChecks, Mail, PenLine, Send, Sparkles, Timer, Trash2, Undo2, Upload, User as UserIcon, Video, Table2, MessagesSquare, AlertTriangle, Menu, Inbox, Search as SearchIcon, Paperclip, Contact, House, MessageCircle, Bell, Sun, CalendarRange, CircleCheck, Layers, List, CalendarDays, Users, Star, Folder, UserRound, Archive, NotebookText } from 'lucide-react';
+import { Brain, Briefcase, Building2, CalendarPlus, Copy, FileText, Hash, ListChecks, Mail, PenLine, Send, Sparkles, Timer, Trash2, Undo2, Upload, User as UserIcon, Video, Table2, MessagesSquare, AlertTriangle, Menu, Inbox, Search as Paperclip, Contact, House, MessageCircle, Bell, Sun, CalendarRange, CircleCheck, Layers, List, CalendarDays, Users, Star, Folder, UserRound, Archive, NotebookText } from 'lucide-react';
 import { DEFAULT_PERMISSIONS } from './types';
 import type { Quote, Team, Note, Account, AppId, Attachment, BlockRule, CalEvent, Channel, ChannelCategory, Client, ClientPerson, ChatFile, ChatMessage, CommentFile, Meeting, Message, Notice, RsvpStatus, TaskEvent, TaskStatus, Todo, DriveItem, DriveSection, Location, Person, Thread, User, View, Workspace, FolderId } from './types';
 import { useMailOrganize } from './components/mail/Organize';
@@ -3976,9 +3976,10 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   // An app's settings, opened over the app (Back returns to it) instead of jumping to the Settings page.
   const [pushed, setPushed] = useState<{ kind: 'own' | 'section'; id: string; label: string } | null>(null);
   useEffect(() => setPushed(null), [mode, ws.id]);
-  // Title menus hold views only in Notes, Drive, Tables, Teams and Vault (their settings live in Settings).
+  // Title menus hold views only in Mail, Notes, Drive, Tables, Teams and Vault: their settings live in the Settings app
+  // (Mail & signature, Storage, Permissions...).
   const settingsRows =
-    mode === 'settings' || (mobile && ['notes', 'drive', 'tables', 'teams', 'vault'].includes(mode))
+    mode === 'settings' || (mobile && ['mail', 'notes', 'drive', 'tables', 'teams', 'vault'].includes(mode))
       ? []
       : [
           // Mail's own settings screen (it was at the bottom of the folders drawer).

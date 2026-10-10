@@ -1151,3 +1151,11 @@
     font-size: var(--fs-field);
   }
 }
+
+/* The FAB rule: the create button keeps one spot (--fab-bottom) whether or not the app has a bar. Screens without a
+   bar (Notes, Teams, Tables, Vault) so keep the bar's height too at the end of their lists, so the last row clears it. */
+@media (max-width: 767px) {
+  :root.no-app-bar {
+    --fab-space: calc(88px + var(--tabbar-h));
+  }
+}
