@@ -177,11 +177,26 @@
     padding: 48px 24px;
   }
   .empty-state > .empty-art {
+    display: grid;
+    place-items: center;
+    width: 48px;
+    height: 48px;
     border-radius: var(--r-round);
+    background: var(--accent-soft);
+    color: var(--accent-text);
+  }
+  .empty-state > .empty-art svg {
+    width: var(--icon-l);
+    height: var(--icon-l);
   }
   .empty-state > .empty-title {
-    font: var(--t-heading);
+    font: var(--t-title);
     color: var(--text);
+  }
+  .empty-state > .empty-action > :is(button, a) {
+    min-height: var(--tap);
+    padding: 0 16px;
+    border-radius: var(--r-pill);
   }
   .empty-state > .empty-sub {
     font: var(--t-secondary);

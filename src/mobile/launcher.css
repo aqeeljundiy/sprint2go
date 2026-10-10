@@ -43,16 +43,13 @@
   width: 60px;
   height: 60px; /* system: the launcher's tile (plan: 60 x 60) */
   border-radius: var(--r-card);
-  background: color-mix(in srgb, var(--c) 14%, transparent);
-  color: var(--c);
+  background: color-mix(in srgb, var(--c) var(--tile-tint), var(--surface)); /* IconTile's family (tokens.css) */
+  color: color-mix(in srgb, var(--c) var(--tile-ink), white);
   transition:
     transform 0.15s var(--ease),
     background 0.15s;
 }
-:root[data-theme='dark'] .ln-sq {
-  background: color-mix(in srgb, var(--c) 30%, #2a2d35); /* brighter than a 22% tint on black: no muddy tiles */
-  color: color-mix(in srgb, var(--c) 55%, white);
-}
+
 .ln-tile:active .ln-sq,
 .ln-tile.lp-lifted .ln-sq {
   transform: scale(0.94);

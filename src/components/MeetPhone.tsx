@@ -11,6 +11,7 @@ import { Select } from './ui/Select';
 import { SwipeRow } from './ui/SwipeRow';
 import { EmptyState } from './ui/EmptyState';
 import { ProjectBadge } from './ProjectBadge';
+import { IconTile } from './ui/IconTile';
 import type { MeetPage } from './MeetApp';
 import { LIVE, STATUS_LABEL } from './MeetApp';
 import { t, tn } from '../i18n';
@@ -421,7 +422,7 @@ export function MeetFolders({ clients, meetings, onPage, onSettings }: { clients
             <div className="mh-card">
               {clients.map((c) => {
                 const n = meetings.filter((m) => m.clientId === c.id).length;
-                return row(c.id, <ProjectBadge p={c} kind="client-dot" />, c.name, n ? tn(n, '{n} meeting', '{n} meetings') : t('No meetings yet'), { kind: 'folder', clientId: c.id });
+                return row(c.id, <IconTile letter={c.name} color={c.color} size={40} />, c.name, n ? tn(n, '{n} meeting', '{n} meetings') : t('No meetings yet'), { kind: 'folder', clientId: c.id });
               })}
             </div>
           </>

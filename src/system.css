@@ -987,3 +987,21 @@ h4,
 :focus-visible {
   outline-color: var(--accent);
 }
+
+/* ---------- IconTile (src/components/ui/IconTile.tsx): the one tile for apps, projects and teams ---------- */
+.icon-tile {
+  position: relative;
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: var(--tile, 32px);
+  height: var(--tile, 32px);
+  border-radius: calc(var(--tile, 32px) * 0.22);
+  background: color-mix(in srgb, var(--c, var(--accent)) var(--tile-tint), var(--surface));
+  color: color-mix(in srgb, var(--c, var(--accent)) var(--tile-ink), white);
+}
+.icon-tile b {
+  font-size: calc(var(--tile, 32px) * 0.45);
+  font-weight: 700;
+  line-height: 1;
+}

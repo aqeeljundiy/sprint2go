@@ -557,3 +557,45 @@
     border: 0;
   }
 }
+
+@media (max-width: 767px) {
+  .m-player.audio,
+  :root[data-theme='dark'] .m-player.audio {
+    background: var(--surface-2);
+  }
+  .m-player.audio .voice-wave i,
+  .m-player.audio .m-bar span {
+    background: var(--accent);
+  }
+  .m-player.audio .m-bar {
+    background: var(--line);
+  }
+  .m-player.audio .m-time {
+    color: var(--text-2);
+  }
+  .m-player.audio .m-play {
+    background: var(--accent);
+    color: #fff;
+  }
+  /* N1: in-page filters are pill chips (Tasks from meetings, a folder's parts). */
+  .meet-pane .client-tabs {
+    display: flex;
+    gap: 8px;
+    padding: 8px 16px;
+    border: 0;
+    overflow-x: auto;
+  }
+  .meet-pane .client-tabs > button {
+    min-height: 32px;
+    padding: 0 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--r-pill);
+    font: var(--t-segment);
+    color: var(--text-2);
+  }
+  .meet-pane .client-tabs > button.on {
+    border-color: transparent;
+    background: var(--accent-soft);
+    color: var(--accent-text);
+  }
+}

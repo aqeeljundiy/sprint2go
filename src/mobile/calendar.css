@@ -1675,3 +1675,30 @@
     margin: 0 16px 0 0;
   }
 }
+
+/* Calm cards (design review): a tint of the calendar's colour with a 4 px edge in it, text in the page's ink. */
+@media (max-width: 767px) {
+  .ev-card.solid {
+    background: color-mix(in srgb, var(--c) var(--tile-tint), var(--surface));
+    box-shadow: inset 4px 0 0 var(--c);
+    color: var(--text);
+  }
+  .ev-card.solid .ev-card-meta,
+  .ev-card.solid .ev-card-place {
+    color: var(--text-2);
+  }
+  .mg-chip {
+    background: color-mix(in srgb, var(--c) var(--tile-tint), var(--surface));
+    box-shadow: inset 2px 0 0 var(--c);
+    color: var(--text);
+  }
+}
+
+@media (max-width: 767px) {
+  .ev-dp-edit {
+    flex: 1;
+    justify-content: center;
+    min-height: var(--tap);
+    border-radius: var(--r-pill);
+  }
+}
