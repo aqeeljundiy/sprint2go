@@ -1,7 +1,7 @@
 // Imports (Settings, Import): what the server says about an import and what the admin picks before it starts. Shared
 // by the app (src/components/imports/) and the server (server/imports.ts), so both read the same shapes.
 
-export type ImportSource = 'slack' | 'trello' | 'drive';
+export type ImportSource = 'slack' | 'trello' | 'drive' | 'mail'; // mail: an mbox or a Google Takeout of Gmail (server/importMail.ts)
 
 /**
  * Where an import is: the server reads the upload (reading), waits for the admin's choices (ready), brings it in
@@ -57,6 +57,8 @@ export interface ImportPreview {
   lists?: ImportList[];
   /** Google Drive (Takeout): what goes into Drive. */
   drive?: { folders: number; files: number; bytes: number; big: number; bigBytes: number; otherParts: string[]; into: 'new' | 'existing' };
+  /** Mail (an mbox, or a Google Takeout of Gmail): the messages it holds, and the company's mailboxes it can go into. */
+  mail?: { messages: number; bytes: number; mboxes: string[]; tooBig: number; otherParts: string[]; mailboxes: { id: string; email: string; name: string; shared: boolean }[]; suggested?: string };
   /** The company's storage and its "ask before saving big files" size. */
   room: { left: number; total: number; askOverMb: number };
   /** On Free: how many more people can join (null: no limit). */
@@ -71,6 +73,7 @@ export interface ImportChoices {
   projectId?: string; // Trello: into this project ('' or missing: a new one named after the board)
   archived?: boolean; // Trello: bring archived cards too
   big?: boolean; // save files over the company's "ask before" size
+  mailbox?: string; // Mail: the mailbox it goes into
 }
 
 export interface ImportProgress {
@@ -114,6 +117,6 @@ export interface ImportJob {
 
 /** The 24 hours an import can be undone in. */
 export const UNDO_HOURS = 24;
-export const SOURCE_NAME: Record<ImportSource, string> = { slack: 'Slack', trello: 'Trello', drive: 'Google Drive' };
+export const SOURCE_NAME: Record<ImportSource, string> = { slack: 'Slack', trello: 'Trello', drive: 'Google Drive', mail: 'Gmail or mbox' };
 /** The folder a Google Drive import goes into, at the top of Drive. */
 export const DRIVE_FOLDER = 'Google Drive import';

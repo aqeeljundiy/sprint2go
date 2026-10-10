@@ -23,6 +23,7 @@ import { SOURCE_NAME, UNDO_HOURS, type ImportChoices, type ImportJob, type Impor
 import * as slack from './importSlack.ts';
 import * as trello from './importTrello.ts';
 import * as drive from './importDrive.ts';
+import * as mail from './importMail.ts'; // Gmail (Takeout) or mbox into a mailbox (Mail for teams)
 import { mark, msg, phrase, type Msg } from '../src/i18n/index.ts';
 import { part, type Said } from './lang.ts';
 
@@ -205,6 +206,7 @@ async function run(id: string) {
     resolvePeople(ctx, summary, items);
     if (r.source === 'slack') await slack.run(ctx);
     else if (r.source === 'trello') await trello.run(ctx);
+    else if (r.source === 'mail') await mail.run(ctx);
     else await drive.run(ctx);
     setRow(id, { status: 'done', finished_at: new Date().toISOString(), summary: JSON.stringify(summary), progress: null });
     const made = summary.made.filter((m) => m.what !== 'people invited' && m.n > 0);
@@ -436,7 +438,7 @@ export interface HandleCtx {
   body: (req: IncomingMessage) => Promise<any>;
 }
 
-const SOURCES: ImportSource[] = ['slack', 'trello', 'drive'];
+const SOURCES: ImportSource[] = ['slack', 'trello', 'drive', 'mail'];
 
 /** Who may import into a company: its owners and admins, never in the demo company, never while it's read-only. */
 function allowed(me: string, wsId: string, change: boolean, operator: string | null): { ws: any } | { status: number; error: string } {
@@ -473,7 +475,7 @@ export async function handle(p: string, c: HandleCtx): Promise<boolean> {
     const source = String(url.searchParams.get('source') ?? '') as ImportSource;
     const a = allowed(me, wsId, true, c.operator);
     if ('error' in a) return (req.resume(), deny(a));
-    if (!SOURCES.includes(source)) return (req.resume(), json(res, 400, { error: mark('Import from Slack, Trello or Google Drive.') }), true);
+    if (!SOURCES.includes(source)) return (req.resume(), json(res, 400, { error: mark('Import from Slack, Trello, Google Drive or Gmail.') }), true);
     const busy = db.db.prepare("SELECT id FROM imports WHERE workspace_id = ? AND status IN ('reading', 'running')").get(wsId);
     if (busy) return (req.resume(), json(res, 409, { error: mark('Another import is going on in this company. Wait for it to finish, then start this one.') }), true);
     const cap = source === 'trello' ? Math.min(limits().upload, limits().json) : limits().upload;
@@ -576,7 +578,7 @@ async function read(id: string) {
   const progress = (phase: string, done: number, total: number) => setRow(id, { progress: JSON.stringify({ phase, done, total }) });
   try {
     const at = { file: uploadPath(id), ws, me: r.created_by, progress, members: membersOf(ws), seats: seatsLeft(ws), room: roomOf(ws.id) };
-    const preview = r.source === 'slack' ? await slack.analyze(at) : r.source === 'trello' ? await trello.analyze(at) : await drive.analyze(at);
+    const preview = r.source === 'slack' ? await slack.analyze(at) : r.source === 'trello' ? await trello.analyze(at) : r.source === 'mail' ? await mail.analyze(at) : await drive.analyze(at);
     if (rowOf(id)?.status !== 'reading') return; // cancelled meanwhile
     setRow(id, { status: 'ready', preview: JSON.stringify(preview), progress: null });
   } catch (e) {
@@ -629,6 +631,11 @@ function checkChoices(ws: any, preview: ImportPreview, raw: any): ImportChoices 
       out.projectId = pid;
     }
     out.archived = !!raw?.archived;
+  }
+  if (preview.source === 'mail') {
+    const id = typeof raw?.mailbox === 'string' ? raw.mailbox : '';
+    if (!preview.mail?.mailboxes.some((m) => m.id === id) || !(ws.accounts ?? []).some((a: any) => a.id === id)) throw new ImportError('Pick the mailbox the mail goes into.');
+    out.mailbox = id;
   }
   if (preview.source === 'drive') {
     const d = preview.drive!;

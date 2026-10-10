@@ -1,4 +1,4 @@
-# Phone mail apps (IMAP and SMTP submission)
+# Phone mail apps (IMAP, POP3 and SMTP submission)
 
 People can read and send their sprint2go mail in iPhone and iPad Mail, Gmail and Outlook on Android, Outlook and Thunderbird. Everything stays in step with sprint2go: reading, flagging, moving and deleting in a mail app changes the same mail in the app, and the other way round, live (IDLE).
 
@@ -61,6 +61,26 @@ New mail is kept exactly as it arrived, and mail the engine sends as it went out
 ## Sending from a mail app
 
 The From (and the envelope sender) must be one of the person's mailboxes or an alias that delivers into one; anything else gets 553. Then it's the same path as sending in sprint2go: the email is saved in its conversation (or a new one, which shows in Sent), checked like `/api/mail/send` (read-only company, sending set up for the mailbox, sending limits), DKIM-signed and queued in the outbox; on a local server mail to outside addresses stays held on this computer. Read tracking stays off. Bcc works. The mail app's Message-ID is kept, so when the app also appends its copy to Sent there's one copy, not two. Mail apps have their own Undo send, so the server doesn't add a second wait.
+
+## POP3
+
+For mail apps and services that only fetch (an old desktop client, a CRM's "fetch mail", another Gmail account's
+"Check mail from other accounts"). Code: `server/pop3.ts`, started by `server/mailApps.ts`; tests in
+`scripts/mail-teams-tests.mjs`.
+
+- **Off by default**, like IMAP: it needs **`POP3_ENABLED=1`** and the same trusted certificate for `MAIL_HOST`. Its
+  own switch, so a server can offer IMAP without POP.
+- **Ports:** 995 (POP3 over TLS, `POP3S_PORT`) and 110 (with STLS, `POP3_PORT`); outside production 1995 and 1110.
+  Publish them on the host like the IMAP ports when it's switched on.
+- **Signing in:** `USER`/`PASS` or `AUTH PLAIN`, with an **app password** (the same ones as IMAP), only once the line
+  is encrypted: the plain port offers `STLS` and refuses a user name before it. Removing the app password, a changed
+  password or "Sign out everywhere" ends POP connections too.
+- **Each person switches it on** in Settings, Mailbox access (as in Gmail), for all mail or from now on, and picks what
+  happens to the copy in sprint2go once a POP app has fetched it: kept, marked read, archived (Done) or moved to Trash.
+- **What it offers:** the mail that arrived in the mailbox the user name names (their own by default): not Spam,
+  Trash or drafts, nothing they sent. As in Gmail, a message a POP app fetched (`RETR`) or deleted (`DELE`) isn't
+  offered again; the choice above is applied at `QUIT`, and a connection that drops changes nothing.
+- Supports `CAPA`, `STAT`, `LIST`, `UIDL` (stable ids), `RETR`, `TOP`, `DELE`, `RSET`, `NOOP`, `QUIT`.
 
 ## Not done
 

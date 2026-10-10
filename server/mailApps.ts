@@ -20,6 +20,7 @@ import { certState, currentTls, loadTls, onCertChange, acmeConfigured } from './
 import { MAIL_HOST, refreshReadiness } from './mailer.ts';
 import * as imap from './imap.ts';
 import * as submission from './submission.ts';
+import * as pop3 from './pop3.ts'; // POP3 next to IMAP, off unless POP3_ENABLED=1 (docs/imap.md)
 import * as store from './imapStore.ts';
 import * as raws from './mailRaw.ts';
 import { companyTz } from '../src/jobTimes.ts';
@@ -45,7 +46,7 @@ let deps: MailAppsDeps;
 
 const production = process.env.NODE_ENV === 'production';
 const port = (name: string, prod: number, dev: number) => Number(process.env[name] ?? (production ? prod : dev));
-export const PORTS = { imap: port('IMAP_PORT', 143, 1143), imaps: port('IMAPS_PORT', 993, 1993), submission: port('SUBMISSION_PORT', 587, 1587), submissions: port('SUBMISSIONS_PORT', 465, 1465) };
+export const PORTS = { imap: port('IMAP_PORT', 143, 1143), imaps: port('IMAPS_PORT', 993, 1993), submission: port('SUBMISSION_PORT', 587, 1587), submissions: port('SUBMISSIONS_PORT', 465, 1465), pop3: port('POP3_PORT', 110, 1110), pop3s: port('POP3S_PORT', 995, 1995) };
 const lower = (s: unknown) => String(s ?? '').trim().toLowerCase();
 const now = () => new Date().toISOString();
 
@@ -93,13 +94,14 @@ export function createPassword(userId: string, name: string) {
 }
 export function removePassword(userId: string, id: string) {
   const gone = db.db.prepare('DELETE FROM app_passwords WHERE id = ? AND user_id = ?').run(id, userId).changes > 0;
-  if (gone) imap.endFor((u, p) => u === userId && p === id);
+  if (gone) (imap.endFor((u, p) => u === userId && p === id), pop3.endFor((u, p) => u === userId && p === id));
   return gone;
 }
 /** Every app password of a person ends (password changed or reset, signed out everywhere, account deleted). */
 export function endAll(userId: string) {
   db.db.prepare('DELETE FROM app_passwords WHERE user_id = ?').run(userId);
   imap.endFor((u) => u === userId);
+  pop3.endFor((u) => u === userId);
 }
 
 /** The person can still sign in at all: there, not suspended or deleted, with a sign-in of their own. */
@@ -253,6 +255,48 @@ async function tryStart() {
   }
 }
 
+/* ---------- POP3: its own switch, the same certificate and app passwords ---------- */
+
+const popByEnv = () => process.env.POP3_ENABLED === '1';
+let popStarted = false;
+let popError: string | null = null;
+/** Whether POP works on this server, and what's missing when it doesn't (Settings, Mailbox access says it). */
+export function popStatus(): { on: boolean; missing: Missing; ports: { pop3: number; pop3s: number } } {
+  const ports = { pop3: PORTS.pop3, pop3s: PORTS.pop3s };
+  if (!popByEnv()) return { on: false, missing: 'switch', ports };
+  if (!trustedNow()) return { on: false, missing: 'certificate', ports };
+  return { on: popStarted, missing: popStarted ? null : 'ports', ports };
+}
+async function tryStartPop() {
+  if (popStarted || !popByEnv() || !trustedNow()) return;
+  popStarted = true;
+  try {
+    await pop3.start(
+      {
+        secureContext,
+        login: async (u, p, ip) => {
+          const r = await login(u, p, ip);
+          if (r.ok) usedBy(r.passwordId, 'imap');
+          return r;
+        },
+        mailboxes: (userId, username) => mailboxesFor(userId, username),
+        stillOk,
+        writer,
+        log: deps.log,
+      },
+      { pop3: PORTS.pop3, pop3s: PORTS.pop3s },
+      bindHost(),
+    );
+    popError = null;
+    deps.log(`Phone mail apps: POP3 on ${PORTS.pop3s} (TLS) and ${PORTS.pop3} (STLS), for ${MAIL_HOST}`);
+  } catch (e) {
+    popStarted = false;
+    popError = e instanceof Error ? e.message : String(e);
+    deps.log(`Phone mail apps: couldn't open the POP3 ports (${popError})`);
+    await pop3.stop().catch(() => {});
+  }
+}
+
 export async function start(d: MailAppsDeps) {
   deps = d;
   // Old sources and folder rows of deleted conversations and mailboxes go once an hour.
@@ -264,15 +308,17 @@ export async function start(d: MailAppsDeps) {
       d.log(`[mail apps] sweep: ${e instanceof Error ? e.message : e}`);
     }
   }, 3600_000).unref?.();
-  if (!enabledByEnv()) return;
+  if (!enabledByEnv() && !popByEnv()) return;
   if (!currentTls()) loadTls(MAIL_HOST);
   onCertChange((tls) => {
     ctxCache = null;
     imap.updateContext(tls);
     submission.updateContext(tls);
     void tryStart();
+    void tryStartPop();
   });
   await tryStart();
+  await tryStartPop();
 }
 
 /** A change anywhere in the app (index.ts broadcast): mail apps watching that mail hear about it. */

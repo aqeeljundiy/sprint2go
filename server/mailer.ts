@@ -22,7 +22,10 @@ import { maybeAnswer, type Away } from './away.ts';
 import { overRoom, overRoomWhy } from './billing.ts';
 import * as whitelist from './whitelist.ts';
 import * as track from './readTracking.ts';
-import { keepRaw } from './mailRaw.ts';
+import { crlf, keepRaw } from './mailRaw.ts';
+// Groups, forwarding and data loss rules (Mail for teams: server/mailGroups.ts, mailForwarding.ts, mailCompliance.ts).
+import * as groups from './mailGroups.ts';
+import * as compliance from './mailCompliance.ts';
 import { msg } from '../src/i18n/index.ts';
 import type { Said } from './lang.ts';
 export { domainKey };
@@ -38,7 +41,7 @@ db.db.exec(`
 type Person = { name: string; email: string };
 type Account = { id: string; email: string; name: string; kind: string; users: string[]; provider?: string; connected?: boolean; away?: Away };
 type Alias = { id: string; address: string; to: string[] };
-type Ws = { id: string; name: string; domains?: string[]; accounts?: Account[]; members: { userId: string; role: string }[]; emailSetup?: string; emailProvider?: string; mailRoute?: 'own' | 'boosted'; mailCredits?: number; mailCreditsNotified?: boolean; mailAliases?: Alias[] };
+type Ws = { id: string; name: string; domains?: string[]; accounts?: Account[]; members: { userId: string; role: string }[]; emailSetup?: string; emailProvider?: string; mailRoute?: 'own' | 'boosted'; mailCredits?: number; mailCreditsNotified?: boolean; mailAliases?: Alias[]; mailGroups?: groups.MailGroup[] };
 
 export interface MailerDeps {
   publicUrl: string;
@@ -92,6 +95,14 @@ export function localAccounts() {
       const boxes = (ws.accounts ?? []).filter((a) => al.to?.includes(a.id) && a.email && (!a.provider || a.provider === 'sprint2go'));
       const aliasDomain = addr.split('@')[1] ?? '';
       if (boxes.length && (ws.domains ?? []).map(lower).includes(aliasDomain) && owner(aliasDomain)?.id === ws.id && !map.has(addr)) map.set(addr, { ws, account: boxes[0], alias: { address: addr, accounts: boxes } });
+    }
+    // Groups (server/mailGroups.ts): a group's address delivers to each member's own mailbox, like an alias. A shared
+    // inbox group is a mailbox of its own, already in the accounts above.
+    for (const g of groups.groupsOf(ws)) {
+      if (g.kind !== 'list') continue;
+      const boxes = groups.listTargets(ws as any, g) as unknown as Account[];
+      const d = g.address.split('@')[1] ?? '';
+      if (boxes.length && (ws.domains ?? []).map(lower).includes(d) && owner(d)?.id === ws.id && !map.has(g.address)) map.set(g.address, { ws, account: boxes[0], alias: { address: g.address, accounts: boxes } });
     }
   }
   return map;
@@ -346,8 +357,11 @@ export function startMailer(d: MailerDeps) {
     disabledCommands: ['AUTH'],
     hideSTARTTLS: !tls,
     ...(tls ?? {}),
-    onRcptTo(address, _session, cb) {
-      if (accountFor(address.address) || supportAddresses().includes(lower(address.address)) || probeHook?.accepts(lower(address.address))) return cb();
+    onRcptTo(address, session, cb) {
+      // A group or shared inbox that takes mail only from the company or its members refuses everyone else here.
+      const hit = accountFor(address.address);
+      if (hit && !groups.mayPostTo(hit.ws as any, address.address, session.envelope.mailFrom ? session.envelope.mailFrom.address : '', (id) => db.getDoc('users', id) as any)) return cb(Object.assign(new Error('You aren’t allowed to post to this group'), { responseCode: 550 }));
+      if (hit || supportAddresses().includes(lower(address.address)) || probeHook?.accepts(lower(address.address))) return cb();
       cb(Object.assign(new Error('No such mailbox here'), { responseCode: 550 }));
     },
     onData(stream, session, cb) {
@@ -477,6 +491,9 @@ async function receive(raw: Buffer, session: SMTPServerSession) {
     const thread = existing
       ? { ...existing, unread: true, location: existing.location === 'trash' || existing.location === 'archive' ? 'inbox' : existing.location, snoozedUntil: undefined, snoozeIfNoReply: undefined, messages: [...existing.messages, msg] }
       : { id: 't-' + randomBytes(6).toString('hex'), accountId: account.id, subject: cleanSubject(parsed.subject ?? '') || '(no subject)', location: spam ? 'spam' : 'inbox', starred: false, unread: true, labels: [], messages: [msg], workspaceId: ws.id };
+    // Forwarding (server/mailForwarding.ts): a copy goes on to the mailbox's verified address, and what happens to
+    // the copy here (kept, read, archived, in Trash) changes the thread before it's saved.
+    if (!spam && deliveredHook) Object.assign(thread, deliveredHook({ ws, account, threadId: thread.id, raw }) ?? {});
     // The source as it arrived, for mail apps over IMAP (server/imap.ts).
     keepRaw(thread.id, msg.id, raw);
     db.writeDocs('threads', [thread], [], null);
@@ -490,6 +507,11 @@ async function receive(raw: Buffer, session: SMTPServerSession) {
     if (!shared) void maybeAnswer({ workspaceId: ws.id, account, canSend: !!(ws as any).mailReady?.mailboxes?.[account.id]?.send, parsed, envelopeFrom: sender, mid, refs, spam, send: queueSend, log: deps.log });
   }
 }
+
+/** After a message is delivered to one of our mailboxes from outside: forwarding's hook (a patch for the thread). */
+export type DeliveredHook = (d: { ws: any; account: any; threadId: string; raw: Buffer }) => Record<string, unknown> | null;
+let deliveredHook: DeliveredHook | null = null;
+export const onDelivered = (fn: DeliveredHook) => (deliveredHook = fn);
 
 /* ---------- sending ---------- */
 
@@ -559,6 +581,15 @@ export async function queueSend(o: Outgoing): Promise<{ mid: string; queued: num
     markDelivery(o.threadId, o.messageId, null, 'failed', blocked);
     throw new Error(blocked);
   }
+  // Data loss rules (server/mailCompliance.ts): a rule that blocks stops it everywhere (scheduled mail, mail apps);
+  // a warning was already put to the sender by /api/mail/send, so only blocks count here.
+  const dlp = compliance.blocking(compliance.scan(compliance.policyOf(ws as any), { subject: o.subject, text: o.text, html: o.html, files: o.files }));
+  if (dlp.length && !String(o.messageId).startsWith('auto-')) {
+    const why = compliance.checkOutgoing(ws as any, o.accountId, o.tracking?.by ?? 'system', { subject: o.subject, text: o.text, html: o.html, files: o.files });
+    const words = 'why' in why ? why.why : 'This email can’t be sent: your company’s data loss rules block it.';
+    markDelivery(o.threadId, o.messageId, null, 'failed', words);
+    throw new Error(words);
+  }
   const recipientsCount = [...o.to, ...o.cc, ...(o.bcc ?? [])].length;
   const sentLastHour = (db.db.prepare('SELECT COUNT(*) AS n FROM outbox WHERE account_id = ? AND created_at >= ?').get(o.accountId, new Date(Date.now() - 3600_000).toISOString()) as { n: number }).n;
   const sentLastDay = (db.db.prepare('SELECT COUNT(*) AS n FROM outbox WHERE account_id = ? AND created_at >= ?').get(o.accountId, new Date(Date.now() - 86_400_000).toISOString()) as { n: number }).n;
@@ -626,8 +657,11 @@ export async function queueSend(o: Outgoing): Promise<{ mid: string; queued: num
       return (found.alias?.accounts ?? [found.account]).map((account) => ({ hit: { ws: found.ws, account }, shared: (found.alias?.accounts.length ?? 1) > 1 }));
     })
     .filter((x, i, all) => all.findIndex((y) => y.hit.account.id === x.hit.account.id) === i);
+  // A group or shared inbox that only its members may post to doesn't take mail from anyone else here either.
+  const refusedGroups = new Set(local.filter((p) => !groups.mayPostTo(mine.get(p.email)!.ws as any, p.email, o.from.email, (id) => db.getDoc('users', id) as any)).map((p) => p.email));
   for (const { hit, shared } of localBoxes) {
     if (hit.account.id === o.accountId) continue;
+    if (refusedGroups.size && local.some((p) => refusedGroups.has(p.email) && (mine.get(p.email)!.alias?.accounts ?? [mine.get(p.email)!.account]).some((a) => a.id === hit.account.id)) && !local.some((p) => !refusedGroups.has(p.email) && (mine.get(p.email)!.alias?.accounts ?? [mine.get(p.email)!.account]).some((a) => a.id === hit.account.id))) continue;
     const parsed = await simpleParser(raw);
     // Pictures inside the HTML (from a mail app) arrive as part of it, as in received mail, not as attachments.
     const inline = o.files.some((f) => f.cid);
@@ -955,6 +989,25 @@ export async function queueSystemMail(m: SystemMail) {
   void pump();
   return { mid, ids };
 }
+/**
+ * Queues a finished message (already as it should leave) from one of a company's mailboxes to one outside address:
+ * forwarding (server/mailForwarding.ts). Signed with the mailbox's domain like any mail from here; the envelope
+ * sender is the mailbox, so bounces come back to it. Kept on this computer on a local server, like other mail.
+ */
+export async function queueRaw(o: { workspaceId: string; accountId: string; threadId?: string; from: string; to: string; raw: Buffer; tag: string }) {
+  const ws = workspaces().find((w) => w.id === o.workspaceId);
+  if (!ws) throw new Error('No such company');
+  const blocked = cantSend(ws);
+  if (blocked) throw new Error(blocked);
+  const domain = lower(o.from.split('@')[1] ?? '') || MAIL_HOST;
+  const route: 'own' | 'boosted' = ws.mailRoute === 'boosted' && boostedAvailable() && (ws.mailCredits ?? 0) > 0 ? 'boosted' : 'own';
+  const raw = route === 'own' ? await signFor(crlf(o.raw), domain, ws.id) : crlf(o.raw);
+  const id = randomBytes(8).toString('hex');
+  db.db.prepare('INSERT INTO outbox (id, workspace_id, account_id, thread_id, message_id, route, from_addr, to_addr, raw, attempts, next_at, state, error, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, NULL, ?)').run(id, ws.id, o.accountId, o.threadId ?? null, o.tag, route, lower(o.from), lower(o.to), raw, now(), 'queued', now());
+  void pump();
+  return id;
+}
+
 /** Where an outbox row stands: still trying, delivered, given up (with the receiving server's last answer), or kept on this computer. */
 export const outboxState = (id: string) => db.db.prepare('SELECT state, error, attempts FROM outbox WHERE id = ?').get(id) as { state: 'queued' | 'sent' | 'failed' | 'local'; error: string | null; attempts: number } | undefined;
 

@@ -5,6 +5,7 @@
 //  - the storage pool: the plan's, plus storage and mailbox add-ons; uploaded files and kept recordings use it
 //  - meeting-bot hours a month: the plan's, plus the "10 more hours" add-on
 //  - Boosted sending credits: bought with an invoice paid by bank transfer, added when an operator marks it paid
+import { mailBytes } from './mailStorage.ts';
 import * as db from './db.ts';
 import * as platform from './platform.ts';
 import { randomBytes } from 'node:crypto';
@@ -307,16 +308,18 @@ export function storageRoom(wsId: string, userId?: string | null) {
   const ws = db.getDoc('workspaces', wsId) as Ws | undefined;
   const files = db.storageOf(wsId);
   const recordings = recordingsBytes(wsId);
-  const used = files.used + recordings;
+  // Mail counts too: each email's kept source and the conversations (attachments are files, already in `files`).
+  const mail = mailBytes(ws);
+  const used = files.used + recordings + mail;
   if (whitelist.on(ws)) {
     const room = whitelist.diskRoom().room;
     const cap = whitelist.rule(wsId, userId)?.storageGB;
     const mine = files.byPerson.find((x) => x.userId === userId)?.bytes ?? 0;
     const personLeft = cap ? Math.max(0, cap * 1024 ** 3 - mine) : Infinity;
-    return { total: used + room, used, video: files.video, byPerson: files.byPerson, recordings, left: Math.min(room, personLeft), unlimited: true as const, why: personLeft < room ? ('person' as const) : ('disk' as const), cap: cap ?? null, mine };
+    return { total: used + room, used, mail, video: files.video, byPerson: files.byPerson, recordings, left: Math.min(room, personLeft), unlimited: true as const, why: personLeft < room ? ('person' as const) : ('disk' as const), cap: cap ?? null, mine };
   }
   const total = storageGB(planOf(ws), teamSize(ws)) * 1024 ** 3;
-  return { total, used, video: files.video, byPerson: files.byPerson, recordings, left: Math.max(0, total - used), unlimited: false as const, why: 'plan' as const, cap: null, mine: 0 };
+  return { total, used, mail, video: files.video, byPerson: files.byPerson, recordings, left: Math.max(0, total - used), unlimited: false as const, why: 'plan' as const, cap: null, mine: 0 };
 }
 
 /* ---------- meeting-bot hours ---------- */

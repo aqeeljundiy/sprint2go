@@ -66,6 +66,13 @@ import * as connector from './connector.ts';
 import { eventReminders, reminderWords } from './eventReminders.ts';
 import * as notesTrash from './notesTrash.ts';
 import * as mailApps from './mailApps.ts';
+// Mail for teams: delegation, forwarding, POP, contacts, groups, retention and legal hold, data loss rules, export,
+// storage (server/mailPlus.ts and the files it names).
+import * as mailPlus from './mailPlus.ts';
+import * as delegation from './mailDelegation.ts';
+import * as compliance from './mailCompliance.ts';
+import * as mailAudit from './mailAudit.ts';
+import * as forwarding from './mailForwarding.ts';
 import * as lang from './lang.ts';
 import { mark, msg, phrase, t, textOf } from '../src/i18n/index.ts';
 import { fmtDayLong, fmtMonth } from '../src/i18n/format.ts';
@@ -297,7 +304,8 @@ function teamLens(userId: string): (coll: string, d: any) => any | null {
   if (!mine.size) return () => null; // someone at a client only
   const people = new Set(ws.filter((w) => mine.has(w.id)).flatMap((w) => w.members.map((m) => m.userId)));
   const firstWs = (ws.find((w) => w.id === 'pnp') ?? ws[0])?.id; // older documents without a workspace belong to the first one (as in the app)
-  const accounts = new Map(ws.flatMap((w) => ((w.accounts ?? []) as { id: string; users?: string[] }[]).map((a) => [a.id, { ws: w.id, users: a.users ?? [] }] as const)));
+  // A mailbox's delegates (server/mailDelegation.ts) open it like its own people.
+  const accounts = new Map(ws.flatMap((w) => ((w.accounts ?? []) as { id: string; users?: string[] }[]).map((a) => [a.id, { ws: w.id, users: delegation.openersOf(a) }] as const)));
   const channels = new Map((db.allDocs('channels') as any[]).map((c) => [String(c.id), c]));
   // Tasks: owners and admins see all of a company's; members see their own work, their teams', the projects they're on
   // (every project when the company allows it) and their channels'. The same rule as the app's.
@@ -1482,11 +1490,14 @@ function applySync(me: string, incoming: any, from: { conn?: string; operator?: 
         // the routing checks' results (the admins only switch the daily check on or off), the company's own address
         // with its state (changed through /api/white-label/domain only), the mail aliases (set through the server)
         // and WhatsApp (connected through the server: its number decides whose messages arrive here).
-        const own = { mailReady: before.mailReady, mailCredits: before.mailCredits, mailCreditsNotified: before.mailCreditsNotified, suspended: before.suspended, createdAt: before.createdAt, mailAliases: before.mailAliases, whatsapp: before.whatsapp, bimi: before.bimi, ...(DEMO ? {} : { mailRouting: serverRouting((d as any).mailRouting, before.mailRouting) }) };
+        // (Mail groups and the mail rules are set through /api/mail/groups and /api/mail/policy, server/mailPlus.ts.)
+        const own = { mailReady: before.mailReady, mailCredits: before.mailCredits, mailCreditsNotified: before.mailCreditsNotified, suspended: before.suspended, createdAt: before.createdAt, mailAliases: before.mailAliases, mailGroups: before.mailGroups, mailPolicy: before.mailPolicy, whatsapp: before.whatsapp, bimi: before.bimi, ...(DEMO ? {} : { mailRouting: serverRouting((d as any).mailRouting, before.mailRouting) }) };
         // Boosted sending only where this server has it.
         if ((d as any).mailRoute === 'boosted' && before.mailRoute !== 'boosted' && !mailer.boostedAvailable()) (d as any).mailRoute = before.mailRoute;
         // Out of office belongs to each mailbox's people and is set through the server (/api/mail/away).
         if (Array.isArray((d as any).accounts)) (d as any).accounts = (d as any).accounts.map((a: any) => ({ ...a, away: (before.accounts ?? []).find((b: any) => b.id === a.id)?.away }));
+        // A mailbox's delegates and a shared inbox's group are the server's too (server/mailDelegation.ts).
+        (d as any).accounts = delegation.keepServerFields((d as any).accounts, before.accounts);
         const owner = (before.members ?? []).some((m: any) => m.userId === me && m.role === 'owner');
         // The plan and billing are the owners' (the billing page says so); admins' saves keep it as it was.
         const asked = planFromApp((d as any).plan, before.plan);
@@ -1513,7 +1524,8 @@ function applySync(me: string, incoming: any, from: { conn?: string; operator?: 
         const timeZone = isZone((d as any).timeZone) ? (d as any).timeZone : before.timeZone;
         return { ...d, ...own, timeZone, accounts: boxes.accounts, plan, taskStages, chat: chat.chat, whiteLabel: ownAddress((d as any).whiteLabel, before.whiteLabel), security: sec.security } as db.Doc;
       }
-      const { mailReady: _r, mailCredits: _c, mailCreditsNotified: _n, suspended: _s, whatsapp: _wa, mailAliases: _al, bimi: _bimi, ...fresh } = d as any;
+      const { mailReady: _r, mailCredits: _c, mailCreditsNotified: _n, suspended: _s, whatsapp: _wa, mailAliases: _al, bimi: _bimi, mailGroups: _mg, mailPolicy: _mp, ...fresh } = d as any;
+      if (Array.isArray(fresh.accounts)) fresh.accounts = delegation.keepServerFields(fresh.accounts, []);
       if (!isZone(fresh.timeZone)) delete fresh.timeZone; // the creator's browser said one the clock doesn't know
       // One free trial per person and per company domain, as for /api/workspace.
       const trial = billing.trialOnCreate(planFromApp(fresh.plan, undefined).plan, { id: me, email: String(person.email ?? '') }, { id: String(fresh.id), name: String(fresh.name ?? ''), domains: fresh.domains });
@@ -1614,6 +1626,8 @@ function applySync(me: string, incoming: any, from: { conn?: string; operator?: 
         // Nothing in a read-only company is deleted either.
         const ro = billing.readOnlyWords(db.getDoc('workspaces', String(wsOfDoc(before, before) ?? '')));
         if (ro) return (say(ro), false);
+        // A mailbox on legal hold keeps its mail: nothing in it is deleted for good (server/mailCompliance.ts).
+        if (coll === 'threads' && compliance.threadHeld(before)) return (say(mark(compliance.HOLD_WORDS)), false);
         return see(coll, before) && mayDelete(before) && feeds.mayDelete(coll, before, me);
       })
     : [];
@@ -2102,6 +2116,8 @@ createServer(async (req, res) => {
     if (p.startsWith('/api/oauth/') && (await connector.handleApi(p, { req, res, url, me, operator: session?.operator ?? null, json, body }))) return;
     // Phone mail apps: app passwords, setup help, the Apple profile (Settings, Phone mail apps).
     if (p.startsWith('/api/mailapps') && (await mailApps.handleApi(p, { req, res, url, me, operator: session?.operator ?? null, json, body, tooMany }))) return;
+    // Mail for teams (server/mailPlus.ts): its own /api/mail/ routes; anything else carries on below.
+    if (p.startsWith('/api/mail/') && (await mailPlus.handleApi(p, { req, res, url, me, operator: session?.operator ?? null, json, body, tooMany }))) return;
 
     /* ---------- help and support, for everyone signed in ---------- */
     if (p === '/api/support' && req.method === 'GET') {
@@ -2402,7 +2418,9 @@ createServer(async (req, res) => {
       }
       // A mailbox's own people send from it; a shared inbox also its company's admins. Never someone's personal mailbox.
       const users: string[] = Array.isArray(account.users) ? account.users : [];
-      if (users.length ? !users.includes(me) && !(account.kind === 'shared' && isAdminOf(me, ws.id)) : account.kind !== 'shared' && !isAdminOf(me, ws.id)) return json(res, 403, { error: mark('Not your mailbox.') });
+      // Someone the owner gave access to (server/mailDelegation.ts) sends from it too: as the mailbox, or on its behalf.
+      const delegate = delegation.delegateOf(account, me);
+      if (!delegate && (users.length ? !users.includes(me) && !(account.kind === 'shared' && isAdminOf(me, ws.id)) : account.kind !== 'shared' && !isAdminOf(me, ws.id))) return json(res, 403, { error: mark('Not your mailbox.') });
       const ro = billing.readOnlyWords(ws);
       if (ro) return json(res, 403, { error: ro });
       // The message lives in a thread of this mailbox (or a new one, saved a moment later); attachments are this company's files.
@@ -2414,6 +2432,15 @@ createServer(async (req, res) => {
       };
       if ((Array.isArray(b.files) ? b.files : []).some((f: any) => f && typeof f.url === 'string' && !fileOk(f.url))) return json(res, 403, { error: mark('One of the attachments isn’t a file of this company.') });
       const people = (list: unknown) => (Array.isArray(list) ? list : []).filter((x: any) => x && typeof x.email === 'string' && x.email.includes('@')).map((x: any) => ({ name: String(x.name ?? '').slice(0, 120), email: String(x.email).trim().toLowerCase() }));
+      // Data loss rules (server/mailCompliance.ts): a warning goes back to the sender, who confirms (dlpAck); a block stops it.
+      const files0 = (Array.isArray(b.files) ? b.files : []).filter((f: any) => f && typeof f.name === 'string').map((f: any) => ({ name: String(f.name) }));
+      const dlp = compliance.checkOutgoing(ws, account.id, me, { subject: String(b.subject ?? ''), text: String(b.text ?? ''), html: typeof b.html === 'string' ? b.html : undefined, files: files0 }, b.dlpAck === true);
+      if (!dlp.ok) return json(res, 409, { error: dlp.why, dlp: { action: dlp.action, rules: dlp.rules } });
+      // A delegate sending "on behalf of": the mailbox in From, the delegate as Sender (Gmail and Outlook show "sent by").
+      const meUser = db.getDoc('users', me) as any;
+      const meBox = (ws.accounts ?? []).find((a: any) => a.kind === 'personal' && (a.users ?? []).includes(me) && !a.temp);
+      const senderHeader = delegate?.send === 'behalf' ? { Sender: `"${String(meUser?.name ?? '').replace(/["\\\r\n]/g, '')}" <${String(meBox?.email ?? meUser?.email ?? '').toLowerCase()}>` } : undefined;
+      if (delegate) mailAudit.log(ws.id, me, 'delegate.send', account.id, `“${String(b.subject ?? '').slice(0, 80)}” ${delegate.send === 'behalf' ? 'on behalf of the owner' : 'as the mailbox'}`);
       try {
         platform.firstEvent('mail.first', ws.id, me);
         const email: mailer.Outgoing = {
@@ -2431,6 +2458,7 @@ createServer(async (req, res) => {
           files: (Array.isArray(b.files) ? b.files : []).filter((f: any) => f && typeof f.url === 'string').map((f: any) => ({ name: String(f.name ?? 'file').slice(0, 200), url: String(f.url) })),
           inReplyTo: typeof b.inReplyTo === 'string' ? b.inReplyTo : undefined,
           references: Array.isArray(b.references) ? b.references.filter((x: unknown) => typeof x === 'string') : undefined,
+          headers: senderHeader,
           // Read tracking for the outside recipients, when the sender asked and the company allows it.
           // "Remind me if no reply" comes with tracking (it's in the same menu): told once, by the server, after that many days.
           tracking: b.track === true ? { opens: b.trackOptions?.opens !== false, clicks: b.trackOptions?.clicks !== false, notify: b.trackOptions?.notify !== false, by: me, remindDays: Number(b.trackOptions?.remindDays) || 0 } : undefined,
@@ -2660,6 +2688,8 @@ createServer(async (req, res) => {
       if (!account) return json(res, 404, { error: mark('No such mailbox.') });
       const target = moveTo ? (ws.accounts ?? []).find((a: any) => a.id === moveTo && a.id !== account.id && !a.temp) : null;
       if (moveTo && !target) return json(res, 400, { error: mark('Pick a mailbox to move the mail to.') });
+      if (!target && compliance.mailboxHeld(ws, account.id)) return json(res, 409, { error: mark('This mailbox is on legal hold, so its mail can’t be deleted. Move it to another mailbox instead.') });
+      forwarding.forget(account.id);
       const mail = (db.allDocs('threads') as any[]).filter((t) => t.accountId === account.id);
       // Deletions first, while the people on the mailbox can still see them.
       db.writeDocs('threads', [], mail.map((t) => t.id), me);
@@ -3034,7 +3064,7 @@ createServer(async (req, res) => {
       if (!team && !portalsOf(me).some((pt) => pt.workspaceId === wsId)) return json(res, 403, { error: mark('Not in this company.') });
       const room = storageRoom(wsId, team ? me : null);
       const w = workspaces().find((x) => x.id === wsId) as any;
-      return json(res, 200, { askOverMb: w?.storage?.askOver ?? 500, used: room.used, total: room.total, left: room.left, maxUpload: MAX_UPLOAD, ...(team ? { video: room.video, byPerson: room.byPerson } : {}) });
+      return json(res, 200, { askOverMb: w?.storage?.askOver ?? 500, used: room.used, total: room.total, left: room.left, maxUpload: MAX_UPLOAD, ...(team ? { video: room.video, byPerson: room.byPerson, mail: room.mail } : {}) });
     }
     const fileReq = p.match(/^\/api\/files\/([a-f0-9]{32})$/);
     if (fileReq && req.method === 'GET') {
@@ -3520,6 +3550,7 @@ createServer(async (req, res) => {
   feeds.startCalendarFeeds({ broadcast });
   calendarInvites.initInvites({ broadcast });
   // Phone mail apps (IMAP and SMTP submission): off unless IMAP_ENABLED=1 and the mail certificate is trusted.
+  mailPlus.start({ broadcast, notify: (userIds, wsId, text, link) => notifyPeople(userIds, wsId, text, link), log: (line) => console.log(line) });
   void mailApps.start({ write: (userId, coll, upserts, deletes) => applySync(userId, { coll, upserts, deletes }), memberOf: (userId) => memberOf(userId) as any, readOnlyWhy: (w) => billing.readOnlyWhy(w as any), log: (line) => console.log(line) });
 }).requestTimeout = 60 * 60_000; // a big upload on a slow line can take a while (Node's own limit is 5 minutes)
 
