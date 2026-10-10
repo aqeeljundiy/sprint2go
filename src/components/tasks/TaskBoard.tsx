@@ -1,6 +1,6 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { CheckCircle2, ChevronDown, MessageSquare, Plus, Repeat as RepeatIcon } from 'lucide-react';
+import { CalendarDays, Check, CheckCircle2, ChevronDown, Columns3, MessageSquare, MoreHorizontal, Plus, Repeat as RepeatIcon } from 'lucide-react';
 import { useLongPress } from '../ui/useLongPress';
 import { useActionMenu, type SheetAction } from '../ui/ActionSheet';
 import { dateTone, dueText } from '../../taskDates';
@@ -20,9 +20,9 @@ const touchFirst = () => typeof matchMedia === 'function' && matchMedia('(hover:
 
 /**
  * The board: one column per stage. On a computer the columns sit side by side and cards drag with the mouse. On a
- * phone one column fills most of the width with the next one peeking, it snaps as you swipe, and a strip of stage names
- * jumps between them. A card moves by holding it and dragging (the board scrolls when you reach its edge), by "Move to"
- * in its menu, or by tapping its stage.
+ * phone (Todoist's board) one column fills most of the width with the next one peeking and it snaps as you swipe; each
+ * stage shows once, in its column's header; cards have a ring to tick them. A card moves by holding it and dragging
+ * (the board scrolls when you reach its edge), by "Move to" in its menu, or (computer) by tapping its stage.
  */
 export function TaskBoard({
   ops,
@@ -31,6 +31,8 @@ export function TaskBoard({
   menu,
   onStage,
   onAdd,
+  onTick,
+  onEditStages,
 }: {
   ops: TaskOps;
   tasks: Todo[];
@@ -38,6 +40,8 @@ export function TaskBoard({
   menu: (task: Todo) => SheetAction[];
   onStage: (task: Todo) => void; // the stage pill: pick a stage
   onAdd: (stageId: string) => void;
+  onTick?: (task: Todo) => void; // phones: the card's ring
+  onEditStages?: () => void; // phones: a column's "…" and the "Add stage" column (people who manage the stages)
 }) {
   const phone = usePhone();
   const scroller = useRef<HTMLDivElement>(null);
@@ -45,7 +49,6 @@ export function TaskBoard({
   const dragRef = useRef<Drag | null>(null);
   dragRef.current = drag;
   const [mouseDrag, setMouseDrag] = useState<string | null>(null);
-  const [current, setCurrent] = useState(0);
   // The page's columns (a project's or team's own stages on its page, else the company's); a task with stages of its
   // own sits in its own stage when the board has it, else the column of the same kind.
   const cols = ops.stages.map((s) => ({ s, items: tasks.filter((task) => columnOf(task, ops.stages).id === s.id) }));
@@ -91,45 +94,9 @@ export function TaskBoard({
     return () => cancelAnimationFrame(raf);
   }, [drag?.on]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Phones: which column is in view, for the strip.
-  useEffect(() => {
-    const el = scroller.current;
-    if (!el || !phone) return;
-    const on = () => {
-      const col = el.querySelector<HTMLElement>('.tcol');
-      if (!col) return;
-      const w = col.offsetWidth + 12;
-      setCurrent(Math.max(0, Math.min(cols.length - 1, Math.round(el.scrollLeft / w))));
-    };
-    el.addEventListener('scroll', on, { passive: true });
-    return () => el.removeEventListener('scroll', on);
-  }, [phone, cols.length]);
-  const jump = (i: number) => {
-    const el = scroller.current;
-    const col = el?.querySelectorAll<HTMLElement>('.tcol')[i];
-    if (el && col) el.scrollTo({ left: col.offsetLeft - el.offsetLeft - 16, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
-  };
-  // The strip keeps the current stage in view.
-  const strip = useRef<HTMLDivElement>(null);
-  useLayoutEffect(() => {
-    const b = strip.current?.children[current] as HTMLElement | undefined;
-    b?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-  }, [current]);
-
   const dragged = drag ? tasks.find((task) => task.id === drag.id) : undefined;
   return (
     <div className={`tboard-wrap${drag?.on ? ' dragging' : ''}`}>
-      {phone && (
-        <div className="tboard-strip" ref={strip} role="tablist" aria-label={t('Stages')}>
-          {cols.map(({ s, items }, i) => (
-            <button key={s.id} type="button" role="tab" aria-selected={i === current} className={i === current ? 'on' : ''} onClick={() => jump(i)}>
-              <span className={`stage-dot k-${s.kind} tone-${toneOf(s)}`} />
-              {stageName(s)}
-              <b>{items.length}</b>
-            </button>
-          ))}
-        </div>
-      )}
       <div className="tboard" ref={scroller} style={{ ['--cols' as string]: cols.length }}>
         {cols.map(({ s, items }) => (
           <section
@@ -148,6 +115,7 @@ export function TaskBoard({
               <span className={`stage-dot k-${s.kind} tone-${toneOf(s)}`} />
               <span className="tcol-name">{stageName(s)}</span>
               <span className="tcol-n">{items.length}</span>
+              {phone && <ColumnMenu name={stageName(s)} onAdd={() => onAdd(s.id)} onEditStages={onEditStages} />}
             </header>
             <div className="tcol-cards">
               {items.map((task) => (
@@ -159,6 +127,7 @@ export function TaskBoard({
                   menu={() => menu(task)}
                   dragging={drag?.on && drag.id === task.id}
                   onStage={() => onStage(task)}
+                  onTick={phone ? onTick : undefined}
                   onMouseDrag={setMouseDrag}
                   onLift={(x, y, r) => setDrag({ id: task.id, x, y, dx: x - r.left, dy: y - r.top, w: r.width, on: false, over: null })}
                   onMove={(x, y) => setDrag((d) => d && { ...d, x, y, on: true, over: colAt(x, y) })}
@@ -177,6 +146,11 @@ export function TaskBoard({
             </button>
           </section>
         ))}
+        {phone && onEditStages && (
+          <button type="button" className="tcol tcol-new" onClick={onEditStages}>
+            <Plus size={18} /> {t('Add stage')}
+          </button>
+        )}
       </div>
       {drag?.on &&
         dragged &&
@@ -199,6 +173,7 @@ function BoardCard({
   menu,
   dragging,
   onStage,
+  onTick,
   onMouseDrag,
   onLift,
   onMove,
@@ -211,6 +186,7 @@ function BoardCard({
   menu: () => SheetAction[];
   dragging?: boolean;
   onStage: () => void;
+  onTick?: (task: Todo) => void;
   onMouseDrag: (id: string | null) => void;
   onLift: (x: number, y: number, r: DOMRect) => void;
   onMove: (x: number, y: number) => void;
@@ -219,7 +195,7 @@ function BoardCard({
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const moved = useRef(false);
-  const m = useActionMenu(menu, { title: task.title });
+  const m = useActionMenu(menu, { title: task.title, className: 'task-menu' });
   // Hold, then move: drag. Hold and let go without moving: the card's menu.
   const press = useLongPress(
     (p) => {
@@ -264,6 +240,11 @@ function BoardCard({
         }}
       >
         <div className="tcard-top">
+          {onTick && (
+            <button type="button" className={`trow-check tcard-check${task.priority === 'high' && look.show('priority') ? ' p-high' : ''}${task.done ? ' on' : ''}`} onClick={() => onTick(task)} aria-label={task.done ? t('Mark not done') : t('Mark “{title}” done', { title: task.title })}>
+              <span className="ring">{task.done && <Check size={11} strokeWidth={3} />}</span>
+            </button>
+          )}
           <button type="button" className="tcard-title" onClick={() => ops.open(task.id)}>
             {task.priority === 'high' && look.show('priority') && <i className="tcard-high" aria-label={t('High priority')} />}
             {task.title}
@@ -273,7 +254,8 @@ function BoardCard({
         <div className="tcard-meta">
           {look.show('due') && task.due && !task.done && (
             <span className={`tm due-${tone}`}>
-              {task.repeat && <RepeatIcon size={12} />}
+              {task.repeat && <RepeatIcon size={12} className="tm-rep" />}
+              <CalendarDays size={12} className="tm-cal" aria-hidden="true" />
               {dueText(task.due, ops.today)}
             </span>
           )}
@@ -294,12 +276,28 @@ function BoardCard({
             </span>
           )}
         </div>
+        {!onTick && (
         <button type="button" className={`tcard-stage tone-${toneOf(st)}`} onClick={onStage} aria-label={t('Stage: {stage}. Move to another stage', { stage: stageName(st) })}>
           <span className={`stage-dot k-${st.kind} tone-${toneOf(st)}`} />
           {stageName(st)}
           <ChevronDown size={13} />
         </button>
+        )}
       </div>
+      {m.menu}
+    </>
+  );
+}
+
+/** Phones: a column's "…" (Todoist's section menu): add a task in this stage, or change the stages. */
+function ColumnMenu({ name, onAdd, onEditStages }: { name: string; onAdd: () => void; onEditStages?: () => void }) {
+  const btn = useRef<HTMLButtonElement>(null);
+  const m = useActionMenu(() => [{ label: t('Add task here'), icon: Plus, run: onAdd }, ...(onEditStages ? [{ label: t('Edit stages'), icon: Columns3, run: onEditStages }] : [])], { title: name, menu: true });
+  return (
+    <>
+      <button ref={btn} type="button" className="icon-btn tcol-more" onClick={() => m.openFrom(btn)} aria-label={t('More for {stage}', { stage: name })}>
+        <MoreHorizontal size={18} />
+      </button>
       {m.menu}
     </>
   );

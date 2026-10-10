@@ -1,8 +1,9 @@
 import { useMemo, useRef, useState, type ReactNode } from 'react';
-import { SmoothHeight } from './ui/Smooth';
+import { flushSync } from 'react-dom';
+import { SmoothHeight, TabPane } from './ui/Smooth';
 import { term } from '../terms';
-import { FolderPlus, ChevronUp, Handshake, ChevronDown, ChevronRight, Check, LayoutList, Pencil, Compass, Hash, Lock, MoreHorizontal, Plus, Settings, Star, Trash2, Users, X, Headphones, BellOff, Bell, Link2, LogOut, MailOpen, CheckCheck, Inbox, MessagesSquare, SendHorizontal, Bookmark, ArrowLeft, ArrowRight, EyeOff, SlidersHorizontal, PenLine } from 'lucide-react';
-import type { Channel, ChannelCategory, ChatLayout, ChatMessage, ChatSection, ChatView as ChatViewDef, Status, Team, User } from '../types';
+import { FolderPlus, ChevronUp, Handshake, ChevronDown, ChevronRight, Check, LayoutList, Pencil, Compass, Hash, Lock, MoreHorizontal, Plus, Settings, Star, Trash2, Users, X, Headphones, BellOff, Bell, Link2, LogOut, MailOpen, CheckCheck, Inbox, MessagesSquare, SendHorizontal, Bookmark, ArrowLeft, ArrowRight, EyeOff, SlidersHorizontal, PenLine, AtSign, MessageCircle, Folder, Briefcase, PartyPopper, ListFilter, Clock } from 'lucide-react';
+import type { Channel, ChannelCategory, ChatLayout, ChatMessage, ChatSection, ChatView as ChatViewDef, Notice, Status, Team, User } from '../types';
 import { usePersisted } from '../settings';
 import { Avatar } from './Avatar';
 import { Badge } from './ui/Person';
@@ -12,7 +13,10 @@ import { PeoplePicker } from './ui/PeoplePicker';
 import { Select } from './ui/Select';
 import { CATEGORY_NAME, CATEGORY_ONE, categoryText } from './ChannelDialog';
 import { Sheet } from './ui/Sheet';
+import { PushScreen } from './ui/PushScreen';
 import { ActionSheet, type SheetAction } from './ui/ActionSheet';
+import { EmptyState } from './ui/EmptyState';
+import { ChatActivity } from './chat/Activity';
 import { useLongPress } from './ui/useLongPress';
 import { SquarePen, Search as SearchIcon } from 'lucide-react';
 import { useAppSettings, useCreateAction, useTitleMenu } from '../mobile/chrome';
@@ -110,6 +114,14 @@ interface SidebarProps {
   onLayout: (l: ChatLayout) => void;
   teams: Team[];
   onSectionAccess: (sectionId: string, access: { userIds: string[]; teamIds: string[] }) => void;
+  /** Phones: Chat's Activity (mentions, thread replies, DMs to you): this company's chat notices for me. */
+  notices?: Notice[];
+  onOpenNotice?: (n: Notice) => void;
+  onReadNotices?: (ids: string[], read: boolean) => void;
+  /** Phones: join (or start) the huddle in a conversation, from the list's banner, a row's pill or the create button. */
+  onHuddle?: (id: string) => void;
+  /** The direct message with someone (made when there's none yet): its id. */
+  dmIdFor?: (userId: string) => string;
 }
 
 export function ChatSidebar(p: SidebarProps) {
@@ -137,6 +149,14 @@ export function ChatSidebar(p: SidebarProps) {
   const [accessFor, setAccessFor] = useState<string | null>(null);
   const [statusOpen, setStatusOpen] = useState(false);
   const statusBtn = useRef<HTMLButtonElement>(null);
+  // Phones: Slack's three places (Home, DMs, Activity) as a switch under the top bar; the suite keeps the one bottom bar.
+  const [part, setPart] = useState<ChatPart>('home');
+  const [dmFilter, setDmFilter] = useState<'all' | 'unread' | 'guests'>('all');
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [addOpen, setAddOpen] = useState(false);
+  const [huddlePick, setHuddlePick] = useState(false);
+  const [hiddenBanners, setHiddenBanners] = useState<string[]>([]);
+  const switchRow = useRef<HTMLDivElement>(null);
 
   const mine = p.channels.filter((c) => c.members.includes(p.me) && !c.archived);
   const joinable = p.channels.filter((c) => c.kind === 'channel' && !c.private && !c.archived && !c.members.includes(p.me));
@@ -207,7 +227,19 @@ export function ChatSidebar(p: SidebarProps) {
   };
 
   // The phone shell: New message on the create button, the view in the title switcher, status and tiles in its settings.
-  useCreateAction('chat', phone && { label: t('New message'), icon: SquarePen, run: () => setNewMsg(true), more: [...(p.onNewChannel ? [{ label: t('New channel'), icon: Hash, run: p.onNewChannel }] : []), ...(joinable.length ? [{ label: t('Browse channels'), icon: Compass, run: () => setBrowsing(true) }] : [])] });
+  // Tap: New message (Slack's "Message"); hold: the rest of Slack's create card.
+  useCreateAction('chat', phone && {
+    label: t('New message'),
+    icon: SquarePen,
+    // Focus the To: field during the tap itself: iPhone only opens the keyboard for focus given in the tap.
+    run: () => (flushSync(() => setNewMsg(true)), document.querySelector<HTMLInputElement>('.nm-to input')?.focus()),
+    more: [
+      ...(p.onNewChannel ? [{ label: t('New channel'), icon: Hash, run: p.onNewChannel }] : []),
+      ...(p.onHuddle ? [{ label: t('Start a huddle'), icon: Headphones, run: () => setHuddlePick(true) }] : []),
+      ...(joinable.length ? [{ label: t('Browse channels'), icon: Compass, run: () => setBrowsing(true) }] : []),
+      { label: TILE_NAMES.drafts, icon: SendHorizontal, run: () => p.onPage('drafts') },
+    ],
+  });
   // On phones the title is the view: "Chat" for the company's sections.
   useTitleMenu('chat', phone && { label: t('Chat view'), value: custom ? custom.id : active, options: viewOptions.map((o) => (o.value === 'default' ? { ...o, label: t('Chat'), hint: t('Your company’s sections') } : o)), onChange: pickView });
   useAppSettings('chat', phone && { id: 'status', label: t('Your status'), hint: myStatus ? `${myStatus.emoji} ${statusText(myStatus)}` : t('Let people know if you’re focusing or away'), render: () => <StatusPicker status={p.statuses[p.me]} onStatus={p.onStatus} /> });
@@ -226,7 +258,7 @@ export function ChatSidebar(p: SidebarProps) {
     threads: { icon: <MessagesSquare size={18} />, line: newReplies ? tn(newReplies, '{n} new reply', '{n} new replies') : t('Caught up'), hot: newReplies > 0 },
     drafts: { icon: <SendHorizontal size={18} />, line: [draftCount ? tn(draftCount, '{n} draft', '{n} drafts') : '', scheduled ? tn(scheduled, '{n} to send', '{n} to send') : ''].filter(Boolean).join(', ') || tx('tile', 'Nothing waiting'), hot: false },
     saved: { icon: <Bookmark size={18} />, line: nextReminder ? t('Reminder {when}', { when: whenText(nextReminder.remindAt!) }) : chat.saved.length ? t('Your saved messages') : tx('tile', 'Nothing saved'), hot: false },
-    live: { icon: <Headphones size={18} />, line: live.length ? (live.length > 1 ? t('{name} and {n} more', { name: chanName(live[0], p.users, p.me), n: fmtNumber(live.length - 1) }) : chanName(live[0], p.users, p.me)) : '', hot: true, hidden: !live.length },
+    live: { icon: <Headphones size={18} />, line: live.length ? (live.length > 1 ? tn(live.length, '{n} on', '{n} on') : chanName(live[0], p.users, p.me)) : '', hot: true, hidden: !live.length },
   };
   const tiles = chat.tiles.order.filter((id) => !chat.tiles.hidden.includes(id) && !tileState[id].hidden);
   const openTile = (id: TileId) => (id === 'live' ? live[0] && p.onOpen(live[0].id) : p.onPage(id));
@@ -239,8 +271,9 @@ export function ChatSidebar(p: SidebarProps) {
     if (i?.unread) list.push({ label: t('Mark read'), icon: CheckCheck, run: () => chat.markRead(c.id) });
     else if (i?.last && i.last.userId !== p.me) list.push({ label: t('Mark unread'), icon: MailOpen, run: () => chat.markUnread(i.last!) });
     list.push(mutedTill ? { label: t('Unmute'), icon: Bell, hint: mutedTill === 'always' ? undefined : t('Muted until {when}', { when: whenText(mutedTill) }), run: () => chat.unmute(c.id) } : { label: t('Mute…'), icon: BellOff, run: () => setRowSub({ kind: 'mute', id: c.id, anchor: rowMenu?.anchor, at: rowMenu?.at }) });
-    list.push({ label: star.has(c.id) ? t('Remove from Starred') : t('Star'), icon: Star, run: () => setStarred(star.has(c.id) ? starred.filter((x) => x !== c.id) : [...starred, c.id]) });
+    list.push({ label: star.has(c.id) ? t('Remove from Starred') : t('Star'), hint: star.has(c.id) || !phone ? undefined : t('Moves it to Starred'), icon: Star, run: () => setStarred(star.has(c.id) ? starred.filter((x) => x !== c.id) : [...starred, c.id]) });
     list.push({ label: t('Copy link'), icon: Link2, run: () => navigator.clipboard?.writeText(`${location.origin}${routeBase}/chat?ws=${encodeURIComponent(c.workspaceId)}&id=${encodeURIComponent(c.id)}`).then(() => toast({ text: t('Link copied') }), () => toast({ text: t('Couldn’t copy here') })) });
+    if (c.huddle?.members.length) list.push({ label: t('Copy huddle link'), icon: Headphones, run: () => navigator.clipboard?.writeText(`${location.origin}${routeBase}/chat?ws=${encodeURIComponent(c.workspaceId)}&id=${encodeURIComponent(c.id)}`).then(() => toast({ text: t('Link copied') }), () => toast({ text: t('Couldn’t copy here') })) });
     if (c.kind === 'channel' && (custom || layout.sections.some((sec) => canPlace(c, sec)))) list.push({ label: t('Move to section…'), icon: LayoutList, run: () => setRowSub({ kind: 'move', id: c.id, anchor: rowMenu?.anchor, at: rowMenu?.at }) });
     if (c.kind === 'channel') list.push({ label: t('Channel settings'), icon: Settings, run: () => p.onSettings(c.id) });
     if (c.kind === 'channel' && !c.teamId) list.push({ label: t('Leave'), icon: LogOut, danger: true, group: 'end', run: () => setRowSub({ kind: 'leave', id: c.id }) });
@@ -248,7 +281,7 @@ export function ChatSidebar(p: SidebarProps) {
   };
   const row = (c: Channel) => <ConvoRow key={c.id} c={c} p={p} info={info[c.id]} phone={phone} starred={star.has(c.id)} draggable={c.kind === 'channel' && (active === 'custom' || (active === 'default' && (p.isAdmin || p.canManage(c))))} onDragState={setDropOn} onMenu={(where) => setRowMenu({ id: c.id, ...where })} />;
 
-  const section = (key: string, title: ReactNode, list: Channel[], extra?: ReactNode, drop?: (channelId: string) => void, mineId?: string) => {
+  const section = (key: string, title: ReactNode, list: Channel[], extra?: ReactNode, drop?: (channelId: string) => void, mineId?: string, icon?: ReactNode) => {
     // Empty sections still show while dragging, so a channel can be dropped into them.
     if (!list.length && !extra && !(drop && dropOn !== null)) return null;
     const closed = collapsed.includes(key);
@@ -295,6 +328,7 @@ export function ChatSidebar(p: SidebarProps) {
                 : undefined
             }
             phone={phone}
+            icon={icon}
           />
         )}
         <div className={`fold ${closed ? '' : 'open'}`} aria-hidden={closed}>
@@ -324,20 +358,27 @@ export function ChatSidebar(p: SidebarProps) {
         !phone && !sec.category && p.isAdmin && !rooms.some((c) => sectionOf(c) === sec.id) ? <p className="muted small sec-empty sb-label">{t('Drag channels here, or use a channel’s … menu.')}</p> : undefined,
         (id) => placeIn(id, sec.id),
         p.isAdmin ? sec.id : undefined,
+        sectionIcon(sec.category),
       ),
     );
   } else if (active === 'unread') {
     const list = [...restRooms].sort((a, b) => (info[b.id]?.unread ?? 0) - (info[a.id]?.unread ?? 0) || recency(b).localeCompare(recency(a)));
-    body = [section('u-unread', t('Unread'), list.filter((c) => info[c.id]?.unread)), section('u-rest', t('Everything else'), list.filter((c) => !info[c.id]?.unread))];
+    body = [section('u-unread', t('Unread'), list.filter((c) => info[c.id]?.unread), undefined, undefined, undefined, <Inbox size={14} />), section('u-rest', t('Everything else'), list.filter((c) => !info[c.id]?.unread), undefined, undefined, undefined, <Folder size={14} />)];
   } else if (active === 'recent') {
-    body = section('recent', t('Most recent first'), [...restRooms].sort((a, b) => recency(b).localeCompare(recency(a))));
+    body = section('recent', t('Most recent first'), [...restRooms].sort((a, b) => recency(b).localeCompare(recency(a))), undefined, undefined, undefined, <Clock size={14} />);
   } else if (custom) {
     const used = new Set(custom.sections.flatMap((s) => s.channelIds));
     body = [
-      ...custom.sections.map((s) => section(`${custom.id}:${s.id}`, s.name, restRooms.filter((c) => s.channelIds.includes(c.id)), undefined, (id) => moveInView(id, s.id))),
-      custom.showRest ? section(`${custom.id}:rest`, t('Other channels'), restRooms.filter((c) => !used.has(c.id)), undefined, (id) => moveInView(id, null)) : null,
+      ...custom.sections.map((s) => section(`${custom.id}:${s.id}`, s.name, restRooms.filter((c) => s.channelIds.includes(c.id)), undefined, (id) => moveInView(id, s.id), undefined, <Folder size={14} />)),
+      custom.showRest ? section(`${custom.id}:rest`, t('Other channels'), restRooms.filter((c) => !used.has(c.id)), undefined, (id) => moveInView(id, null), undefined, <Folder size={14} />) : null,
     ];
   }
+  // Phones: what each part of the switch shows, and its dot.
+  const homeUnread = rooms.some((c) => info[c.id]?.unread && !info[c.id].muted) || topDms.length > 0;
+  const dmUnread = dms.some((c) => info[c.id]?.unread && !info[c.id].muted);
+  const activityUnread = (p.notices ?? []).some((n) => !n.read);
+  const dmsShown = [...dms].filter((c) => (dmFilter === 'unread' ? info[c.id]?.unread : dmFilter === 'guests' ? !!c.guests?.length : true)).sort((a, b) => recency(b).localeCompare(recency(a)));
+  const banner = phone ? live.find((c) => !c.huddle!.members.includes(p.me) && !hiddenBanners.includes(c.id + c.huddle!.at)) : undefined;
   const menuChannel = p.channels.find((c) => c.id === rowMenu?.id);
   const subChannel = p.channels.find((c) => c.id === rowSub?.id);
 
@@ -396,24 +437,91 @@ export function ChatSidebar(p: SidebarProps) {
         </>
       )}
 
-      {phone && tiles.length > 0 && (
-        <div className="chat-tiles" role="list" aria-label={t('At a glance')}>
-          {tiles.map((id) => (
-            <Tile key={id} id={id} label={TILE_NAMES[id]} icon={tileState[id].icon} line={tileState[id].line} hot={tileState[id].hot} onOpen={() => openTile(id)} onMenu={() => setTileMenu(id)} />
-          ))}
+      {phone && (
+        <div className="chat-switch-row" ref={switchRow}>
+          <div className="segmented chat-switch" role="tablist" aria-label={t('Chat')}>
+            {(
+              [
+                ['home', t('Home'), homeUnread],
+                ['dms', t('DMs'), dmUnread],
+                ['activity', t('Activity'), activityUnread],
+              ] as const
+            ).map(([id, label, dot]) => (
+              <button
+                key={id}
+                type="button"
+                role="tab"
+                aria-selected={part === id}
+                className={part === id ? 'on' : ''}
+                onClick={() => (part === id ? scrollListTop(switchRow.current) : setPart(id))}
+                aria-label={dot ? t('{name}, something new', { name: label }) : label}
+              >
+                {label}
+                <i className={`cs-dot${dot ? ' on' : ''}`} aria-hidden />
+              </button>
+            ))}
+          </div>
+          <button type="button" className="icon-btn chat-filter-btn" onClick={() => (part === 'activity' ? (p.onReadNotices?.((p.notices ?? []).filter((n) => !n.read).map((n) => n.id), true), toast({ text: t('All marked as read') })) : setFilterOpen(true))} aria-label={part === 'activity' ? t('Mark all as read') : t('Filter')} title={part === 'activity' ? t('Mark all as read') : t('Filter')} disabled={part === 'activity' && !activityUnread}>
+            {part === 'activity' ? <CheckCheck size={20} /> : <ListFilter size={20} />}
+          </button>
         </div>
       )}
-
-      {phone && section('top-dms', t('Unread direct messages'), topDms)}
-      {phone && section('top-mentions', t('Mentions'), topMentions)}
-      {section(
-        'starred',
+      {phone ? (
+        <TabPane key={part}>
+          {part === 'home' ? (
+            <>
+              {tiles.length > 0 && (
+                <div className="chat-tiles" role="list" aria-label={t('At a glance')}>
+                  {tiles.map((id) => (
+                    <Tile key={id} id={id} label={TILE_NAMES[id]} icon={tileState[id].icon} line={tileState[id].line} hot={tileState[id].hot} onOpen={() => openTile(id)} onMenu={() => setTileMenu(id)} />
+                  ))}
+                </div>
+              )}
+              {banner && (
+                <div className="huddle-banner">
+                  <button type="button" className="hbn-main" onClick={() => (p.onHuddle ? p.onHuddle(banner.id) : p.onOpen(banner.id))}>
+                    <Headphones size={20} className="hbn-icon" aria-hidden />
+                    <span className="hbn-text">
+                      <strong>{chanName(banner, p.users, p.me)}</strong>
+                      <small>{t('Tap to join the huddle')}</small>
+                    </span>
+                  </button>
+                  <button type="button" className="icon-btn hbn-x" onClick={() => setHiddenBanners((h) => [...h, banner.id + banner.huddle!.at])} aria-label={t('Hide')}>
+                    <X size={18} />
+                  </button>
+                </div>
+              )}
+              {section('top-dms', t('Unread direct messages'), topDms, undefined, undefined, undefined, <MessageCircle size={14} />)}
+              {section('top-mentions', t('Mentions'), topMentions, undefined, undefined, undefined, <AtSign size={14} />)}
+              {section('starred', t('Starred'), starredList, undefined, undefined, undefined, <Star size={14} />)}
+              {body}
+              {(joinable.length > 0 || p.onNewChannel) && (
+                <button type="button" className="cl-add" onClick={() => setAddOpen(true)}>
+                  <span className="cl-glyph">
+                    <Plus size={18} />
+                  </span>
+                  {t('Add channels')}
+                </button>
+              )}
+            </>
+          ) : part === 'dms' ? (
+            <DmList dms={dmsShown} filter={dmFilter} row={(c) => <ConvoRow key={c.id} c={c} p={p} info={info[c.id]} phone two starred={star.has(c.id)} draggable={false} onDragState={setDropOn} onMenu={(where) => setRowMenu({ id: c.id, ...where })} />} onNew={() => setNewMsg(true)} />
+          ) : (
+            <ChatActivity notices={p.notices ?? []} messages={p.messages} channels={p.channels} users={p.users} me={p.me} myFirst={p.myFirst} chat={chat} onOpen={(n) => p.onOpenNotice?.(n)} onRead={(ids, read) => p.onReadNotices?.(ids, read)} />
+          )}
+        </TabPane>
+      ) : (
         <>
-          <Star size={11} /> {t('Starred')}
-        </>,
-        starredList,
+          {section(
+            'starred',
+            <>
+              <Star size={11} /> {t('Starred')}
+            </>,
+            starredList,
+          )}
+          {body}
+        </>
       )}
-      {body}
       {!phone && (
         <nav className="nav">
           {p.onNewChannel && (
@@ -478,7 +586,8 @@ export function ChatSidebar(p: SidebarProps) {
         </Sheet>
       )}
 
-      {section(
+      {!phone &&
+        section(
         'dms',
         t('Direct messages'),
         dms.filter((c) => !star.has(c.id) && !onTop.has(c.id)).sort((a, b) => (phone ? recency(b).localeCompare(recency(a)) : 0)),
@@ -499,11 +608,6 @@ export function ChatSidebar(p: SidebarProps) {
             <span className="sb-label">{t('New message')}</span>
           </button>
         ),
-      )}
-      {phone && joinable.length > 0 && (
-        <button className="cl-browse" onClick={() => setBrowsing(true)}>
-          <Compass size={18} /> {t('Browse channels you can join')}
-        </button>
       )}
       {phone && browsing && (
         <Sheet title={t('Browse channels')} size="tall" onClose={() => setBrowsing(false)}>
@@ -660,9 +764,83 @@ export function ChatSidebar(p: SidebarProps) {
           />
         </Layer>
       )}
-      {newMsg && <NewMessageSheet users={p.users} me={p.me} onPick={p.onNewDm} onNewChannel={p.onNewChannel} onClose={() => setNewMsg(false)} />}
+      {newMsg && (phone ? <NewMessageScreen users={p.users} me={p.me} channels={rooms} presence={p.presence} onPickPerson={p.onNewDm} onPickChannel={p.onOpen} onClose={() => setNewMsg(false)} /> : <NewMessageSheet users={p.users} me={p.me} onPick={p.onNewDm} onNewChannel={p.onNewChannel} onClose={() => setNewMsg(false)} />)}
+      {huddlePick && p.onHuddle && (
+        <NewMessageScreen
+          title={t('Start a huddle')}
+          placeholder={t('Where: a person or channel')}
+          users={p.users}
+          me={p.me}
+          channels={rooms}
+          presence={p.presence}
+          onPickPerson={(id) => p.onHuddle!(p.dmIdFor ? p.dmIdFor(id) : id)}
+          onPickChannel={(id) => p.onHuddle!(id)}
+          onClose={() => setHuddlePick(false)}
+        />
+      )}
+      {filterOpen && phone && part === 'home' && (
+        <ActionSheet open onClose={() => setFilterOpen(false)} title={t('Show')} actions={viewOptions.map((o) => ({ label: o.value === 'default' ? t('Your company’s sections') : o.label, hint: o.value === 'default' ? undefined : o.hint, icon: o.value === '__new' ? Plus : undefined, checked: o.value !== '__new' && (custom ? custom.id : active) === o.value, run: () => pickView(o.value) }))} />
+      )}
+      {filterOpen && phone && part === 'dms' && (
+        <ActionSheet
+          open
+          onClose={() => setFilterOpen(false)}
+          title={t('Show')}
+          actions={(
+            [
+              ['all', t('All direct messages')],
+              ['unread', t('Unread')],
+              ['guests', t('With guests')],
+            ] as const
+          ).map(([k, l]) => ({ label: l, checked: dmFilter === k, run: () => setDmFilter(k) }))}
+        />
+      )}
+      {addOpen && (
+        <ActionSheet
+          open
+          onClose={() => setAddOpen(false)}
+          title={t('Add channels')}
+          actions={[
+            ...(joinable.length ? [{ label: t('Browse channels'), hint: tn(joinable.length, '{n} you can join', '{n} you can join'), icon: Compass, run: () => setBrowsing(true) }] : []),
+            ...(p.onNewChannel ? [{ label: t('New channel'), icon: Hash, run: p.onNewChannel }] : []),
+          ]}
+        />
+      )}
     </>
   );
+}
+
+type ChatPart = 'home' | 'dms' | 'activity';
+/** Re-tapping the part you're on scrolls its list back to the top (Slack, iOS). */
+function scrollListTop(from: HTMLElement | null) {
+  let el = from?.parentElement ?? null;
+  while (el && !(el.scrollHeight > el.clientHeight && /(auto|scroll)/.test(getComputedStyle(el).overflowY))) el = el.parentElement;
+  el?.scrollTo({ top: 0, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+}
+/** The small icon tile before a section's name on phones (Slack's VIP, @, emoji tiles). */
+function sectionIcon(c?: ChannelCategory) {
+  const Icon = c === 'client' ? Briefcase : c === 'shared' ? Handshake : c === 'team' ? Users : c === 'social' ? PartyPopper : Folder;
+  return <Icon size={14} />;
+}
+
+/** Phones, DMs: every direct message, newest first, two lines each (Slack's DMs tab). */
+function DmList({ dms, filter, row, onNew }: { dms: Channel[]; filter: 'all' | 'unread' | 'guests'; row: (c: Channel) => ReactNode; onNew: () => void }) {
+  if (!dms.length)
+    return (
+      <EmptyState
+        className="dm-empty"
+        icon={<MessageCircle size={22} />}
+        title={filter === 'all' ? t('No direct messages yet') : filter === 'unread' ? t('Nothing unread') : t('No direct messages with guests')}
+        action={
+          filter === 'all' ? (
+            <button type="button" className="primary-btn" onClick={onNew}>
+              {t('New message')}
+            </button>
+          ) : undefined
+        }
+      />
+    );
+  return <nav className="dm-list">{dms.map(row)}</nav>;
 }
 
 const moveTile = (chat: ChatState, id: TileId, by: -1 | 1) => {
@@ -675,14 +853,28 @@ const moveTile = (chat: ChatState, id: TileId, by: -1 | 1) => {
 };
 
 /** A section's heading: tap folds it; "…" (or a long-press on phones) for admins' section menu. */
-function SectionHead({ title, closed, count, onToggle, onMenu, phone }: { title: ReactNode; closed: boolean; count: number; onToggle: () => void; onMenu?: (el: HTMLElement) => void; phone: boolean }) {
+function SectionHead({ title, closed, count, onToggle, onMenu, phone, icon }: { title: ReactNode; closed: boolean; count: number; onToggle: () => void; onMenu?: (el: HTMLElement) => void; phone: boolean; icon?: ReactNode }) {
   const head = useRef<HTMLButtonElement>(null);
   const press = useLongPress(() => head.current && onMenu?.(head.current), { disabled: !onMenu || !phone });
   return (
     <div className="sec-head-row">
       <button ref={head} className={`nav-heading sb-label sec-head${phone && onMenu ? ' lp' : ''}`} onClick={onToggle} aria-expanded={!closed} {...(phone ? press : {})}>
-        <ChevronRight size={12} className={`rot-chev ${closed ? '' : 'open'}`} /> {title}
-        {count ? <span className="sec-count unread">{count}</span> : null}
+        {phone ? (
+          // Slack: a small icon tile, the name in sentence case, the fold chevron at the right.
+          <>
+            <span className="sec-ico" aria-hidden>
+              {icon ?? <Folder size={14} />}
+            </span>
+            <span className="sec-name">{title}</span>
+            {count ? <span className="sec-count unread">{count}</span> : null}
+            <ChevronRight size={20} className={`rot-chev sec-fold ${closed ? '' : 'open'}`} aria-hidden />
+          </>
+        ) : (
+          <>
+            <ChevronRight size={12} className={`rot-chev ${closed ? '' : 'open'}`} /> {title}
+            {count ? <span className="sec-count unread">{count}</span> : null}
+          </>
+        )}
       </button>
       {onMenu && !phone && (
         <button className="nav-more sec-more" aria-label={t('Section options')} onClick={(e) => onMenu(e.currentTarget)}>
@@ -693,72 +885,101 @@ function SectionHead({ title, closed, count, onToggle, onMenu, phone }: { title:
   );
 }
 
-/** One conversation: in the sidebar a single line; on phones two lines with the last message, time and what's unread. */
-function ConvoRow({ c, p, info, phone, starred, draggable, onDragState, onMenu }: { c: Channel; p: SidebarProps; info?: ConvoInfo; phone: boolean; starred: boolean; draggable: boolean; onDragState: (d: string | null) => void; onMenu: (where: { at?: { x: number; y: number }; anchor?: HTMLElement }) => void }) {
+/**
+ * One conversation. Sidebar: a single line. Phones, Home: Slack's one-line row (bold when unread, a count pill for
+ * mentions and DMs, a huddle pill when one is on). Phones, DMs (`two`): two lines with the last message and its time.
+ */
+function ConvoRow({ c, p, info, phone, two = false, starred, draggable, onDragState, onMenu }: { c: Channel; p: SidebarProps; info?: ConvoInfo; phone: boolean; two?: boolean; starred: boolean; draggable: boolean; onDragState: (d: string | null) => void; onMenu: (where: { at?: { x: number; y: number }; anchor?: HTMLElement }) => void }) {
   const other = c.kind === 'dm' ? p.users.find((u) => u.id === dmOther(c, p.me)) : undefined;
   const st = other ? p.statuses[other.id] : undefined;
   const press = useLongPress((pt) => onMenu({ at: { x: pt.x, y: pt.y } }), { disabled: !phone });
   const more = useRef<HTMLButtonElement>(null);
   const unread = !!info?.unread && !info.muted;
   const live = !!c.huddle?.members.length;
+  const glyph = (size: number) => (c.category === 'shared' ? <Handshake size={size} /> : c.private ? <Lock size={size - 1} /> : <Hash size={size} />);
   const icon = other ? (
     <span className="dm-av">
-      <Avatar person={other} size={phone ? 36 : 20} />
+      <Avatar person={other} size={phone ? (two ? 40 : 20) : 20} />
       <i className={`presence ${p.presence(other.id)}`} />
     </span>
-  ) : c.category === 'shared' ? (
-    <Handshake size={phone ? 18 : 15} />
-  ) : c.private ? (
-    <Lock size={phone ? 17 : 15} />
   ) : (
-    <Hash size={phone ? 18 : 16} />
+    glyph(phone ? 18 : 15)
   );
   const name = other ? other.name : c.name;
   const guestBadge = c.category === 'shared' || c.guests?.length ? <Badge small tone="warn" title={t('The {whos} can see this channel', { whos: term.whos })}>{term.Whos}</Badge> : null;
+  const count = info?.mentions ? info.mentions : unread && c.kind === 'dm' ? info!.unread : 0;
   if (phone) {
     const last = info?.last;
     const mineLast = last?.userId === p.me;
     const who = last ? (mineLast ? t('You') : last.guestEmail ? (c.guests?.find((g) => g.email === last.guestEmail)?.name.split(' ')[0] ?? t('Guest')) : (p.users.find((u) => u.id === last.userId)?.name.split(' ')[0] ?? '')) : '';
+    const people = (c.huddle?.members ?? []).map((id) => p.users.find((u) => u.id === id)).filter((u): u is User => !!u);
+    const rowProps = {
+      ...press,
+      onClick: () => p.onOpen(c.id),
+      onContextMenu: (e: React.MouseEvent) => (press.onContextMenu(e), e.preventDefault(), onMenu({ at: { x: e.clientX, y: e.clientY } })),
+      'aria-label': [name, unread ? tn(info!.unread, '{n} unread', '{n} unread') : '', info?.draft ? t('draft') : '', live ? t('Huddle on now') : ''].filter(Boolean).join(', '),
+    };
+    const cls = `${unread ? ' unread' : ''}${info?.muted ? ' muted' : ''}${p.current === c.id ? ' active' : ''}`;
+    if (two)
+      return (
+        <button className={`cl-row dm-row lp${cls}`} {...rowProps}>
+          <span className="dm-row-av">{icon}</span>
+          <span className="cl-main">
+            <span className="cl-top">
+              <span className="cl-name">
+                <span>{name}</span>
+                {st && <span className="st-emoji">{st.emoji}</span>}
+                {guestBadge}
+                {starred && <Star size={12} className="cl-star" aria-label={t('Starred')} />}
+              </span>
+              {last && <time dateTime={last.at}>{shortTime(last.at)}</time>}
+            </span>
+            <span className="cl-bottom">
+              <span className="cl-preview">
+                {info?.draft ? (
+                  <>
+                    <PenLine size={12} className="cl-draft-icon" aria-hidden />
+                    <em className="cl-draft">{t('Draft:')}</em> {info.draft.replace(/\s+/g, ' ')}
+                  </>
+                ) : last ? (
+                  <>
+                    {mineLast ? `${who}: ` : ''}
+                    {preview(last) || t('Sent something')}
+                  </>
+                ) : (
+                  <span className="muted">{t('No messages yet')}</span>
+                )}
+              </span>
+              {info?.muted && <BellOff size={13} className="cl-muted" aria-label={t('Muted')} />}
+              {count ? <span className="count">{count}</span> : null}
+            </span>
+          </span>
+        </button>
+      );
     return (
-      <button
-        className={`cl-row lp${unread ? ' unread' : ''}${info?.muted ? ' muted' : ''}${p.current === c.id ? ' active' : ''}`}
-        {...press}
-        onClick={() => p.onOpen(c.id)}
-        onContextMenu={(e) => (press.onContextMenu(e), e.preventDefault(), onMenu({ at: { x: e.clientX, y: e.clientY } }))}
-        aria-label={[name, unread ? tn(info!.unread, '{n} unread', '{n} unread') : '', info?.draft ? t('draft') : ''].filter(Boolean).join(', ')}
-      >
-        <span className={`cl-icon${other ? ' is-dm' : ''}`}>{icon}</span>
-        <span className="cl-main">
-          <span className="cl-top">
-            <span className="cl-name">
-              {name}
-              {st && <span className="st-emoji">{st.emoji}</span>}
-              {guestBadge}
-              {starred && <Star size={11} className="cl-star" aria-label={t('Starred')} />}
-            </span>
-            {last && <time dateTime={last.at}>{shortTime(last.at)}</time>}
-          </span>
-          <span className="cl-bottom">
-            <span className="cl-preview">
-              {info?.draft ? (
-                <>
-                  <PenLine size={12} className="cl-draft-icon" aria-hidden />
-                  <em className="cl-draft">{t('Draft:')}</em> {info.draft.replace(/\s+/g, ' ')}
-                </>
-              ) : last ? (
-                <>
-                  {c.kind === 'channel' || mineLast ? `${who}: ` : ''}
-                  {preview(last) || t('Sent something')}
-                </>
-              ) : (
-                <span className="muted">{t('No messages yet')}</span>
-              )}
-            </span>
-            {live && <Headphones size={14} className="cl-live" aria-label={t('Huddle on now')} />}
-            {info?.muted && <BellOff size={13} className="cl-muted" aria-label={t('Muted')} />}
-            {info?.mentions ? <span className="count">{info.mentions}</span> : unread && c.kind === 'dm' ? <span className="count">{info!.unread}</span> : unread ? <span className="cl-dot" aria-hidden /> : null}
-          </span>
+      <button className={`cl-row lp${cls}`} {...rowProps}>
+        <span className={`cl-glyph${other ? ' is-dm' : ''}`}>{icon}</span>
+        {info?.draft && p.current !== c.id ? <PenLine size={14} className="cl-draft-icon" aria-label={t('Draft')} /> : null}
+        <span className="cl-name">
+          <span>{name}</span>
+          {st && <span className="st-emoji">{st.emoji}</span>}
+          {guestBadge}
         </span>
+        {info?.muted && <BellOff size={14} className="cl-muted" aria-label={t('Muted')} />}
+        {live && (
+          <span className="cl-huddle" aria-hidden>
+            <span className="clh-pill">
+              <Headphones size={14} />
+              {people.length}
+            </span>
+            <span className="clh-avs">
+              {people.slice(0, 3).map((u) => (
+                <Avatar key={u.id} person={u} size={18} />
+              ))}
+            </span>
+          </span>
+        )}
+        {count ? <span className="count">{count}</span> : null}
       </button>
     );
   }
@@ -917,6 +1138,48 @@ export function NewMessageSheet({ users, me, onPick, onNewChannel, onClose }: { 
         {people.length === 0 && <p className="sheet-empty">{t('Nobody here is called “{q}”', { q })}</p>}
       </div>
     </Sheet>
+  );
+}
+
+/**
+ * Phones: New message, full screen (Slack): "To:" with the keyboard up, then people and channels. Picking one opens
+ * that conversation. Also "Start a huddle" (the create button's long-press): picking one starts the huddle there.
+ */
+export function NewMessageScreen({ title, placeholder, users, me, channels, presence, onPickPerson, onPickChannel, onClose }: { title?: string; placeholder?: string; users: User[]; me: string; channels: Channel[]; presence: (id: string) => Presence; onPickPerson: (userId: string) => void; onPickChannel: (id: string) => void; onClose: () => void }) {
+  const [q, setQ] = useState('');
+  const s = q.trim().toLowerCase();
+  const match = (txt: string) => !s || s.split(/\s+/).every((w) => txt.toLowerCase().includes(w));
+  const people = users.filter((u) => u.id !== me && match(`${u.name} ${u.email} ${u.title ?? ''}`));
+  const chans = channels.filter((c) => !c.archived && match(`${c.name} ${c.topic ?? ''}`));
+  return (
+    <PushScreen title={title ?? t('New message')} onBack={onClose} closeX className="newmsg-push">
+      <label className="nm-to">
+        <span>{t('To:')}</span>
+        <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder={placeholder ?? t('A person or channel')} aria-label={t('Who to message')} enterKeyHint="go" onKeyDown={(e) => e.key === 'Enter' && (people[0] ? (onClose(), onPickPerson(people[0].id)) : chans[0] && (onClose(), onPickChannel(chans[0].id)))} />
+      </label>
+      <div className="nm-list">
+        {people.length > 0 && <div className="nm-group">{t('People')}</div>}
+        {people.map((u) => (
+          <button key={u.id} type="button" className="nm-row" onClick={() => (onClose(), onPickPerson(u.id))}>
+            <span className="dm-av">
+              <Avatar person={u} size={28} />
+              <i className={`presence ${presence(u.id)}`} />
+            </span>
+            <span className="nm-name">{u.name}</span>
+            {u.title && <span className="nm-sub">{u.title}</span>}
+          </button>
+        ))}
+        {chans.length > 0 && <div className="nm-group">{t('Channels')}</div>}
+        {chans.map((c) => (
+          <button key={c.id} type="button" className="nm-row" onClick={() => (onClose(), onPickChannel(c.id))}>
+            <span className="nm-glyph">{c.category === 'shared' ? <Handshake size={18} /> : c.private ? <Lock size={17} /> : <Hash size={18} />}</span>
+            <span className="nm-name">{c.name}</span>
+            <span className="nm-sub">{tn(c.members.length, '{n} member', '{n} members')}</span>
+          </button>
+        ))}
+        {!people.length && !chans.length && <p className="sheet-empty">{t('Nobody here is called “{q}”', { q })}</p>}
+      </div>
+    </PushScreen>
   );
 }
 

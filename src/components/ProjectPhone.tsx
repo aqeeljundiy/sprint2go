@@ -4,15 +4,17 @@ import { term } from '../terms';
 import type { Client } from '../types';
 import { usePersisted } from '../settings';
 import { arrange, TabDefaultsCtx, type TabItem, type TabPrefs } from './ui/TabBar';
-import { useFocusedScreen, useTitleMenu } from '../mobile/chrome';
+import { useFocusedScreen } from '../mobile/chrome';
 import { usePhone } from '../mobile/media';
 import { t, tn } from '../i18n';
 
 /**
- * A project's page on phones. Desktop shows its parts as a row of tabs; a phone has no room for 12 tabs, so:
- * - the project's home (Overview) lists the other parts, each a row you tap (ProjectSections);
- * - the screen title is a switcher to jump to any part, or to another project (useProjectPhone);
- * - inside a part, Back returns to the project's home before it returns to the list of projects.
+ * A project's page on phones. Desktop shows its parts as a row of tabs; a phone has no room for 12 tabs, so (Todoist's
+ * project screen):
+ * - a project opens on its tasks; the top bar has its name, its people, the layout and a "…" with the overview and
+ *   the other parts (TasksView.tsx);
+ * - the overview lists the parts too, each a row you tap (ProjectSections);
+ * - inside a part, Back returns to the tasks before it returns to the list of projects (useProjectPhone).
  */
 
 export type ProjectTab = 'overview' | 'tasks' | 'workload' | 'quotes' | 'chat' | 'emails' | 'meetings' | 'files' | 'notes' | 'tables' | 'logins' | 'portal';
@@ -63,44 +65,25 @@ function useArranged(items: TabItem[]) {
 /** What needs a look on a part ("1 late"): every note is a warning. */
 const noteOf = (tab: TabItem & { note?: string }) => tab.note ?? '';
 
+/** A part's icon (the "…" menu and the overview's rows). */
+export const projectTabIcon = (id: string): LucideIcon => ICONS[id as ProjectTab] ?? FileText;
+/** The project's parts in the order this person (or the company) chose, without the hidden ones. */
+export const useProjectParts = (items: TabItem[]) => useArranged(items).shown as (TabItem & { note?: string })[];
+
 /**
- * The phone's title switcher and Back for a project's page. Call it before any early return. `others` are the projects
- * to jump to; `onProject(null)` goes back to the list of all of them, `'past'` to past projects.
+ * Back for a project's page on phones. Call it before any early return. A project opens on its tasks (`home`); its
+ * overview and other parts are pushed from its "…", and Back from one of them returns to the tasks before it returns
+ * to the list of projects. Registered a moment after the page opens, so it comes after (and wins over) the project
+ * page's own Back to the list.
  */
-export function useProjectPhone({ client, items, tab, onTab, others, onProject }: { client: Client | undefined; items: TabItem[]; tab: string; onTab: (t: ProjectTab) => void; others: Client[]; onProject: (id: string | null | 'past') => void }) {
-  const { all } = useArranged(items);
-  const value = tab === 'overview' && client ? `p:${client.id}` : `tab:${tab}`;
-  useTitleMenu(
-    'projects',
-    client && {
-      label: client.name,
-      value,
-      options: [
-        ...all.map((tab) => {
-          const Icon = ICONS[tab.id as ProjectTab] ?? FileText;
-          return { value: `tab:${tab.id}`, label: tab.name ?? tab.id, hint: noteOf(tab) || undefined, group: t('In this {project}', { project: term.one }), icon: <Icon size={18} /> };
-        }),
-        { value: 'p:all', label: t('All {projects}', { projects: term.many }), group: term.Many },
-        ...others.filter((c) => c.status !== 'ended').map((c) => ({ value: `p:${c.id}`, label: c.name, group: term.Many })),
-        { value: 'p:past', label: t('Past {projects}', { projects: term.many }), group: term.Many },
-      ],
-      onChange: (v) => {
-        if (v.startsWith('tab:')) return onTab(v.slice(4) as ProjectTab);
-        const id = v.slice(2);
-        if (id === client.id) return onTab('overview');
-        onProject(id === 'all' ? null : id === 'past' ? 'past' : id);
-      },
-    },
-  );
-  // Inside a part, Back goes to the project's home. Registered a moment after the page opens, so it comes after (and
-  // wins over) the project page's own Back to the list.
+export function useProjectPhone({ client, tab, home, onTab }: { client: Client | undefined; tab: string; home: ProjectTab; onTab: (t: ProjectTab) => void }) {
   const phone = usePhone();
   const [ready, setReady] = useState(false);
   useEffect(() => {
     const timer = setTimeout(() => setReady(true), 0);
     return () => clearTimeout(timer);
   }, []);
-  useFocusedScreen(ready && phone && !!client && tab !== 'overview', () => onTab('overview'));
+  useFocusedScreen(ready && phone && !!client && tab !== home, () => onTab(home));
 }
 
 /** The project's home on phones: its parts as rows, with what needs a look on the right. Hidden on desktop (tabs). */

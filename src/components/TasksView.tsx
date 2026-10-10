@@ -1,10 +1,11 @@
 import { TabBar } from './ui/TabBar';
 import { ProjectPeople } from './ProjectPeople';
 import { ProjectBadge, ProjectPhotoButton } from './ProjectBadge';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
 import { TabPane } from './ui/Smooth';
 import { PROJECT_TYPES, term } from '../terms';
-import { Archive, RotateCcw, Inbox, X, Brain, CheckCircle2, Clock, Columns3, Eye, EyeOff, FileText, Hash, LayoutGrid, LayoutTemplate, Mail, Menu, MessagesSquare, Plus, Sparkles, Users, Video, type LucideIcon, FolderInput, ChevronRight, MessageCircle } from 'lucide-react';
+import { Archive, RotateCcw, Inbox, X, Brain, CheckCircle2, Clock, Columns3, Eye, EyeOff, FileText, Hash, LayoutGrid, LayoutTemplate, Mail, Menu, MessagesSquare, Plus, Sparkles, Users, Video, type LucideIcon, FolderInput, ChevronRight, MessageCircle, CalendarCheck2, CalendarRange, ListTodo, Send, Layers, SlidersHorizontal, Settings2, BarChart3, LayoutDashboard } from 'lucide-react';
 import type { Channel, ChatMessage, Client, DriveItem, Meeting, TaskStatus, Team, Thread, Todo, User, ClientPerson, Workspace, Note, DataTable, TableRow } from '../types';
 import { kindOf, stageOf, stagesFor, stagesForScope, toneOf } from '../stages';
 import { OwnStages } from './admin/TaskStages';
@@ -22,11 +23,18 @@ import { Dot, Select, type Option } from './ui/Select';
 import { personOption } from './ui/PeopleList';
 import { QuotesTab } from './Quotes';
 import type { Quote } from '../types';
-import { useTitleMenu } from '../mobile/chrome';
-import { TaskViews, type SavedTaskView } from './tasks/TaskViews';
+import { useCreateAction, useTitleTucked } from '../mobile/chrome';
+import { LargeTitle, TopBar, TopBarBack } from '../mobile/TopBar';
+import { usePhone } from '../mobile/media';
+import { Sheet } from './ui/Sheet';
+import type { SheetAction } from './ui/ActionSheet';
+import type { TopSettingsRow } from './MobileTop';
+import { TaskViews, type SavedTaskView, type PhoneBar } from './tasks/TaskViews';
+import { TasksBrowse, type BrowseGroup } from './tasks/TasksBrowse';
+import { QuickAdd } from './tasks/QuickAdd';
 import type { NewTask, TaskOps } from './tasks/taskOps';
 import { saveDisplay } from './tasks/display';
-import { projectTabs, ProjectSections, useProjectPhone } from './ProjectPhone';
+import { projectTabIcon, projectTabs, ProjectSections, useProjectParts, useProjectPhone, type ProjectTab } from './ProjectPhone';
 import { t, textOf, tn, tx } from '../i18n';
 import { tj } from '../i18n/tj';
 import { fmtDate, fmtDay, fmtNumber, fmtWeekday } from '../i18n/format';
@@ -182,8 +190,26 @@ interface Props {
   dumpInSidebar?: boolean; // the Tasks sidebar already has Brain dump at its top: no second one in the header
   onTemplate: () => void;
   onMenu: () => void;
-  onOpenProject?: (id: string) => void; // a project's own page (the Projects app)
+  onOpenProject?: (id: string, tab?: ProjectTab) => void; // a project's own page (the Projects app), at one of its parts
   onPastProjects?: () => void;
+  /** Phones: which app's top bar this fills (a project's page lives in Projects). */
+  app?: 'tasks' | 'projects';
+  /** Phones: Browse, the root of the Tasks stack (Todoist's Browse), instead of a view. */
+  browse?: boolean;
+  onBrowse?: (on: boolean) => void;
+  /** Phones: this app's settings (Swipe actions, Task stages), listed at the end of Browse. */
+  settings?: TopSettingsRow[];
+  onNewProject?: () => void;
+}
+
+/** The view's name in the phone's top bar: hidden while the large title shows, then faded in small (Apple's). */
+function BarTitle({ app, text }: { app: 'tasks' | 'projects'; text: string }) {
+  const tk = useTitleTucked(app);
+  return (
+    <h1 className={`mt-title plain ${tk.large && tk.tucked ? 'tucked' : 'small'}`} aria-hidden={(tk.large && tk.tucked) || undefined}>
+      <span className="mt-title-text">{text}</span>
+    </h1>
+  );
 }
 
 export function TasksView(p: Props) {
@@ -193,8 +219,11 @@ export function TasksView(p: Props) {
   const [writingOv, setWritingOv] = useState(false);
   const [stagesOpen, setStagesOpen] = useState(false); // the project's own task stages (a dialog from its header)
   const scopeId = 'id' in p.scope ? p.scope.id : '';
+  const phone = usePhone();
+  // A project opens on its tasks on a phone (Todoist's project screen); its overview and parts are in its "…".
+  const homeTab = phone ? 'tasks' : 'overview';
   useEffect(() => {
-    if (p.scope.kind === 'client') setClientTab(p.scope.teamId ? 'tasks' : (p.clientTab ?? 'overview'));
+    if (p.scope.kind === 'client') setClientTab(p.scope.teamId ? 'tasks' : (p.clientTab ?? homeTab));
   }, [scopeId, p.clientTab]); // eslint-disable-line react-hooks/exhaustive-deps
   const [previewAs, setPreviewAs] = useState<string | null>(null);
   const [inviteName, setInviteName] = useState('');
@@ -280,43 +309,84 @@ export function TasksView(p: Props) {
   const toReview = workAll.filter((t) => t.supervisorId === p.me && kindOf(t) === 'review').length;
   const myTeams = p.teams.filter((t) => p.canManage || p.myTeamIds.includes(t.id));
   const myProjects = p.clients.filter((c) => c.status !== 'ended' && (p.canManage || p.myClientIds.includes(c.id)));
-  const scopeValue = scope.kind === 'team' || scope.kind === 'project' || scope.kind === 'client' ? `${scope.kind}:${scope.id}` : scope.kind;
-  useTitleMenu('tasks', {
-    label: t('Which tasks'),
-    value: scopeValue,
-    options: [
-      { value: 'mine', label: t('My tasks'), hint: lateMine ? tn(lateMine, '{n} late', '{n} late') : undefined, group: t('Tasks') },
-      { value: 'today', label: t('Today'), hint: todayMine + lateMine ? tn(todayMine + lateMine, '{n} to do', '{n} to do') : undefined, group: t('Tasks') },
-      { value: 'upcoming', label: t('Upcoming'), group: t('Tasks') },
-      { value: 'supervising', label: t('Supervising'), hint: toReview ? tn(toReview, '{n} to review', '{n} to review') : undefined, group: t('Tasks') },
-      { value: 'delegated', label: t('Assigned by me'), group: t('Tasks') },
-      { value: 'briefs', label: t('Briefs'), group: t('Tasks') },
-      ...(p.canManage ? [{ value: 'all', label: t('Everything'), group: t('Tasks') }] : []),
-      ...myTeams.map((tm) => {
-        const n = workAll.filter((x) => x.teamId === tm.id && !doers(x).length).length;
-        return { value: `team:${tm.id}`, label: tm.name, hint: n ? tn(n, '{n} not assigned', '{n} not assigned') : undefined, icon: <span className="ts-dot"><Dot color={tm.color} /></span>, group: t('Team queues') };
-      }),
-      ...myProjects.map((c) => {
-        const n = workAll.filter((x) => x.clientId === c.id && late(x)).length;
-        return { value: `project:${c.id}`, label: c.name, hint: n ? tn(n, '{n} late', '{n} late') : undefined, icon: <span className="ts-dot"><Dot color={c.color} /></span>, group: term.Many };
-      }),
-      { value: 'dump', label: t('Brain dump'), hint: t('Turn notes into tasks'), group: t('More') },
-      ...(p.onPastProjects ? [{ value: 'past', label: t('Past {projects}', { projects: term.many }), group: t('More') }] : []),
-      ...views.map((v) => ({ value: `view:${v.id}`, label: v.name, group: t('Your views') })),
-    ],
-    onChange: (v) => {
-      if (v === 'dump') return p.onBrainDump();
-      if (v === 'past') return p.onPastProjects?.();
-      if (v.startsWith('view:')) {
-        const view = views.find((x) => x.id === v.slice(5));
-        if (view?.display) saveDisplay(view.scope.kind, view.display);
-        if (view) p.onScope(view.scope as TaskScope);
-        return;
-      }
-      const [k, id] = v.split(':');
-      p.onScope(id ? ({ kind: k, id } as TaskScope) : ({ kind: k } as TaskScope));
+  // Phones: Browse, every place in Tasks as Todoist's grouped cards, with what's worth acting on at the right.
+  const app = p.app ?? 'tasks';
+  const go = (s: TaskScope) => (p.onBrowse?.(false), p.onScope(s));
+  const browseGroups: BrowseGroup[] = [
+    {
+      id: 'mine',
+      rows: [
+        { id: 'today', label: t('Today'), icon: <CalendarCheck2 size={22} />, hint: lateMine ? tn(lateMine, '{n} late', '{n} late') : todayMine ? tn(todayMine, '{n} to do', '{n} to do') : undefined, tone: lateMine ? 'danger' : undefined, run: () => go({ kind: 'today' }) },
+        { id: 'upcoming', label: t('Upcoming'), icon: <CalendarRange size={22} />, run: () => go({ kind: 'upcoming' }) },
+        { id: 'mine', label: t('My tasks'), icon: <ListTodo size={22} />, run: () => go({ kind: 'mine' }) },
+      ],
     },
-  });
+    {
+      id: 'team',
+      title: t('Team'),
+      rows: [
+        { id: 'supervising', label: t('Supervising'), icon: <Eye size={22} />, hint: toReview ? tn(toReview, '{n} to review', '{n} to review') : undefined, tone: 'accent' as const, run: () => go({ kind: 'supervising' }) },
+        { id: 'delegated', label: t('Assigned by me'), icon: <Send size={22} />, run: () => go({ kind: 'delegated' }) },
+        ...myTeams.map((tm) => {
+          const n = workAll.filter((x) => x.teamId === tm.id && !doers(x).length).length;
+          return { id: `team:${tm.id}`, label: tm.name, icon: <span className="tbr-hash" style={{ color: tm.color }}>#</span>, hint: n ? tn(n, '{n} not assigned', '{n} not assigned') : undefined, run: () => go({ kind: 'team', id: tm.id }) };
+        }),
+        { id: 'briefs', label: t('Briefs'), icon: <FileText size={22} />, run: () => go({ kind: 'briefs' }) },
+        ...(p.canManage ? [{ id: 'all', label: t('Everything'), icon: <Layers size={22} />, run: () => go({ kind: 'all' }) }] : []),
+      ],
+    },
+    {
+      id: 'projects',
+      title: term.Many,
+      add: p.onNewProject ? { label: t('New {project}', { project: term.one }), run: p.onNewProject } : undefined,
+      rows: [
+        ...myProjects.map((c) => {
+          const n = workAll.filter((x) => x.clientId === c.id && late(x)).length;
+          return {
+            id: `project:${c.id}`,
+            label: c.name,
+            icon: <span className="tbr-hash" style={{ color: c.color }}>#</span>,
+            hint: n ? tn(n, '{n} late', '{n} late') : c.status === 'lead' ? tx('status', 'Lead') : undefined,
+            tone: n ? ('danger' as const) : undefined,
+            run: () => go({ kind: 'project', id: c.id }),
+            menu: p.onOpenProject
+              ? [
+                  { label: t('Open overview'), icon: LayoutDashboard, run: () => p.onOpenProject!(c.id, 'overview') },
+                  ...(p.canManage || c.ownerId === p.me ? [{ label: t('End work'), icon: Archive, danger: true, group: 'end', run: () => p.onEndClient(c.id) }] : []),
+                ]
+              : undefined,
+          };
+        }),
+        ...(p.onPastProjects ? [{ id: 'past', label: t('Past {projects}', { projects: term.many }), icon: <Archive size={22} />, muted: true, run: () => p.onPastProjects!() }] : []),
+      ],
+    },
+    {
+      id: 'views',
+      title: t('Your views'),
+      rows: views.map((v) => ({
+        id: `view:${v.id}`,
+        label: v.name,
+        icon: <SlidersHorizontal size={22} />,
+        run: () => {
+          if (v.display) saveDisplay(v.scope.kind, v.display);
+          go(v.scope as TaskScope);
+        },
+        menu: [{ label: t('Delete view'), icon: X, danger: true, run: () => setViews(views.filter((x) => x.id !== v.id)) }],
+      })),
+    },
+    {
+      id: 'settings',
+      title: t('Settings'),
+      rows: (p.settings ?? []).map((s) => ({ id: s.id, label: s.label, icon: <Settings2 size={22} />, run: s.run })),
+    },
+  ];
+  // Browse's create button: Quick Add for My tasks, straight from the tap (iPhone only opens the keyboard for focus
+  // given during the tap).
+  const [browseAdd, setBrowseAdd] = useState(false);
+  const browseField = useRef<HTMLTextAreaElement>(null);
+  const showBrowse = phone && !!p.browse && app === 'tasks';
+  useCreateAction('tasks', showBrowse && { label: t('New task'), icon: Plus, run: () => (flushSync(() => setBrowseAdd(true)), browseField.current?.focus()), more: [{ label: t('Brain dump'), icon: Sparkles, run: p.onBrainDump }] });
+  const [workloadOpen, setWorkloadOpen] = useState(false);
 
   const heading =
     scope.kind === 'today'
@@ -550,17 +620,63 @@ export function TasksView(p: Props) {
           ? t('Bigger pieces of work with one person in charge and tasks for others')
           : [overdue ? tn(overdue, '{n} late', '{n} late') : '', dueToday ? tn(dueToday, '{n} due today', '{n} due today') : ''].filter(Boolean).join(' · ') || (open.length ? t('Nothing late or due today') : t('Nothing open'));
 
-  // A project's parts: tabs on desktop; on phones a list on its home and the title switcher (ProjectPhone.tsx).
+  // A project's parts: tabs on desktop; on phones its tasks first, the rest in its "…" (ProjectPhone.tsx).
   const tabItems = projectTabs({ late: overdue, unreadMail: clientThreads.filter((t) => t.unread).length, quotes: !!p.onQuote, quoteWaiting: !!client && (p.quotes ?? []).some((q) => q.clientId === client.id && q.status === 'sent'), tables: !!p.onOpenTable });
-  useProjectPhone({ client, items: tabItems, tab: clientTab, onTab: setClientTab, others: p.clients, onProject: (id) => p.onScope(id === null ? { kind: 'projects' } : id === 'past' ? { kind: 'past' } : { kind: 'client', id }) });
+  useProjectPhone({ client, tab: clientTab, home: homeTab, onTab: setClientTab });
+  const parts = useProjectParts(tabItems);
+
+  // Admins, the owner and the project's Leads manage a project: its status, people, guests and their access.
+  const projectManage = !!client && (p.canManage || client.ownerId === p.me || (client.members ?? []).some((m) => m.userId === p.me && m.role === 'lead'));
+
+  /* ---------- Phones: the top bar (Todoist: "‹ Tasks", the view's name, one "…"; a project's people and layout) ---------- */
+  const proj = client ?? project;
+  const openPart = (tab: ProjectTab) => (client ? setClientTab(tab) : proj && (p.onOpenProject ? p.onOpenProject(proj.id, tab) : p.onScope({ kind: 'client', id: proj.id })));
+  const projectMenu: SheetAction[] = proj
+    ? [
+        { label: t('Overview'), icon: LayoutDashboard, run: () => openPart('overview') },
+        ...(client || p.onOpenProject
+          ? parts
+              .filter((x) => x.id !== 'overview' && x.id !== 'tasks')
+              .map((x) => ({ label: x.name ?? x.id, icon: projectTabIcon(x.id), hint: x.note, group: 'parts', run: () => openPart(x.id as ProjectTab) }))
+          : []),
+        ...(client && projectManage ? [{ label: t('Stages'), icon: Columns3, group: 'manage', run: () => setStagesOpen(true) }] : []),
+        ...(client && client.status !== 'ended' ? [{ label: t('Start from a template'), icon: LayoutTemplate, group: 'manage', run: p.onTemplate }] : []),
+        ...(client && projectManage && client.status !== 'ended' ? [{ label: t('End work'), icon: Archive, danger: true, group: 'end', run: () => p.onEndClient(client.id) }] : []),
+      ]
+    : [];
+  const teamMenu: SheetAction[] = team
+    ? [
+        { label: t('Workload'), icon: BarChart3, run: () => setWorkloadOpen(true) },
+        ...(teamChannel ? [{ label: `#${teamChannel.name}`, icon: Hash, run: () => p.onOpenChannel(teamChannel.id) }] : []),
+      ]
+    : [];
+  const projManage = !!proj && (p.canManage || proj.ownerId === p.me || (proj.members ?? []).some((m) => m.userId === p.me && m.role === 'lead'));
+  const people = proj && (
+    <ProjectPeople compact client={proj} users={p.users} me={p.me} canEdit={projManage} canInvite={projManage || !!p.canInviteGuests} onPatch={(x) => p.onPatchClient(proj.id, x)} onGuests={() => openPart('portal')} />
+  );
+  const backToBrowse = app === 'tasks' && p.onBrowse ? <TopBarBack label={t('Tasks')} onClick={() => p.onBrowse!(true)} /> : undefined;
+  const partName = client && clientTab !== 'tasks' ? (clientTab === 'overview' ? client.name : (tabItems.find((x) => x.id === clientTab)?.name ?? client.name)) : '';
+  const phoneBar: PhoneBar | undefined = phone ? { app, lead: backToBrowse, title: <BarTitle app={app} text={heading} />, people: people || undefined, more: [...projectMenu, ...teamMenu], stages: client && projectManage ? () => setStagesOpen(true) : undefined } : undefined;
+  const largeTitle = phone && (showTaskList || scope.kind === 'briefs') && (
+    <LargeTitle app={app}>
+      <h1 className="tv-title">{heading}</h1>
+    </LargeTitle>
+  );
+
+  if (showBrowse)
+    return (
+      <>
+        <TasksBrowse groups={browseGroups} />
+        {browseAdd && <QuickAdd ops={ops} defaults={{}} mode="sheet" where={t('My tasks')} inputRef={browseField} onClose={() => setBrowseAdd(false)} />}
+      </>
+    );
 
   if (scope.kind === 'past')
     return <PastClients clients={p.clients} tasks={p.tasks} canManage={p.canManage} onOpen={(id) => p.onScope({ kind: 'client', id })} onReactivate={p.onReactivateClient} />;
 
-  // Admins, the owner and the project's Leads manage a project: its status, people, guests and their access.
-  const projectManage = !!client && (p.canManage || client.ownerId === p.me || (client.members ?? []).some((m) => m.userId === p.me && m.role === 'lead'));
   return (
-    <section className={`tasks-pane view-enter scope-${scope.kind}${client ? ' project-pane' : ''}`}>
+    <section className={`tasks-pane view-enter scope-${scope.kind}${client ? ` project-pane tab-${clientTab}` : ''}${showTaskList ? ' has-list' : ''}`}>
+      {phone && !showTaskList && <TopBar app={app} lead={backToBrowse} title={<BarTitle app={app} text={partName || heading} />} />}
       <header className="tracking-head tasks-head">
         <button className="icon-btn menu-btn" onClick={p.onMenu} aria-label={t('Open menu')}>
           <Menu size={18} />
@@ -700,7 +816,8 @@ export function TasksView(p: Props) {
       )}
 
       <div className="tracking-scroll" key={`${JSON.stringify(scope)}:${clientTab}`}>
-        {team && (
+        {largeTitle}
+        {team && !phone && (
           <div className="workload">
             {workload.map((w) => (
               <button key={w.u.id} className="wl" onClick={() => p.onScope({ kind: 'team', id: team.id })}>
@@ -762,14 +879,29 @@ export function TasksView(p: Props) {
             onViews={setViews}
             onScope={(s) => p.onScope(s as TaskScope)}
             triage={scope.kind === 'team' || scope.kind === 'myteams'}
-            barStart={
-              project && p.onOpenProject ? (
-                <button type="button" className="ghost-btn sm phone-only tq-open" onClick={() => p.onOpenProject!(project.id)}>
-                  {t('Open the {project}', { project: term.one })} <ChevronRight size={14} />
-                </button>
-              ) : undefined
-            }
+            bar={phoneBar}
           />
+        )}
+        {team && workloadOpen && (
+          <Sheet title={t('Workload')} onClose={() => setWorkloadOpen(false)}>
+            <div className="workload wl-sheet">
+              {workload.map((w) => (
+                <div key={w.u.id} className="wl">
+                  <Avatar person={w.u} size={32} />
+                  <span className="wl-text">
+                    <strong>
+                      {w.u.id === p.me ? t('You') : w.u.name.split(' ')[0]}
+                      {w.u.id === team.leadId && <em> {t('lead')}</em>}
+                    </strong>
+                    <span className="bar">
+                      <span style={{ width: `${(w.open / maxLoad) * 100}%` }} className={w.late ? 'warn' : ''} />
+                    </span>
+                    <small>{[tn(w.open, '{n} open', '{n} open'), tn(w.week, '{n} this week', '{n} this week'), w.late ? tn(w.late, '{n} late', '{n} late') : ''].filter(Boolean).join(' · ')}</small>
+                  </span>
+                </div>
+              ))}
+            </div>
+          </Sheet>
         )}
 
         <TabPane key={clientTab}>

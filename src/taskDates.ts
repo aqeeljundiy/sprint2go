@@ -86,6 +86,13 @@ export function dayHeading(day: string, today: string) {
   return n === 0 ? t('Today · {date}', { date }) : n === 1 ? t('Tomorrow · {date}', { date }) : n === -1 ? t('Yesterday · {date}', { date }) : date;
 }
 
+/** Todoist's order for a day heading on phones: "Sat 10 Oct · Today", "Sun 11 Oct · Tomorrow", "Mon 12 Oct". */
+export function dayHeadingDateFirst(day: string, today: string) {
+  const date = weekdayDay(day, today);
+  const n = daysBetween(today, day);
+  return n === 0 ? t('{date} · Today', { date }) : n === 1 ? t('{date} · Tomorrow', { date }) : date;
+}
+
 export interface DayChoice {
   id: 'today' | 'tomorrow' | 'weekend' | 'nextweek' | 'none';
   label: string;

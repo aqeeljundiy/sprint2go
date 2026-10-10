@@ -33,7 +33,6 @@ const id: Record<string, string> = {
   Meetings: 'Rapat',
   Files: 'File',
   Logins: 'Login',
-  'In this {project}': 'Di {project} ini',
   'This {project}': '{Project} ini',
 
   // People on a project (ProjectPeople)

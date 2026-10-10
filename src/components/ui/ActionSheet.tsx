@@ -97,7 +97,7 @@ export function ActionSheet({
  *   <div className="note-row lp" {...m.bind}>…<button ref={more} onClick={() => m.openFrom(more)}>…</button></div>
  *   {m.menu}
  */
-export function useActionMenu(actions: SheetAction[] | (() => SheetAction[]), opts: { title?: string; header?: ReactNode; disabled?: boolean; menu?: boolean } = {}) {
+export function useActionMenu(actions: SheetAction[] | (() => SheetAction[]), opts: { title?: string; header?: ReactNode; disabled?: boolean; menu?: boolean; className?: string } = {}) {
   const [state, setState] = useState<{ at?: { x: number; y: number }; anchor?: RefObject<HTMLElement | null> } | null>(null);
   const list = useRef(actions);
   list.current = actions;
@@ -117,6 +117,6 @@ export function useActionMenu(actions: SheetAction[] | (() => SheetAction[]), op
         setState({ at: { x: e.clientX, y: e.clientY } });
       },
     },
-    menu: <ActionSheet open={!!state} onClose={() => setState(null)} title={opts.title} header={opts.header} actions={resolved} anchor={state?.anchor} at={state?.at ?? null} menu={opts.menu} />,
+    menu: <ActionSheet open={!!state} onClose={() => setState(null)} title={opts.title} header={opts.header} actions={resolved} anchor={state?.anchor} at={state?.at ?? null} menu={opts.menu} className={opts.className} />,
   };
 }

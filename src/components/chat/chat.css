@@ -269,6 +269,18 @@
   padding-left: 20px;
   white-space: normal;
 }
+.cm-pre {
+  margin: 4px 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.88em;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
 .cm-text code {
   padding: 1px 5px;
   border-radius: 5px;
@@ -438,32 +450,6 @@
 }
 .who-reacted .pl-row {
   padding: 6px 8px;
-}
-.plus-tiles {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 8px;
-  padding: 2px 8px 12px;
-}
-.plus-tiles button {
-  display: grid;
-  justify-items: center;
-  gap: 6px;
-  padding: 12px 4px 10px;
-  border-radius: 16px;
-  background: var(--surface-2);
-  color: var(--text);
-  font-size: 12.5px;
-  font-weight: 500;
-  transition:
-    background 0.15s,
-    transform 0.15s;
-}
-.plus-tiles button:active {
-  transform: scale(0.97);
-}
-.plus-tiles svg {
-  color: var(--accent);
 }
 .kudos-form {
   display: grid;
@@ -1008,9 +994,6 @@
     background: var(--hover);
     transform: scale(1.12);
   }
-  .plus-tiles button:hover {
-    background: var(--hover);
-  }
   .huddle-name:hover {
     color: var(--accent);
   }
@@ -1039,7 +1022,6 @@
   }
   .react-row button,
   .emoji-grid button,
-  .plus-tiles button,
   .hs-react button {
     transition: background 0.15s;
   }

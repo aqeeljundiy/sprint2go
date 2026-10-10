@@ -7,7 +7,7 @@ import { sendSignal } from '../sync';
 import { caps } from '../caps';
 import { iceConfig, redacted } from '../ice';
 import { usePhone } from '../mobile/media';
-import { Sheet } from './ui/Sheet';
+import { PushScreen } from './ui/PushScreen';
 import { useHuddleDock } from './chat/huddleDock';
 import { mark, t, tn } from '../i18n';
 import { fmtList, fmtNumber } from '../i18n/format';
@@ -464,8 +464,45 @@ export function Huddle({ channel, users, me, onLeave, onOpenChannel }: { channel
             dock,
           )}
         {full && (
-          <Sheet title={name} size="full" onClose={() => setFull(false)} className="huddle-sheet" label={t('Huddle in {name}', { name })}>
-            <p className="hs-status">{line}</p>
+          // The call itself: a full screen (Slack). Back makes it the slim bar again; Leave is the red pill.
+          <PushScreen
+            className="huddle-push"
+            backLabel={t('Back')}
+            onBack={() => setFull(false)}
+            title={
+              <span className="push-title-2">
+                {name}
+                <small>{line}</small>
+              </span>
+            }
+            actions={
+              <button type="button" className="hp-leave" onClick={() => (setFull(false), leave())}>
+                {t('Leave')}
+              </button>
+            }
+            footer={
+              <div className="hs-controls">
+                <button type="button" className={`hs-ctl${muted ? ' on' : ''}`} onClick={toggleMute} disabled={mic !== 'on'} aria-pressed={muted}>
+                  <span>{muted ? <MicOff size={22} /> : <Mic size={22} />}</span>
+                  {muted ? t('Unmute') : t('Mute')}
+                </button>
+                <button type="button" className={`hs-ctl${reacting ? ' on' : ''}`} onClick={() => setReacting((r) => !r)} aria-expanded={reacting}>
+                  <span>
+                    <SmilePlus size={22} />
+                  </span>
+                  {t('React')}
+                </button>
+                {onOpenChannel && (
+                  <button type="button" className="hs-ctl" onClick={() => (setFull(false), onOpenChannel())}>
+                    <span>
+                      <MessageSquare size={22} />
+                    </span>
+                    {t('Chat')}
+                  </button>
+                )}
+              </div>
+            }
+          >
             {problemNote}
             <div className="hs-people">
               {members.map((id) => (
@@ -476,33 +513,7 @@ export function Huddle({ channel, users, me, onLeave, onOpenChannel }: { channel
               ))}
             </div>
             {reactRow}
-            <div className="hs-controls">
-              <button type="button" className={`hs-ctl${muted ? ' on' : ''}`} onClick={toggleMute} disabled={mic !== 'on'} aria-pressed={muted}>
-                <span>{muted ? <MicOff size={22} /> : <Mic size={22} />}</span>
-                {muted ? t('Unmute') : t('Mute')}
-              </button>
-              <button type="button" className={`hs-ctl${reacting ? ' on' : ''}`} onClick={() => setReacting((r) => !r)} aria-expanded={reacting}>
-                <span>
-                  <SmilePlus size={22} />
-                </span>
-                {t('React')}
-              </button>
-              {onOpenChannel && (
-                <button type="button" className="hs-ctl" onClick={() => (setFull(false), onOpenChannel())}>
-                  <span>
-                    <MessageSquare size={22} />
-                  </span>
-                  {t('Chat')}
-                </button>
-              )}
-              <button type="button" className="hs-ctl leave" onClick={() => (setFull(false), leave())}>
-                <span>
-                  <PhoneOff size={22} />
-                </span>
-                {t('Leave')}
-              </button>
-            </div>
-          </Sheet>
+          </PushScreen>
         )}
       </>
     );

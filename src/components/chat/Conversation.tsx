@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, ArrowLeft, Bell, BellOff, Bookmark, BookmarkMinus, ChevronRight, Clock, Copy, Forward, Handshake, Hash, Headphones, Link2, ListChecks, Lock, LogOut, MailOpen, Menu, MessageSquareReply, Pencil, Pin, Settings, Sparkles, Trash2, WifiOff, X } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Bell, BellOff, Bookmark, BookmarkMinus, ChevronRight, Clock, Copy, Forward, Handshake, Hash, Headphones, Link2, ListChecks, Lock, LogOut, MailOpen, Menu, MessageSquareReply, Pencil, Pin, Search, Settings, Sparkles, Trash2, WifiOff, X } from 'lucide-react';
 import type { Channel, ChatFile, ChatMessage, Client, DriveItem, Role, Status, Team, Thread, Todo, User } from '../../types';
 import { localDay } from '../../utils';
 import { term } from '../../terms';
@@ -27,7 +27,7 @@ import { Composer, ScheduledLine, type Library, type Outgoing } from './Composer
 import { authorOf, DayLine, fmtSize, MONTHS, Msg, NewLine, preview, type MsgCtx } from './Message';
 import { ConfirmSheet, EmojiGrid, EmojiSheet, ForwardSheet, ReactionRow, WhenSheet, WhoReactedSheet, chanName } from './Sheets';
 import { ChannelAbout, PinnedPane, SummaryPane, TasksPane } from './Details';
-import { draftKey, dmOther, statusText, useChatState, whenText } from './chatPrefs';
+import { draftKey, dmOther, shortTime, statusText, useChatState, whenText } from './chatPrefs';
 import { msg, phrase, t, tn, type Msg as Words } from '../../i18n';
 import { tj } from '../../i18n/tj';
 import { fmtList, fmtNumber } from '../../i18n/format';
@@ -166,7 +166,8 @@ export function ChatView(p: ViewProps) {
   const unsentNow = useUnsent('messages');
   const [text, setText] = useState('');
   const [tab, setTab] = useState<Tab>('messages');
-  const [details, setDetails] = useState<null | 'menu' | Exclude<Tab, 'messages'> | 'people'>(null);
+  const [details, setDetails] = useState<null | 'menu' | Exclude<Tab, 'messages'> | 'people' | 'search'>(null);
+  const [findText, setFindText] = useState(''); // phones: Search in this conversation (its details)
   const [summarizing, setSummarizing] = useState<'period' | 'since' | null>(null);
   const [sinceText, setSinceText] = useState<string | null>(null);
   const [catchUp, setCatchUp] = useState(false);
@@ -205,21 +206,25 @@ export function ChatView(p: ViewProps) {
   const guest = p.guest;
   const firstNew = !p.since ? undefined : top.find((m) => m.at > p.since && m.userId !== me && m.kind !== 'celebration' && m.kind !== 'system')?.id;
 
-  useEffect(() => {
-    if (!p.focusId) return;
-    const target = p.messages.find((m) => m.id === p.focusId);
+  // Land on a message (a notification, a search result): open its thread if it's a reply, scroll to it, light it up.
+  const jumpTo = (id: string, done?: () => void) => {
+    const target = p.messages.find((m) => m.id === id);
     if (!target) return;
     setTab('messages');
-    if (target.parentId) setThreadId(target.parentId);
-    const timer = setTimeout(() => {
-      const el = document.querySelector(`[data-msg="${p.focusId}"]`);
+    if (target.parentId && !target.alsoInChannel) setThreadId(target.parentId);
+    return setTimeout(() => {
+      const el = document.querySelector(`[data-msg="${id}"]`);
       if (el) {
         el.scrollIntoView({ block: 'center', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
         el.classList.add('flash');
         setTimeout(() => el.classList.remove('flash'), 2200);
       }
-      p.onFocused?.();
+      done?.();
     }, 250);
+  };
+  useEffect(() => {
+    if (!p.focusId) return;
+    const timer = jumpTo(p.focusId, () => p.onFocused?.());
     return () => clearTimeout(timer);
   }, [p.focusId, p.messages.length]); // eslint-disable-line react-hooks/exhaustive-deps
   const canPost = guest ? guest.canPost : !channel || channel.postPolicy !== 'admins' || p.myRole !== 'member' || channel.ownerId === me;
@@ -413,16 +418,17 @@ export function ChatView(p: ViewProps) {
     const saved = chat.savedItem(m.id);
     const root = m.parentId && !m.alsoInChannel ? m.parentId : m.id;
     const list: SheetAction[] = [];
+    // Slack's order: reply, mark unread, remind, save, copy, forward; then ours (make a task); then pin, edit, delete.
     if (threadId !== root) list.push({ label: m.parentId ? t('Open thread') : t('Reply in thread'), icon: MessageSquareReply, run: () => openThread(root) });
-    if (!guest && !m.taskId && m.text && m.kind !== 'kudos') list.push({ label: t('Make a task'), icon: ListChecks, run: () => p.onMakeTask(m) });
-    if (!guest) {
-      list.push(saved ? { label: t('Remove from saved'), icon: BookmarkMinus, run: () => toggleSave(m) } : { label: t('Save'), icon: Bookmark, run: () => toggleSave(m) });
-      list.push({ label: t('Remind me'), icon: Clock, hint: saved?.remindAt && !saved.reminded ? t('Set for {when}', { when: whenText(saved.remindAt) }) : undefined, run: () => setSub({ kind: 'remind', m }) });
-    }
     if (!mine) list.push({ label: t('Mark unread'), icon: MailOpen, run: () => markUnread(m) });
+    if (!guest) {
+      list.push({ label: t('Remind me'), icon: Clock, hint: saved?.remindAt && !saved.reminded ? t('Set for {when}', { when: whenText(saved.remindAt) }) : undefined, run: () => setSub({ kind: 'remind', m }) });
+      list.push(saved ? { label: t('Remove from saved'), icon: BookmarkMinus, run: () => toggleSave(m) } : { label: t('Save'), icon: Bookmark, run: () => toggleSave(m) });
+    }
     if (!guest) list.push({ label: t('Copy link'), icon: Link2, run: () => copy(linkTo(m), t('Link copied')) });
     if (m.text) list.push({ label: t('Copy text'), icon: Copy, run: () => copy(m.text, t('Text copied')) });
     if (!guest && p.onForward && p.channels) list.push({ label: t('Forward'), icon: Forward, run: () => setSub({ kind: 'forward', m }) });
+    if (!guest && !m.taskId && m.text && m.kind !== 'kudos') list.push({ label: t('Make a task'), icon: ListChecks, run: () => p.onMakeTask(m) });
     if (!guest && channel.kind === 'channel' && !m.parentId) list.push({ label: m.pinned ? t('Unpin') : t('Pin to the channel'), icon: Pin, group: 'end', run: () => p.onPin(m.id) });
     if (mine && p.onEdit && m.text && !m.voice && !m.poll && m.kind !== 'kudos') list.push({ label: t('Edit'), icon: Pencil, group: 'end', run: () => setEditing(m) });
     if (mine && !guest) list.push({ label: t('Delete'), icon: Trash2, danger: true, group: 'end', run: () => setSub({ kind: 'delete', m }) });
@@ -717,14 +723,15 @@ export function ChatView(p: ViewProps) {
         }
         actions={
           <>
-            {p.huddle && !guest && (
-              <button type="button" className={`icon-btn huddle-icon${channel.huddle?.members.length ? ' live' : ''}${p.huddle.joined ? ' on' : ''}`} onClick={p.huddle.joined ? p.huddle.onOpen : p.huddle.onJoin} aria-label={p.huddle.joined ? t('Open the huddle') : channel.huddle?.members.length ? t('Join the huddle') : t('Start a huddle')}>
-                <Headphones size={20} />
-              </button>
-            )}
+            {/* Slack's order: the AI summary, then the huddle. */}
             {!guest && (
               <button type="button" className="icon-btn" onClick={() => (setCatchUp(true), !sinceText && !summarizing && !p.summaryOff && void summarize('since'))} aria-label={t('Catch me up: what I missed here')}>
-                <Sparkles size={19} />
+                <Sparkles size={22} />
+              </button>
+            )}
+            {p.huddle && !guest && (
+              <button type="button" className={`icon-btn huddle-icon${channel.huddle?.members.length ? ' live' : ''}${p.huddle.joined ? ' on' : ''}`} onClick={p.huddle.joined ? p.huddle.onOpen : p.huddle.onJoin} aria-label={p.huddle.joined ? t('Open the huddle') : channel.huddle?.members.length ? t('Join the huddle') : t('Start a huddle')}>
+                <Headphones size={22} />
               </button>
             )}
           </>
@@ -742,42 +749,30 @@ export function ChatView(p: ViewProps) {
         {details && !guest && (
           <PushScreen title={t('Details')} backLabel={title.length > 14 ? t('Back') : title} onBack={() => setDetails(null)} className="chat-details">
             <div className="cd-hero">
-              {other ? <Avatar person={other} size={56} /> : <span className="cd-icon">{channel.private ? <Lock size={24} /> : channel.category === 'shared' ? <Handshake size={24} /> : <Hash size={24} />}</span>}
+              {other && <Avatar person={other} size={64} />}
               <strong>{other ? other.name : title}</strong>
-              <span className="muted">{other ? other.title : (channel.topic ?? (client ? t('{name} {project} channel', { name: client.name, project: term.one }) : ''))}</span>
+              {(other ? other.title : (channel.topic ?? (client ? t('{name} {project} channel', { name: client.name, project: term.one }) : ''))) && <span className="cd-topic">{other ? other.title : (channel.topic ?? (client ? t('{name} {project} channel', { name: client.name, project: term.one }) : ''))}</span>}
             </div>
+            {/* Slack: plain buttons, an icon over a word. */}
             <div className="cdt-actions">
-              <button type="button" onClick={() => (muted ? (chat.unmute(channel.id), toast({ text: t('Notifications back on') })) : setMuteOpen((o) => !o))} className={muted || muteOpen ? 'on' : ''} aria-expanded={!muted ? muteOpen : undefined}>
-                {muted ? <BellOff size={20} /> : <Bell size={20} />}
+              <button type="button" onClick={() => (muted ? (chat.unmute(channel.id), toast({ text: t('Notifications back on') })) : setMuteOpen(true))} className={muted ? 'on' : ''}>
+                {muted ? <BellOff size={22} /> : <Bell size={22} />}
                 <span>{muted ? t('Unmute') : t('Mute')}</span>
               </button>
-              <button type="button" onClick={() => copy(`${location.origin}${routeBase}/chat?ws=${encodeURIComponent(channel.workspaceId)}&id=${encodeURIComponent(channel.id)}`, t('Link copied'))}>
-                <Link2 size={20} />
-                <span>{t('Copy link')}</span>
-              </button>
-              {channel.kind === 'channel' && (
-                <button type="button" onClick={p.onSettings}>
-                  <Settings size={20} />
-                  <span>{t('Settings')}</span>
+              {p.huddle && (
+                <button type="button" onClick={() => (setDetails(null), p.huddle!.joined ? p.huddle!.onOpen?.() : p.huddle!.onJoin())} className={p.huddle.joined ? 'on' : ''}>
+                  <Headphones size={22} />
+                  <span>{t('Huddle')}</span>
                 </button>
               )}
-            </div>
-            <div className={`fold cd-mute-fold${muteOpen && !muted ? ' open' : ''}`} aria-hidden={!muteOpen || !!muted}>
-              <div>
-                <div className="cd-mute" role="group" aria-label={t('Mute for how long')}>
-                  {(
-                    [
-                      ['hour', t('For an hour'), t('Muted for an hour. Mentions of you still come through.')],
-                      ['tomorrow', t('Until tomorrow morning'), t('Muted until tomorrow morning. Mentions of you still come through.')],
-                      ['always', t('Until I turn it back on'), t('Muted until you turn it back on. Mentions of you still come through.')],
-                    ] as const
-                  ).map(([k, l, done]) => (
-                    <button key={k} type="button" className="chip" tabIndex={muteOpen ? 0 : -1} onClick={() => (chat.mute(channel.id, k), setMuteOpen(false), toast({ text: done }))}>
-                      {l}
-                    </button>
-                  ))}
-                </div>
-              </div>
+              <button type="button" onClick={() => (setFindText(''), setDetails('search'))}>
+                <Search size={22} />
+                <span>{t('Search')}</span>
+              </button>
+              <button type="button" onClick={() => copy(`${location.origin}${routeBase}/chat?ws=${encodeURIComponent(channel.workspaceId)}&id=${encodeURIComponent(channel.id)}`, t('Link copied'))}>
+                <Link2 size={22} />
+                <span>{t('Copy link')}</span>
+              </button>
             </div>
             <div className="cd-rows">
               {detailRows.map((r) => (
@@ -787,6 +782,12 @@ export function ChatView(p: ViewProps) {
                   <ChevronRight size={16} className="cd-chev" />
                 </button>
               ))}
+              {channel.kind === 'channel' && (
+                <button type="button" className="cd-row" onClick={p.onSettings}>
+                  <span className="cd-label">{t('Settings')}</span>
+                  <ChevronRight size={16} className="cd-chev" />
+                </button>
+              )}
             </div>
             {channel.kind === 'channel' && p.onLeave && !channel.teamId && (
               <button type="button" className="cd-row danger" onClick={() => setLeaving(true)}>
@@ -794,7 +795,62 @@ export function ChatView(p: ViewProps) {
                 <span className="cd-label">{t('Leave {name}', { name: title })}</span>
               </button>
             )}
-            {details !== 'menu' && (
+            {muteOpen && !muted && (
+              <ActionSheet
+                open
+                onClose={() => setMuteOpen(false)}
+                title={t('Mute {name}', { name: title })}
+                actions={(
+                  [
+                    ['hour', t('For an hour'), t('Muted for an hour. Mentions of you still come through.')],
+                    ['tomorrow', t('Until tomorrow morning'), t('Muted until tomorrow morning. Mentions of you still come through.')],
+                    ['always', t('Until I turn it back on'), t('Muted until you turn it back on. Mentions of you still come through.')],
+                  ] as const
+                ).map(([k, l, done]) => ({ label: l, hint: k === 'always' ? t('Mentions of you still come through') : undefined, run: () => (chat.mute(channel.id, k), toast({ text: done })) }))}
+              />
+            )}
+            {details === 'search' && (
+              <PushScreen title={t('Search in {name}', { name: title })} backLabel={t('Details')} onBack={() => setDetails('menu')} className="chat-pane-screen chat-find">
+                <label className="sheet-search cf-field">
+                  <Search size={16} />
+                  <input autoFocus value={findText} onChange={(e) => setFindText(e.target.value)} placeholder={t('Search messages')} aria-label={t('Search messages')} enterKeyHint="search" />
+                </label>
+                {(() => {
+                  const q = findText.trim().toLowerCase();
+                  const hits = q ? p.messages.filter((m) => !m.sendAt && (m.text || '').toLowerCase().includes(q)).sort((a, b) => b.at.localeCompare(a.at)).slice(0, 50) : [];
+                  if (!q) return <p className="sheet-empty">{t('Words from a message, a name or a link')}</p>;
+                  if (!hits.length) return <p className="sheet-empty">{t('Nothing here says “{q}”', { q: findText.trim() })}</p>;
+                  return (
+                    <div className="cf-list">
+                      {hits.map((m) => {
+                        const au = authorOf(m, { me, users, channel });
+                        const txt = preview(m);
+                        const i = txt.toLowerCase().indexOf(q);
+                        return (
+                          <button key={m.id} type="button" className="cf-row" onClick={() => (setDetails(null), jumpTo(m.id))}>
+                            <span className="cf-meta">
+                              {au.name} · {shortTime(m.at)}
+                            </span>
+                            <span className="cf-text">
+                              {i < 0 ? (
+                                txt
+                              ) : (
+                                <>
+                                  {txt.slice(Math.max(0, i - 40), i)}
+                                  <b>{txt.slice(i, i + q.length)}</b>
+                                  {txt.slice(i + q.length)}
+                                </>
+                              )}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
+              </PushScreen>
+            )}
+            {details !== 'menu' && details !== 'search' && (
               <PushScreen title={paneTitle[details]} backLabel={t('Details')} onBack={() => setDetails('menu')} className="chat-pane-screen">
                 {pane(details)}
               </PushScreen>
@@ -815,7 +871,7 @@ export function ChatView(p: ViewProps) {
             ) : summarizing === 'since' ? (
               <p className="muted catchme-wait">{t('Reading what came in since {when}…', { when: whenText(p.since) })}</p>
             ) : (
-              <p className="catchme-text">{sinceText ?? t('Nothing to catch up on.')}</p>
+              <SummaryText text={sinceText ?? t('Nothing to catch up on.')} />
             )}
             <button type="button" className="link-btn" onClick={() => (setCatchUp(false), setDetails('summary'))}>
               {t('All summaries of {name}', { name: title })}
@@ -921,6 +977,36 @@ export function ChatView(p: ViewProps) {
       </div>
       {overlays}
     </section>
+  );
+}
+
+/** An AI summary as Slack shows one: points as bullets, each with its lead words in bold ("Budget: …"). */
+function SummaryText({ text }: { text: string }) {
+  const lines = text.split('\n').map((l) => l.trim()).filter(Boolean);
+  const point = (l: string) => {
+    const m = /^([^:.]{2,40}):\s+(.+)$/.exec(l);
+    return m ? (
+      <>
+        <b>{m[1]}:</b> {m[2]}
+      </>
+    ) : (
+      l
+    );
+  };
+  const bullets = lines.filter((l) => /^[-•*]\s/.test(l));
+  if (!bullets.length) return <p className="catchme-text">{text}</p>;
+  return (
+    <div className="catchme-text">
+      {lines.map((l, i) =>
+        /^[-•*]\s/.test(l) ? (
+          <p key={i} className="cm-point">
+            {point(l.replace(/^[-•*]\s/, ''))}
+          </p>
+        ) : (
+          <p key={i}>{point(l)}</p>
+        ),
+      )}
+    </div>
   );
 }
 
