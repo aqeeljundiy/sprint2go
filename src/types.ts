@@ -18,6 +18,14 @@ export interface Attachment {
   name: string;
   size: string;
   url?: string; // where the file is (uploaded or received by the mail engine)
+  // Attachments round (src/mailAttachments.ts, server/mailFiles.ts):
+  type?: string; // its media type, as the sender said
+  /** A picture that sits inside the email's words (a cid image): shown in place, not listed with the files. */
+  inline?: boolean;
+  /** Checked for viruses on arrival: 'clean', or 'unscanned' when no scanner runs here (CLAMD_HOST unset or down). */
+  scan?: 'clean' | 'unscanned';
+  /** Refused on arrival (a type Gmail refuses, one inside a zip, or a virus): why, and the file isn't kept. */
+  blocked?: string;
 }
 
 export interface Message {

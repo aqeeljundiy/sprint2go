@@ -23,6 +23,7 @@ import { overRoom, overRoomWhy } from './billing.ts';
 import * as whitelist from './whitelist.ts';
 import * as track from './readTracking.ts';
 import { keepRaw } from './mailRaw.ts';
+import { checkOutgoing, inlineForSend, storeIncoming } from './mailFiles.ts';
 import { msg } from '../src/i18n/index.ts';
 import type { Said } from './lang.ts';
 export { domainKey };
@@ -453,11 +454,9 @@ async function receive(raw: Buffer, session: SMTPServerSession) {
     const { ws, account } = hit;
     // A calendar invite: read it, and list its .ics once (calendars attach it twice).
     const cal = readInvite(parsed.attachments, [lower(rcpt.address), lower(account.email)]);
-    const attachments = cal.attachments.map((a) => {
-      const id = randomBytes(16).toString('hex');
-      db.saveFile({ id, workspaceId: ws.id, by: 'mail', name: a.filename ?? 'attachment', type: a.contentType ?? 'application/octet-stream', size: a.size }, a.content);
-      return { name: a.filename ?? 'attachment', size: fmtSize(a.size), url: `/api/files/${id}` };
-    });
+    // Each file checked (refused types, also in zips; viruses when ClamAV runs) and kept; pictures inside shown in place.
+    const stored = await storeIncoming(raw, parsed, ws.id, cal.attachments);
+    const attachments = stored.attachments;
     const msg = {
       id: 'm-' + randomBytes(6).toString('hex'),
       mid,
@@ -465,7 +464,7 @@ async function receive(raw: Buffer, session: SMTPServerSession) {
       to: [...addrs(parsed.to), ...addrs(parsed.cc)],
       date: (parsed.date ?? new Date()).toISOString(),
       body: (parsed.text ?? '').trim(),
-      html,
+      html: stored.html ?? html,
       attachments: attachments.length ? attachments : undefined,
       trackersBlocked: trackers || undefined,
       listUnsubscribe: unsubUrl ? { url: unsubUrl, oneClick: unsubOneClick } : undefined,
@@ -559,6 +558,13 @@ export async function queueSend(o: Outgoing): Promise<{ mid: string; queued: num
     markDelivery(o.threadId, o.messageId, null, 'failed', blocked);
     throw new Error(blocked);
   }
+  // Pictures pasted into the email go inside it as cid images; refused files and mail over 25 MB don't go at all.
+  o = { ...o, ...inlineForSend(o.html, o.files, ws.id) };
+  const badFiles = await checkOutgoing(o.files.filter((f) => !f.cid), ws.id, (o.html ?? o.text ?? '').length);
+  if (badFiles) {
+    markDelivery(o.threadId, o.messageId, null, 'failed', badFiles);
+    throw new Error(badFiles);
+  }
   const recipientsCount = [...o.to, ...o.cc, ...(o.bcc ?? [])].length;
   const sentLastHour = (db.db.prepare('SELECT COUNT(*) AS n FROM outbox WHERE account_id = ? AND created_at >= ?').get(o.accountId, new Date(Date.now() - 3600_000).toISOString()) as { n: number }).n;
   const sentLastDay = (db.db.prepare('SELECT COUNT(*) AS n FROM outbox WHERE account_id = ? AND created_at >= ?').get(o.accountId, new Date(Date.now() - 86_400_000).toISOString()) as { n: number }).n;
@@ -629,13 +635,13 @@ export async function queueSend(o: Outgoing): Promise<{ mid: string; queued: num
   for (const { hit, shared } of localBoxes) {
     if (hit.account.id === o.accountId) continue;
     const parsed = await simpleParser(raw);
-    // Pictures inside the HTML (from a mail app) arrive as part of it, as in received mail, not as attachments.
-    const inline = o.files.some((f) => f.cid);
-    const listed = o.files.filter((f) => !f.cid);
-    const sizes = parsed.attachments.filter((a) => !(inline && a.related && a.contentId) && !/^(text\/calendar|application\/ics)\b/i.test(a.contentType ?? ''));
+    // The files arrive as in mail from outside: the recipient's company's own copies (checked and scanned), and pictures
+    // inside the HTML shown in place, not listed as attachments.
+    const files = parsed.attachments.filter((a) => !/^(text\/calendar|application\/ics)\b/i.test(a.contentType ?? ''));
+    const stored = files.length ? await storeIncoming(raw, parsed, hit.ws.id, files) : { attachments: [], html: undefined };
     // A calendar invite (one a teammate sent from their calendar, or an answer to one): read as mail from outside is.
     const cal = o.ical ? readInvite(parsed.attachments, [lower(hit.account.email)]) : null;
-    const msg = { id: 'm-' + randomBytes(6).toString('hex'), mid, from: o.from, to: shown, date: now(), body: o.text, html: inline ? parsed.html || o.html : o.html, attachments: listed.length && sizes.length ? listed.map((f, i) => ({ name: f.name, size: fmtSize(sizes[i]?.size ?? 0), url: f.url })) : undefined, ...(cal?.invite ? { invite: cal.invite } : {}) };
+    const msg = { id: 'm-' + randomBytes(6).toString('hex'), mid, from: o.from, to: shown, date: now(), body: o.text, html: stored.html ?? (o.files.some((f) => f.cid) ? parsed.html || o.html : o.html), attachments: stored.attachments.length ? stored.attachments : undefined, ...(cal?.invite ? { invite: cal.invite } : {}) };
     const thread = { id: 't-' + randomBytes(6).toString('hex'), accountId: hit.account.id, subject: o.subject || '(no subject)', location: 'inbox', starred: false, unread: true, labels: [], messages: [msg], workspaceId: hit.ws.id };
     keepRaw(thread.id, msg.id, raw);
     db.writeDocs('threads', [thread], [], null);

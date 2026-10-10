@@ -62,3 +62,5 @@ jobs:
         run: node scripts/imap-tests.mjs
       - name: Whitelist (Unlimited lifts every limit, no invoices, AI and Boosted monthly limits, people's rules, operators only, audit, MRR)
         run: node --import ./server/register.mjs scripts/whitelist-tests.mjs
+      - name: Mail attachments (previews, Download all as zip, Save to Drive, big files as links, blocked types and virus scans, files kept on scheduled mail)
+        run: node --import ./server/register.mjs scripts/mail-files-tests.mjs
