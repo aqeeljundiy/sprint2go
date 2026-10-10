@@ -924,3 +924,25 @@
   margin: 0;
   transform: translateY(-50%);
 }
+
+/* Explanations under a setting read at 13, never 12 (AI, Permissions, Notifications were dense at 12). */
+.settings-push .set-row small,
+.settings-push .g-sub,
+.settings-push .set-hint,
+.settings-push p.muted.small {
+  font-size: var(--fs-secondary);
+}
+/* Buttons in settings rows are 44 tall to tap (Empty Spam, Empty Trash were 28). */
+.settings-push .set-row .ghost-btn,
+.settings-push .set-row .primary-btn {
+  min-height: var(--tap);
+}
+
+/* Apps & chat, Your apps: each app's icon at 20 with room after it, like a row icon, not a 15 px glyph in the text. */
+.settings-push .set-row strong > svg:first-child {
+  width: 20px;
+  height: 20px;
+  margin-right: 8px;
+  vertical-align: -4px;
+  color: var(--text-2);
+}

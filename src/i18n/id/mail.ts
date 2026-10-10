@@ -622,6 +622,7 @@ const id: Record<string, string> = {
   'Show the email you’re answering': 'Tampilkan email yang Anda balas',
   'Hide the email you’re answering': 'Sembunyikan email yang Anda balas',
   'On {when}, {who} wrote:': 'Pada {when}, {who} menulis:',
+  'Switched on for {company}. It starts working as soon as this server is ready for other mail apps (see above).': 'Sudah dinyalakan untuk {company}. Mulai berfungsi begitu server ini siap untuk aplikasi email lain (lihat di atas).',
 };
 
 export default id;

@@ -447,7 +447,9 @@ export function PhoneMailApps({ ws, canManage, onWorkspace, toast }: { ws: Works
               <span>
                 <strong>{t('Let people use other mail apps')}</strong>
                 <small>
-                  {here
+                  {here && missingText
+                    ? t('Switched on for {company}. It starts working as soon as this server is ready for other mail apps (see above).', { company: ws.name || t('the company') })
+                    : here
                     ? t('People at {company} can open their mailboxes here in iPhone Mail, Gmail, Outlook and Thunderbird, with app passwords.', { company: ws.name || t('the company') })
                     : t('Off: nobody at {company} can open its mailboxes in other mail apps, and open connections ended.', { company: ws.name || t('the company') })}
                 </small>

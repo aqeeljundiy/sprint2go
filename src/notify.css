@@ -13,7 +13,7 @@
   background: linear-gradient(135deg, var(--ok-soft), transparent 70%), var(--surface);
 }
 .push-card.warn {
-  background: linear-gradient(135deg, var(--warn-soft), transparent 70%), var(--surface);
+  background: var(--surface); /* blocked: a plain card with a grey icon, no amber wash (N3) */
 }
 .push-card-top {
   display: flex;
@@ -36,8 +36,8 @@
   color: var(--ok);
 }
 .push-card.warn .push-icon {
-  background: var(--warn-soft);
-  color: var(--warn);
+  background: var(--hover);
+  color: var(--text-2);
 }
 .push-text {
   display: grid;

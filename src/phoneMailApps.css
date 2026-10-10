@@ -14,7 +14,7 @@
   margin: 0 0 12px;
   padding: 12px 14px;
   border-radius: 12px;
-  background: var(--warn-soft, var(--hover));
+  background: var(--surface); /* neutral: amber is for waiting work, not notes (N3) */
   color: var(--text);
   font-size: 13.5px;
   line-height: 1.45;

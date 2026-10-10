@@ -689,8 +689,12 @@ export function SettingsPage({ email, settings: s, update, section, onSection, u
               <div className="set-row">
                 <span>
                   <strong>{t('Link to the preview')}</strong>
-                  <small className="mono">{location.origin}/?preview=onboarding</small>
+                  <small>{t('Send it to someone to walk through sign-up themselves.')}</small>
                 </span>
+                {/* The address itself isn't shown (a raw localhost URL reads as an error): copy it instead. */}
+                <button className="ghost-btn outline" onClick={() => void navigator.clipboard?.writeText(`${location.origin}/?preview=onboarding`).then(() => admin.toast(t('Link copied')))}>
+                  {t('Copy link')}
+                </button>
               </div>
             </>
           )}
