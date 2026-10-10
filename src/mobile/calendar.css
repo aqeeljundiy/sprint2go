@@ -1100,7 +1100,7 @@
   /* ---------- Day, 3 days, Week (Google's grid): 52 px hours, solid blocks, no tint on today ---------- */
 
   .tg-phone {
-    --gutter: 56px;
+    --cal-gutter: 56px;
   }
   .tg-phone .tg-head,
   .tg-phone .tg-allday {
@@ -1147,7 +1147,7 @@
   }
   .tg-band .tg-day {
     flex: none;
-    width: var(--gutter);
+    width: var(--cal-gutter);
   }
   .tg-band-chips {
     flex: 1;
@@ -1405,7 +1405,7 @@
 }
 @media (max-width: 359px) {
   .tg-phone {
-    --gutter: 48px;
+    --cal-gutter: 48px;
   }
 }
 @media (prefers-reduced-motion: reduce) {

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { setBrand } from '../brandInk';
 import { ArrowLeft, ChevronRight, UserPlus, X } from 'lucide-react';
 import type { User } from '../types';
 import { Avatar } from './Avatar';
@@ -20,7 +21,7 @@ function useBrandAt() {
     void brandAt.then((x: BrandInfo) => {
       if (x.name) {
         setBrandName(x.name);
-        if (x.color) document.documentElement.style.setProperty('--brand', x.color);
+        if (x.color) setBrand(x.color);
         document.title = x.name;
       }
       setB(x);

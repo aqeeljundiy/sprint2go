@@ -113,6 +113,7 @@ import { routeBase } from './tryOut';
 import { useAppLanguage, useLang } from './i18n/useLang';
 import { mark, msg, phrase, t, textOf, tn, type Msg } from './i18n';
 import { fmtDay, fmtList, fmtWeekday } from './i18n/format';
+import { setBrand } from './brandInk';
 
 /** For words saved in a msg(): "today", "tomorrow", "overdue" lower-case mid-sentence (each reader's language), a date as "Thu 8 Oct". */
 const dueWords = (d: string) => {
@@ -320,8 +321,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     if (myPortals.some((pt) => pt.key === portalKey)) return; // the portal brands itself
     applyBranding(ws);
     const root = document.documentElement;
-    // The workspace colour is the brand; polish.css turns it into a light- or dark-friendly accent.
-    root.style.setProperty('--brand', ws.color);
+    // The workspace colour is the brand; tokens.css turns it into a light- or dark-friendly accent.
+    setBrand(ws.color, root);
     root.style.removeProperty('--accent');
     root.style.removeProperty('--accent-hover');
     root.style.removeProperty('--accent-soft');

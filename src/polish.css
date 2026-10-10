@@ -8,73 +8,7 @@
    5. One spacing scale (4/8/12/16/24) and two radii (cards 16px, controls 10px).
    ========================================================================== */
 
-:root {
-  --brand: #2448ff;
-  --accent: var(--brand);
-  --accent-hover: color-mix(in oklab, var(--brand) 86%, black);
-  --accent-soft: color-mix(in oklab, var(--brand) 11%, transparent);
-  --accent-text: color-mix(in oklab, var(--brand) 88%, black);
-
-  --danger: #c93434;
-  --danger-soft: color-mix(in oklab, #c93434 10%, transparent);
-  --warn: #a8640c;
-  --warn-solid: #e39a26;
-  --warn-soft: color-mix(in oklab, #e39a26 14%, transparent);
-  --ok: #14845a;
-  --ok-solid: #22a06b;
-  --ok-soft: color-mix(in oklab, #22a06b 12%, transparent);
-
-  --bg: #f4f5f7;
-  --surface: #ffffff;
-  --surface-2: #f6f7f9;
-  --hover: #eff0f3;
-  --border: #e6e7ec;
-  --line: #eceef2; /* dividers inside a card: lighter than the card's own edge */
-  --text: #111318;
-  --text-2: #3d404a;
-  --text-3: #767a87;
-
-  --r-card: 16px;
-  --r-control: 10px;
-  --shadow: 0 1px 2px rgba(16, 18, 24, 0.04);
-  --shadow-lg: 0 24px 60px -24px rgba(16, 18, 24, 0.22), 0 2px 6px rgba(16, 18, 24, 0.05);
-}
-
-:root[data-theme='dark'] {
-  /* Accent: the brand lifted toward white and calmed, so coral or blue never glares on dark. */
-  --accent: color-mix(in oklab, var(--brand) 74%, #f2f2f2);
-  --accent-hover: color-mix(in oklab, var(--brand) 62%, #ffffff);
-  --accent-soft: color-mix(in oklab, var(--brand) 18%, transparent);
-  --accent-text: color-mix(in oklab, var(--brand) 60%, #ffffff);
-
-  --danger: #f08b8b;
-  --danger-soft: color-mix(in oklab, #e26d6d 16%, transparent);
-  --warn: #e8bb6a;
-  --warn-solid: #d9a248;
-  --warn-soft: color-mix(in oklab, #d9a248 16%, transparent);
-  --ok: #72cfa0;
-  --ok-solid: #4bb383;
-  --ok-soft: color-mix(in oklab, #4bb383 16%, transparent);
-
-  --bg: #0e1013;
-  --surface: #15171b;
-  --surface-2: #1a1c21;
-  --hover: #212329;
-  --border: #272a31;
-  --line: #22252b;
-  --text: #ebecef;
-  --text-2: #b3b6bf;
-  --text-3: #7f838e;
-
-  --shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
-  --shadow-lg: 0 24px 60px -20px rgba(0, 0, 0, 0.65), 0 2px 6px rgba(0, 0, 0, 0.35);
-  color-scheme: dark;
-}
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme='light']):not([data-theme='dark'])[data-theme-auto] {
-    color-scheme: dark;
-  }
-}
+/* Colour tokens, light and dark, live in tokens.css. */
 
 /* Client, team and avatar colours are people's choices; in dark mode tone them down a little. */
 :root[data-theme='dark'] :is(.client-dot, .client-badge, .team-square, .sel-dot, .avatar, .dot, .src-mark, .bar span) {

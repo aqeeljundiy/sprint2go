@@ -1,43 +1,4 @@
-:root {
-  /* Stacking order, lowest to highest: page < side panel < dialog < popover < toast. */
-  --z-panel: 300;
-  --z-dialog: 350;
-  --z-pop: 400;
-  --z-toast: 450;
-  --accent: #5b5bf6;
-  --accent-hover: #4a4ae8;
-  --accent-soft: rgba(91, 91, 246, 0.1);
-  --bg: #f6f6f8;
-  --surface: #ffffff;
-  --surface-2: #f9f9fb;
-  --hover: #f1f1f5;
-  --border: #e8e8ee;
-  --text: #16161d;
-  --text-2: #5c5c6b;
-  --text-3: #9393a3;
-  --star: #f5a524;
-  --shadow: 0 1px 2px rgba(16, 16, 30, 0.04), 0 8px 24px rgba(16, 16, 30, 0.06);
-  --shadow-lg: 0 24px 64px rgba(16, 16, 30, 0.18), 0 2px 6px rgba(16, 16, 30, 0.06);
-  --radius: 12px;
-  color-scheme: light;
-}
-
-:root[data-theme='dark'] {
-  --accent: #7676ff;
-  --accent-hover: #8a8aff;
-  --accent-soft: rgba(118, 118, 255, 0.14);
-  --bg: #0c0c10;
-  --surface: #131318;
-  --surface-2: #17171d;
-  --hover: #1d1d25;
-  --border: #24242d;
-  --text: #ececf1;
-  --text-2: #a3a3b2;
-  --text-3: #6b6b7b;
-  --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px rgba(0, 0, 0, 0.3);
-  --shadow-lg: 0 24px 64px rgba(0, 0, 0, 0.6), 0 2px 6px rgba(0, 0, 0, 0.3);
-  color-scheme: dark;
-}
+/* Tokens live in tokens.css. */
 
 * {
   box-sizing: border-box;

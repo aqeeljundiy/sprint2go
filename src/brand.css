@@ -5,37 +5,7 @@
    The accent comes from each workspace's brand colour; sprint2go blue is the default.
    ========================================================================== */
 
-:root {
-  --font: 'Plus Jakarta Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --accent: #2448ff;
-  --accent-hover: #1834d6;
-  --accent-soft: #e7ebff;
-  --bg: #f5f6f8;
-  --surface: #ffffff;
-  --surface-2: #f5f6f8;
-  --hover: #edeef2;
-  --border: #e2e3e9;
-  --text: #0b0c10;
-  --text-2: #2e3038;
-  --text-3: #777a88;
-  --radius: 20px;
-  --shadow: 0 1px 2px rgba(11, 12, 16, 0.04), 0 12px 40px -24px rgba(11, 12, 16, 0.18);
-  --shadow-lg: 0 30px 80px -30px rgba(1, 88, 203, 0.28), 0 2px 6px rgba(11, 12, 16, 0.06);
-  --shadow-btn: 0 1px 2px rgba(0, 0, 0, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.25);
-}
-
-:root[data-theme='dark'] {
-  --bg: #08090c;
-  --surface: #111217;
-  --surface-2: #16171d;
-  --hover: #1d1f26;
-  --border: #252731;
-  --text: #f2f3f5;
-  --text-2: #b7b9c3;
-  --text-3: #7c7f8c;
-  --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 12px 40px -24px rgba(0, 0, 0, 0.6);
-  --shadow-lg: 0 30px 80px -30px rgba(0, 0, 0, 0.7), 0 2px 6px rgba(0, 0, 0, 0.4);
-}
+/* Tokens (font, colours, radius, shadows) live in tokens.css. */
 
 body,
 kbd,

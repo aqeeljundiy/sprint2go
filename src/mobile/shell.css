@@ -6,13 +6,7 @@
    their own width use container queries on an inner element (never on anything holding a fixed overlay).
    ========================================================================== */
 
-:root {
-  --badge: #d93636; /* unread counts: a solid red that keeps white text readable in both themes */
-  --tabbar-h: 56px; /* the bar: five labelled tabs, plus the home bar under it */
-  --bar-space: 0px; /* how much of the bottom the bar takes (phones only) */
-  --fab-space: 0px; /* room lists keep at their end so the last row scrolls clear of the floating create button */
-  --tap: 44px; /* the smallest tap target on a phone */
-}
+/* Shell tokens (--tap, --tabbar-h, --bar-space, --fab-space, --badge, --topbar-h) live in src/tokens.css. */
 
 /* Phone-only chrome. */
 .tabbar,

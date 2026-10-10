@@ -8,16 +8,7 @@
    - Rows that leave fold away (useLeaving in ui/Smooth.tsx).
    ========================================================================== */
 
-:root {
-  --info: #2563eb;
-  --info-soft: color-mix(in oklab, #2563eb 12%, transparent);
-  --ctl-h: 32px; /* buttons, dropdowns, tabs and segmented controls on desktop */
-  --tab-h: 32px;
-}
-:root[data-theme='dark'] {
-  --info: #93b4ff;
-  --info-soft: color-mix(in oklab, #93b4ff 16%, transparent);
-}
+/* Tokens live in tokens.css. */
 
 /* ---------- Badge ---------- */
 

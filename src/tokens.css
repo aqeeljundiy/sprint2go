@@ -1,0 +1,178 @@
+/* ==========================================================================
+   sprint2go tokens: the one place for colour, type, spacing, radius, icon, avatar, row and z-index values.
+   Loaded first (src/main.tsx). Everything else reads these; no other file sets them on :root.
+   The phone layer (src/mobile/ and every @media (max-width: 767px) block) uses only these and the allowed values
+   in scripts/ui-tokens-check.mjs. How to use them: docs/mobile-kit.md, "The system".
+   ========================================================================== */
+
+:root {
+  /* Stacking order, lowest to highest: page < side panel < dialog < popover < toast. */
+  --z-panel: 300;
+  --z-dialog: 350;
+  --z-pop: 400;
+  --z-toast: 450;
+
+  /* ---------- Colour ---------- */
+  /* The company's brand colour (App.tsx sets --brand, plus --brand-ink and --brand-ink-dark: the darkest and lightest
+     shade of it that still read at 4.5:1 as text). One accent, in fixed places only: the create button, primary
+     buttons, selected states, links and text buttons, the unread dot, focus rings, toggles that are on. */
+  --brand: #2448ff;
+  --accent: var(--brand);
+  --accent-hover: color-mix(in oklab, var(--brand) 86%, black);
+  --accent-soft: color-mix(in oklab, var(--brand) 11%, transparent);
+  --accent-text: var(--brand-ink, color-mix(in oklab, var(--brand) 88%, black)); /* the accent as text: 4.5:1 */
+
+  /* Red, amber and green mean late, waiting and done, nothing else. */
+  --danger: #c93434;
+  --danger-soft: color-mix(in oklab, #c93434 10%, transparent);
+  --warn: #a8640c;
+  --warn-solid: #e39a26;
+  --warn-soft: color-mix(in oklab, #e39a26 14%, transparent);
+  --ok: #14845a;
+  --ok-solid: #22a06b;
+  --ok-soft: color-mix(in oklab, #22a06b 12%, transparent);
+  --info: #2563eb;
+  --info-soft: color-mix(in oklab, #2563eb 12%, transparent);
+  --badge: #d93636; /* unread counts: a solid red that keeps white text readable in both themes */
+  --star: #f5a524;
+  --ai: #8b5cf6;
+  --ai-grad: linear-gradient(135deg, #8b5cf6, #ec4899 55%, #f59e0b);
+  --ai-soft: color-mix(in srgb, #8b5cf6 10%, transparent);
+
+  --bg: #f4f5f7; /* the page for grouped screens */
+  --surface: #ffffff; /* cards, sheets, and the page for streams and plain lists */
+  --surface-2: #f6f7f9;
+  --hover: #eff0f3;
+  --border: #e6e7ec;
+  --line: #eceef2; /* dividers: lighter than a card's own edge */
+  --text: #111318; /* primary */
+  --text-2: #3d404a; /* secondary */
+  --text-3: #6b6f7c; /* tertiary: 5.0:1 on white, 4.6:1 on the grey page */
+
+  --shadow: 0 1px 2px rgba(16, 18, 24, 0.04);
+  --shadow-lg: 0 24px 60px -24px rgba(16, 18, 24, 0.22), 0 2px 6px rgba(16, 18, 24, 0.05);
+  --shadow-btn: 0 1px 2px rgba(0, 0, 0, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+
+  /* ---------- Type: Plus Jakarta Sans, 5 sizes, 3 weights ---------- */
+  --font: 'Plus Jakarta Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --fw-regular: 400;
+  --fw-semibold: 600;
+  --fw-bold: 700;
+  --fs-display: 24px; /* root screen title in the top bar, item titles on detail screens */
+  --lh-display: 30px;
+  --ls-display: -0.02em;
+  --fs-title: 17px; /* pushed screen, sheet and dialog titles */
+  --lh-title: 22px;
+  --ls-title: -0.01em;
+  --fs-heading: 15px; /* section headers (600), unread row titles */
+  --fs-body: 15px; /* row titles, messages, values; buttons at 600 */
+  --lh-body: 20px; /* one line in a row */
+  --lh-para: 22px; /* paragraphs */
+  --fs-secondary: 13px; /* second lines, snippets, hints, segmented controls (600) */
+  --lh-secondary: 18px;
+  --fs-caption: 12px; /* times (400), chips, badges and tab labels (600) */
+  --lh-caption: 16px;
+  --fs-field: 16px; /* fields: iPhone zooms into anything smaller */
+  --t-display: 700 var(--fs-display) / var(--lh-display) var(--font);
+  --t-title: 600 var(--fs-title) / var(--lh-title) var(--font);
+  --t-heading: 600 var(--fs-heading) / var(--lh-body) var(--font);
+  --t-body: 400 var(--fs-body) / var(--lh-body) var(--font);
+  --t-para: 400 var(--fs-body) / var(--lh-para) var(--font);
+  --t-label: 600 var(--fs-body) / var(--lh-body) var(--font);
+  --t-secondary: 400 var(--fs-secondary) / var(--lh-secondary) var(--font);
+  --t-segment: 600 var(--fs-secondary) / var(--lh-secondary) var(--font);
+  --t-caption: 400 var(--fs-caption) / var(--lh-caption) var(--font);
+  --t-chip: 600 var(--fs-caption) / var(--lh-caption) var(--font);
+  --t-field: 400 var(--fs-field) / var(--lh-body) var(--font);
+
+  /* ---------- Spacing: 4, 8, 12, 16, 24, 32, 48 ---------- */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-6: 24px;
+  --sp-8: 32px;
+  --sp-12: 48px;
+  --gutter: 16px; /* page side margin; plain rows pad 16 on both sides */
+  --card-inset: 16px; /* a card's distance from the screen edge */
+  --card-pad: 16px; /* row padding inside a card: text then starts at 32 */
+  --row-pad-y: 12px; /* two- and three-line rows */
+  --lead-gap: 12px; /* leading visual to text */
+  --section-top: 24px; /* above a section header */
+  --section-gap: 8px; /* a header to its first row */
+  --target-gap: 8px; /* between two tap targets */
+  --tap: 44px; /* the smallest tap target on a phone */
+
+  /* ---------- Rows ---------- */
+  --row-compact: 44px; /* one line, no visual or a 20 icon */
+  --row-1: 48px; /* one line with a 32 visual, or a value on the right */
+  --row-2: 64px; /* two lines, 40 visual */
+  --row-3: 80px; /* three lines, 40 visual */
+  --divider: 1px solid var(--line); /* inset to the row's text, none after the last row, none in streams */
+
+  /* ---------- Shapes ---------- */
+  --radius: 20px; /* desktop panels (older desktop CSS) */
+  --r-tile: 10px; /* file, team, table and app tiles, thumbnails, calendar events, framed fields */
+  --r-control: 10px; /* desktop controls; the same as a tile */
+  --r-card: 16px; /* cards, sheets' top corners, drawers' open edge, dialogs */
+  --r-pill: 999px; /* anything you press: buttons, chips, segmented controls, search, tags, the create button */
+  --r-round: 50%; /* people and the unread dot */
+
+  /* ---------- Icons and pictures ---------- */
+  --icon-s: 16px; /* inline with meta text */
+  --icon-m: 20px; /* row icons and row actions */
+  --icon-l: 24px; /* top bar, bottom bar, create button */
+  --av-xs: 24px; /* inline, meta lines, pickers */
+  --av-s: 32px; /* one-line rows, the top bar's company logo */
+  --av-m: 40px; /* two- and three-line rows, chat messages */
+  --av-l: 56px; /* profile headers */
+
+  /* ---------- Shell ---------- */
+  --topbar-h: 52px;
+  --tabbar-h: 56px; /* the bar: five labelled tabs, plus the home bar under it */
+  --bar-space: 0px; /* how much of the bottom the bar takes (phones only) */
+  --fab-space: 0px; /* room lists keep at their end so the last row scrolls clear of the floating create button */
+  --ctl-h: 32px; /* buttons, dropdowns, tabs and segmented controls on desktop */
+  --tab-h: 32px;
+  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+
+  color-scheme: light;
+}
+
+:root[data-theme='dark'] {
+  /* Accent: the brand lifted toward white and calmed, so coral or blue never glares on dark. */
+  --accent: color-mix(in oklab, var(--brand) 74%, #f2f2f2);
+  --accent-hover: color-mix(in oklab, var(--brand) 62%, #ffffff);
+  --accent-soft: color-mix(in oklab, var(--brand) 18%, transparent);
+  --accent-text: var(--brand-ink-dark, color-mix(in oklab, var(--brand) 60%, #ffffff));
+
+  --danger: #f08b8b;
+  --danger-soft: color-mix(in oklab, #e26d6d 16%, transparent);
+  --warn: #e8bb6a;
+  --warn-solid: #d9a248;
+  --warn-soft: color-mix(in oklab, #d9a248 16%, transparent);
+  --ok: #72cfa0;
+  --ok-solid: #4bb383;
+  --ok-soft: color-mix(in oklab, #4bb383 16%, transparent);
+  --info: #93b4ff;
+  --info-soft: color-mix(in oklab, #93b4ff 16%, transparent);
+
+  --bg: #0e1013;
+  --surface: #15171b;
+  --surface-2: #1a1c21;
+  --hover: #212329;
+  --border: #272a31;
+  --line: #22252b;
+  --text: #ebecef;
+  --text-2: #b3b6bf;
+  --text-3: #8a8e99; /* 5.5:1 on the dark surface */
+
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --shadow-lg: 0 24px 60px -20px rgba(0, 0, 0, 0.65), 0 2px 6px rgba(0, 0, 0, 0.35);
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']):not([data-theme='dark'])[data-theme-auto] {
+    color-scheme: dark;
+  }
+}

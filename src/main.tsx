@@ -8,6 +8,7 @@ import { diagnostics, reportCrash, startDiagnostics } from './diagnostics';
 import { startTryOut, trying } from './tryOut';
 import { deviceLang, setLang, t } from './i18n';
 import { useLang } from './i18n/useLang';
+import './tokens.css'; // the one source of tokens: first
 import './styles.css';
 import './calendar.css';
 import './shell.css';

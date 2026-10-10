@@ -1,4 +1,5 @@
 import { type CSSProperties, useEffect, useMemo, useRef, useState } from 'react';
+import { setBrand } from '../brandInk';
 import { CreateFab } from '../mobile/BottomBar';
 import { SmoothHeight } from './ui/Smooth';
 import { setTermWord, term, brand as product } from '../terms';
@@ -163,7 +164,7 @@ export function ClientApp(p: Props) {
   // The company's colour drives the accent, the same way it does in the team app.
   useEffect(() => {
     applyBranding(ws); // the company's icon in the browser tab
-    document.documentElement.style.setProperty('--brand', ws.color);
+    setBrand(ws.color);
     document.title = `${client.name} · ${ws.name}`;
   }, [ws.color, ws.name, client.name]);
 
