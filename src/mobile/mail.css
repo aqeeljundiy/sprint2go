@@ -1992,7 +1992,8 @@
   }
 
   /* Files being sent: chips wrap, a note above them when some go as links. */
-  .df {
+  .df,
+  .gm-reply .df {
     padding: 8px 16px;
   }
   .df-note {
