@@ -20,6 +20,7 @@ import { msg, phrase } from '../src/i18n/index.ts';
 import { chatRecipients, isGroupDm } from '../src/chatFollow.ts';
 import { noticeWords, whereOf } from './chatLater.ts';
 import { labelPath, type MailLabel } from '../src/mailFilterMatch.ts';
+import { matchThread, parseQuery } from '../src/mailQuery.ts';
 
 export interface ToolDeps {
   /** What one person may see of a document (null: nothing), as the app shows it to them (index.ts teamLens). */
@@ -605,11 +606,13 @@ export function registerTools(server: McpServer, deps: ToolDeps, ctx: ToolCtx) {
   );
 
   const KINDS = ['tasks', 'mail', 'chat', 'notes', 'tables', 'calendar', 'projects', 'people', 'files', 'meetings'] as const;
+  /** A search that uses Gmail's operators (then mail is matched with them, src/mailQuery.ts). */
+  const OPERATOR = /(^|\s|\()-?(from|to|cc|bcc|subject|has|filename|larger|smaller|before|after|older_than|newer_than|label|in|is|category|list):\S|\sOR\s/;
   tool(
     'search',
     {
       title: 'Search everything',
-      description: 'Searches everything you can see in the company: tasks, mail, chat messages, notes, table rows, your calendar, projects, people, files and meeting notes. Every word must match. Returns ids and links; read the full item with the read_ tools.',
+      description: 'Searches everything you can see in the company: tasks, mail, chat messages, notes, table rows, your calendar, projects, people, files and meeting notes. Every word must match. Mail also takes Gmail’s search operators (from:, to:, subject:, has:attachment, filename:, larger:, before:, after:, newer_than:, label:, in:, is:, category:, list:, "phrase", OR, -word). Returns ids and links; read the full item with the read_ tools.',
       inputSchema: { query: z.string().min(1).max(200).describe('Words to look for'), only: z.array(z.enum(KINDS)).optional().describe('Search only these kinds'), limit: limit(50, 20) },
       annotations: READ,
     },
@@ -639,8 +642,17 @@ export function registerTools(server: McpServer, deps: ToolDeps, ctx: ToolCtx) {
         }
       if (want.has('mail')) {
         const boxes = new Set(v.mailboxes().map((x) => x.id));
+        // Gmail's operators (from:, has:attachment, newer_than:…) narrow the mail first (src/mailQuery.ts); their
+        // words then match as usual.
+        const qn = OPERATOR.test(a.query) ? parseQuery(a.query) : null;
         for (const t of v.docs('threads')) {
-          if (!boxes.has(t.accountId) || t.location === 'trash' || t.location === 'spam') continue;
+          if (!boxes.has(t.accountId)) continue;
+          if (qn) {
+            if (!matchThread(qn, t as never, { isMine: (e) => v.mine(e) })) continue;
+            hits.push({ kind: 'mail', score: 2, at: lastOf(t).date ?? '', out: { kind: 'mail', ...threadLine(v, t), snippet: snippet((t.messages ?? []).map((m: Doc) => m.body).join(' ')) } });
+            continue;
+          }
+          if (t.location === 'trash' || t.location === 'spam') continue;
           const body = (t.messages ?? []).map((m: Doc) => `${m.from?.name ?? ''} ${m.from?.email ?? ''} ${m.body ?? ''}`).join(' ');
           add('mail', t.subject, body, lastOf(t).date, { ...threadLine(v, t), snippet: snippet((t.messages ?? []).map((m: Doc) => m.body).join(' ')) });
         }
@@ -688,7 +700,7 @@ export function registerTools(server: McpServer, deps: ToolDeps, ctx: ToolCtx) {
       inputSchema: {
         folder: z.enum(['inbox', 'unread', 'assigned_to_me', 'sent', 'drafts', 'archive', 'all']).optional().describe('Default inbox'),
         mailbox: z.string().optional().describe('One mailbox (its address or id); default all of yours'),
-        query: z.string().max(200).optional().describe('Only conversations with these words'),
+        query: z.string().max(200).optional().describe('Only conversations with these words. Gmail search operators work too: from:, to:, subject:, has:attachment, filename:, larger:5M, before:2026/10/01, after:, older_than:7d, newer_than:2d, label:, in:anywhere, is:unread, is:starred, is:important, category:promotions, list:, "exact phrase", OR, -word, (groups)'),
         limit: limit(50, 20),
       },
       annotations: READ,
@@ -700,6 +712,7 @@ export function registerTools(server: McpServer, deps: ToolDeps, ctx: ToolCtx) {
       const now = new Date().toISOString();
       const folder = a.folder ?? 'inbox';
       const words = lower(a.query).split(/\s+/).filter(Boolean);
+      const qn = a.query && OPERATOR.test(a.query) ? parseQuery(a.query) : null;
       const fromMe = (t: Doc) => (t.messages ?? []).some((m: Doc) => m.from && v.mine(m.from.email));
       const list = v
         .docs('threads')
@@ -714,7 +727,7 @@ export function registerTools(server: McpServer, deps: ToolDeps, ctx: ToolCtx) {
           if (folder === 'archive') return t.location === 'archive';
           return t.location !== 'trash' && t.location !== 'spam';
         })
-        .filter((t) => !words.length || words.every((w) => lower(`${t.subject} ${(t.messages ?? []).map((m: Doc) => `${m.from?.name} ${m.from?.email} ${m.body}`).join(' ')}`).includes(w)))
+        .filter((t) => (qn ? matchThread(qn, { ...t, location: t.location === 'spam' || t.location === 'trash' ? 'archive' : t.location } as never, { isMine: (e) => v.mine(e) }) : !words.length || words.every((w) => lower(`${t.subject} ${(t.messages ?? []).map((m: Doc) => `${m.from?.name} ${m.from?.email} ${m.body}`).join(' ')}`).includes(w))))
         .sort((x, y) => String(lastOf(y).date ?? '').localeCompare(String(lastOf(x).date ?? '')));
       const max = a.limit ?? 20;
       return { folder, conversations: list.slice(0, max).map((t) => threadLine(v, t)), ...(list.length > max ? { more: list.length - max } : {}) };

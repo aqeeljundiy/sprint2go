@@ -330,6 +330,7 @@ export function onArrival(thread: any, m: any, ctx: Arrival): { thread: any; aft
   // A blocked sender: Trash, and nothing else runs.
   if (!own && blockedFor(ctx.account, m.from?.email ?? '')) {
     t.location = 'trash';
+    t.trashedAt = at;
     t.unread = false;
     filed.push({ filterId: 'block', name: lower(m.from?.email), scope: 'block', at, messageId: m.id });
     t.filed = [...(t.filed ?? []), ...filed].slice(-10);
@@ -370,6 +371,10 @@ export function onArrival(thread: any, m: any, ctx: Arrival): { thread: any; aft
   else if (place === 'spam' && !neverSpam) t.location = 'spam';
   else if (verdict && neverSpam) t.location = archive ? 'archive' : 'inbox';
   else if (archive && t.location === 'inbox') t.location = 'archive';
+  // Spam and Trash keep 30 days from when mail went there (server/mailSmart.ts).
+  if (t.location === 'spam' && thread.location !== 'spam') t.spamAt = at;
+  if (t.location === 'trash' && thread.location !== 'trash') t.trashedAt = at;
+  if (t.location !== 'spam') delete t.spamAt;
   if (filed.length) t.filed = [...(t.filed ?? []), ...filed].slice(-10);
   const spamNow = t.location === 'spam' || t.location === 'trash';
   return {

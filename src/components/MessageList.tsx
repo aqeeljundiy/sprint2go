@@ -1,7 +1,7 @@
 import { forwardRef, useEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { lastTracked, summarize } from '../tracking';
-import { Archive, Check, Clock, Eye, EyeOff, FileText, Inbox, ListFilter, Mail, MailOpen, Menu, MessageSquare, MoreHorizontal, Paperclip, PenLine, RefreshCw, Search, ShieldAlert, Star, Tag, Trash2, X } from 'lucide-react';
+import { Archive, Check, Clock, Eye, EyeOff, FileText, Inbox, Mail, MailOpen, Menu, MessageSquare, MoreHorizontal, Paperclip, PenLine, RefreshCw, Search, ShieldAlert, Star, Tag, Trash2, X } from 'lucide-react';
 import type { Client, Label, Person, Thread, User } from '../types';
 import { lastMessage, listDate, participants, relative, snippet } from '../utils';
 import { Avatar } from './Avatar';
@@ -19,6 +19,11 @@ import { TopBar } from '../mobile/TopBar';
 import { MailSearchPill, MailSelectBar } from './mail/MailTop';
 import { MailSearch } from './mail/MailSearch';
 import { mark, t, tn } from '../i18n';
+// Search options and chips, the Important marker, Move to, mute (components/mail/Sorting.tsx, sorting.ts).
+import { ImportantMark, SearchChips, SearchOptions } from './mail/Sorting';
+import { MoveToSheet } from './mail/Shortcuts';
+import { markImportant, mute } from './mail/sortPrefs';
+import { BellOff, Flag, FolderInput } from 'lucide-react';
 
 /** The chips under the title: one at a time, tap again for everything. */
 export type MailFilter = 'all' | 'unread' | 'reply' | 'assigned' | 'files';
@@ -37,6 +42,8 @@ export interface MailActions {
 interface Props {
   /** A line above the list about what doesn't work yet (incoming or outgoing mail), with its fix. */
   notice?: React.ReactNode;
+  /** Above the rows: the inbox tabs, multiple inboxes' sections, Spam's 30 days (components/mail/Sorting.tsx). */
+  top?: React.ReactNode;
   /** What an empty list says instead (e.g. a temporary address waiting for its first email). */
   empty?: { title: string; sub: string; action?: React.ReactNode };
   title: string;
@@ -138,6 +145,7 @@ export const MessageList = forwardRef<HTMLInputElement, Props>(function MessageL
   }, [selecting]);
 
   const [snoozing, setSnoozing] = useState<{ ids: string[]; anchor?: React.RefObject<HTMLElement | null> } | null>(null);
+  const [moving, setMoving] = useState<string[] | null>(null); // Move to…
   const [menuFor, setMenuFor] = useState<{ ids: string[]; at?: { x: number; y: number }; anchor?: React.RefObject<HTMLElement | null>; title?: string; menu?: boolean } | null>(null);
 
   const refresh = async () => {
@@ -258,6 +266,11 @@ export const MessageList = forwardRef<HTMLInputElement, Props>(function MessageL
     out.push({ label: allStarred ? t('Unstar') : t('Star'), icon: Star, run: () => actions.star(ids, !allStarred) });
     out.push(...(props.moreActions?.(list, moreBtn) ?? []));
     if (extra) out.push({ label: t('Select'), icon: Check, group: 'select', run: () => setPicked(new Set(ids)) });
+    out.push({ label: t('Move to…'), icon: FolderInput, group: 'move', run: () => setMoving(ids) });
+    const allImportant = list.every((th) => th.important);
+    out.push({ label: allImportant ? t('Mark not important') : t('Mark important'), icon: Flag, group: 'move', run: () => markImportant(ids, !allImportant) });
+    const allMuted = list.every((th) => th.muted);
+    out.push({ label: allMuted ? t('Unmute') : t('Mute'), icon: BellOff, group: 'move', run: () => mute(ids, !allMuted) });
     if (list.some((th) => th.location !== 'spam')) out.push({ label: t('Report spam'), icon: ShieldAlert, group: 'end', run: () => actions.spam(ids) });
     if (list.some((th) => th.location !== 'trash')) out.push({ label: t('Delete'), icon: Trash2, danger: true, group: 'end', run: () => actions.trash(ids) });
     return out;
@@ -271,6 +284,9 @@ export const MessageList = forwardRef<HTMLInputElement, Props>(function MessageL
     if (list.some((th) => th.location !== 'drafts' && th.location !== 'trash' && th.location !== 'spam')) out.push({ id: 'snooze', label: t('Snooze…'), icon: Clock, run: () => setSnoozing({ ids }) });
     out.push({ label: allStarred ? t('Unstar') : t('Star'), icon: Star, run: () => actions.star(ids, !allStarred) });
     if (list.some((th) => th.location === 'inbox') && list.some((th) => th.location !== 'inbox' && th.location !== 'drafts')) out.push({ label: t('Move to Inbox'), icon: Inbox, run: () => actions.inbox(ids) });
+    out.push({ label: t('Move to…'), icon: FolderInput, run: () => setMoving(ids) });
+    const allMuted = list.every((th) => th.muted);
+    out.push({ label: allMuted ? t('Unmute') : t('Mute'), icon: BellOff, run: () => mute(ids, !allMuted) });
     out.push(...(props.moreActions?.(list) ?? []));
     if (list.some((th) => th.location !== 'spam')) out.push({ label: t('Report spam'), icon: ShieldAlert, group: 'end', run: () => actions.spam(ids) });
     return out;
@@ -333,7 +349,14 @@ export const MessageList = forwardRef<HTMLInputElement, Props>(function MessageL
         <label className="search">
           <Search size={16} />
           <input ref={searchRef} value={query} onChange={(e) => props.onQuery(e.target.value)} placeholder={t('Search mail')} />
-          <kbd>/</kbd>
+          {query ? (
+            <button type="button" className="icon-btn sm so-clear" onClick={(e) => (e.preventDefault(), props.onQuery(''))} aria-label={t('Clear search')} title={t('Clear search')}>
+              <X size={15} />
+            </button>
+          ) : (
+            <kbd>/</kbd>
+          )}
+          <SearchOptions query={query} onQuery={props.onQuery} />
         </label>
         {/* One row that switches between the filters and the selection's own header, at the same height. */}
         <div className="mail-tools" key={selecting ? 'sel' : 'chips'}>
@@ -349,14 +372,10 @@ export const MessageList = forwardRef<HTMLInputElement, Props>(function MessageL
                 {sel.size === threads.length ? t('Select none') : t('Select all')}
               </button>
             </div>
+          ) : query.trim() && !phone ? (
+            <SearchChips query={query} onQuery={props.onQuery} />
           ) : (
             <div className="mail-chips" role="group" aria-label={t('Show only')}>
-              {/* Gmail's "Create filter": what was searched becomes a filter's criteria (src/components/mail/Filters.tsx). */}
-              {query.trim() && props.onFilterSearch && (
-                <button type="button" className="mail-chip flt-from-search" onClick={() => props.onFilterSearch!(query)}>
-                  <ListFilter size={14} aria-hidden /> {t('Create filter')}
-                </button>
-              )}
               {chips.map((c) => (
                 <button key={c.id} type="button" className={`mail-chip${filter === c.id ? ' on' : ''}`} aria-pressed={filter === c.id} onClick={() => props.onFilter(filter === c.id ? 'all' : c.id)}>
                   {t(c.label)}
@@ -367,6 +386,7 @@ export const MessageList = forwardRef<HTMLInputElement, Props>(function MessageL
         </div>
       </header>
       {props.notice}
+      {props.top}
       {props.offline && <div className="list-offline">{t('Connection lost. Pull down to check for mail.')}</div>}
       {props.onRefresh && (
         <div className={`pull-mark ${pull ? 'on' : ''} ${dragging ? 'dragging' : ''} ${refreshing ? 'busy' : ''} ${pull >= PULL_AT ? 'ready' : ''}`} style={{ ['--pull' as string]: `${pull}px` }} aria-hidden>
@@ -511,6 +531,7 @@ export const MessageList = forwardRef<HTMLInputElement, Props>(function MessageL
         menu={menuFor?.menu}
         actions={menuFor ? (menuFor.menu ? selectMore(threads.filter((t) => menuFor.ids.includes(t.id))) : actionsFor(threads.filter((t) => menuFor.ids.includes(t.id)), !!menuFor.at)).map((a) => (menuFor.anchor ? { ...a, run: () => (a.run(), a.id !== 'snooze' && endSelect()) } : a)) : []}
       />
+      {moving && <MoveToSheet ids={moving} actions={actions} onClose={() => setMoving(null)} />}
       {phone && searching && (
         <MailSearch
           threads={props.searchable ?? threads}
@@ -618,6 +639,7 @@ export function MailRow(p: {
           <div className="row-subject">
             {th.location === 'drafts' && !th.sendAt && <span className="rm-draft">{t('Draft')} </span>}
             {th.sendAt && <span className="rm-sched">{t('Scheduled')} </span>}
+            <ImportantMark on={th.important} />
             <span className="row-subj-text">
               <Hl text={th.subject} q={p.hl} />
             </span>
@@ -685,7 +707,10 @@ export function MailRow(p: {
           </span>
           <span className="row-date">{listDate(last.date)}</span>
         </div>
-        <div className="row-subject">{th.subject}</div>
+        <div className="row-subject">
+          <ImportantMark on={th.important} />
+          {th.subject}
+        </div>
         {p.snippets && <div className="row-snippet">{snippet(last.body) || ' '}</div>}
         {status && (
           <div className="row-meta">

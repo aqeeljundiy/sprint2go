@@ -72,7 +72,6 @@ const id: Record<string, string> = {
   'An address, a domain or a name': 'Alamat, domain, atau nama',
   'nadia@kopikita.id, @dokploy.com, *@bank.co.id': 'nadia@kopikita.id, @dokploy.com, *@bank.co.id',
   'Has the words': 'Berisi kata',
-  'Doesn’t have': 'Tidak berisi',
   'invoice OR receipt, “purchase order”': 'tagihan OR kuitansi, “purchase order”',
   'Larger than': 'Lebih besar dari',
   'Smaller than': 'Lebih kecil dari',

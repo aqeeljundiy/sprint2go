@@ -261,6 +261,20 @@ export function useMailOrganize(o: OrganizeOpts) {
     setFilterEdit({ accountId: homes[0]?.value === 'company' ? null : homes[0]?.value ?? null, criteria: c, actions: {} });
   };
 
+  // Search's "Make a rule from this search" (src/components/mail/sortPrefs.ts) opens the filter editor with it.
+  const fromSearch = useRef(filterFromSearch);
+  fromSearch.current = filterFromSearch;
+  useEffect(() => {
+    const on = (e: Event) => {
+      const d = (e as CustomEvent<{ query: string; handled: boolean }>).detail;
+      if (!d?.query?.trim()) return;
+      fromSearch.current(d.query);
+      d.handled = true;
+    };
+    window.addEventListener('s2g:mail-rule-from-search', on);
+    return () => window.removeEventListener('s2g:mail-rule-from-search', on);
+  }, []);
+
   /* ---------- the parts App places ---------- */
 
   const navProps = {
