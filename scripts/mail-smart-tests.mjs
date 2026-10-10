@@ -96,7 +96,7 @@ const DAY = 86_400_000;
   // Phishing signs.
   check(safe.lookalikeOf('paypa1.com', safe.TRUSTED) === 'paypal.com', 'paypa1.com imitates paypal.com');
   check(safe.lookalikeOf('rnicrosoft.com', safe.TRUSTED) === 'microsoft.com', 'rnicrosoft.com imitates microsoft.com');
-  check(safe.lookalikeOf('pixelandprofit.com', ['demo.sprint2go.com']) === 'demo.sprint2go.com', 'a one-letter change of the company’s own domain');
+  check(safe.lookalikeOf('sprlnt2go.com', ['demo.sprint2go.com']) === 'sprint2go.com', 'a one-letter change of the company’s own domain');
   check(safe.lookalikeOf('google.com.account-check.net', safe.TRUSTED) === 'google.com', 'a trusted name dressed up inside another domain');
   check(safe.lookalikeOf('mail.google.com', safe.TRUSTED) === null && safe.lookalikeOf('kopinara.example', safe.TRUSTED) === null && safe.lookalikeOf('bca.co.id', safe.TRUSTED) === null, 'the real domains and unrelated ones are fine');
   check(safe.baseDomain('a.mail.bank.co.id') === 'bank.co.id' && safe.baseDomain('x.y.example.com') === 'example.com', 'the domain a company owns');
@@ -302,9 +302,9 @@ try {
   check(tp?.category === 'primary' && tp.location === 'inbox', 'a person’s email is Primary');
   // A lookalike of the company's own domain.
   const l1 = `Invoice ${tag()}`;
-  await smtp.sendMail({ from: 'Billing <billing@pixelandprofit.com>', to, subject: l1, text: 'Please pay the attached invoice today.' });
+  await smtp.sendMail({ from: 'Billing <billing@sprlnt2go.com>', to, subject: l1, text: 'Please pay the attached invoice today.' });
   const tl = await waitFor(() => threadWith(l1)[0]);
-  check(tl?.messages[0].warn?.some((w) => w.kind === 'lookalike' && w.detail === 'demo.sprint2go.com'), 'a lookalike of the company’s domain is flagged');
+  check(tl?.messages[0].warn?.some((w) => w.kind === 'lookalike' && w.detail === 'sprint2go.com'), 'a lookalike of the company’s domain is flagged');
   // Obvious spam.
   const s1 = `YOU HAVE WON ${tag()}!!!`;
   await smtp.sendMail({ from: 'Prize Desk <winner@lotto-desk.example>', to, subject: s1, text: 'Dear friend, you have won the lottery. Claim your prize by wire transfer.' });

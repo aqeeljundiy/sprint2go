@@ -33,10 +33,10 @@ const check = (ok, what) => {
   const laras = { name: 'Laras Anindita', email: 'laras@kopinara.example' };
   const f = (extra = {}) => ({ from: laras, to: [{ name: 'Raka', email: 'raka@pnp.test' }], subject: 'Invoice 42 for October', body: 'Please find the purchase order attached. Thanks!', size: 120_000, attachments: [{ name: 'PO-42.pdf' }], ...extra });
   check(matches({ from: 'laras@kopinara.example' }, f()) && !matches({ from: 'yusuf@kopinara.example' }, f()), 'from: an exact address');
-  check(matches({ from: '@kopinara.example' }, f()) && matches({ from: 'kopinara.example' }, f()) && matches({ from: 'co.id' }, f()), 'from: a domain, with or without @, and its parent domain');
+  check(matches({ from: '@kopinara.example' }, f()) && matches({ from: 'kopinara.example' }, f()) && matches({ from: 'co.example' }, f({ from: { email: 'laras@kopinara.co.example' } })), 'from: a domain, with or without @, and its parent domain');
   check(matches({ from: '@mail.kopinara.example' }, f()) === false && matches({ from: '@kopinara.example' }, f({ from: { email: 'a@mail.kopinara.example' } })), 'from: a domain matches its subdomains, not the other way round');
-  check(matches({ from: '*@kopi*.co.id' }, f()) && !matches({ from: '*@bank.co.id' }, f()), 'from: wildcards');
-  check(matches({ from: 'laras' }, f()) && matches({ from: 'Putri' }, f()), 'from: part of the name or address');
+  check(matches({ from: '*@kopi*.example' }, f()) && !matches({ from: '*@bank.co.id' }, f()), 'from: wildcards');
+  check(matches({ from: 'laras' }, f()) && matches({ from: 'Anindita' }, f()), 'from: part of the name or address');
   check(matches({ from: 'yusuf@x.test, @kopinara.example' }, f()) && matches({ from: 'yusuf@x.test OR laras@kopinara.example' }, f()), 'from: a list (commas or OR)');
   check(matches({ to: 'raka@pnp.test' }, f()) && matches({ to: '@pnp.test' }, f({ to: [{ email: 'x@else.test' }, { email: 'cc@pnp.test' }] })) && !matches({ to: '@else.test' }, f()), 'to: To and Cc');
   check(matches({ subject: 'invoice' }, f()) && !matches({ subject: 'receipt' }, f()) && matches({ subject: 'invoice october' }, f()), 'subject: every word');

@@ -1625,7 +1625,7 @@ const qctx = {
   stages: [{ id: 'todo', name: 'To do' }, { id: 'doing', name: 'In progress' }, { id: 'review', name: 'Review' }],
 };
 await test('Quick Add: reads the date and time, project, person and priority, and leaves the title', () => {
-  const r = qa.parseQuickAdd('Send invoice tomorrow 3pm #kopi +intan p1', qctx);
+  const r = qa.parseQuickAdd('Send invoice tomorrow 3pm #lereng +intan p1', qctx);
   assert.equal(r.title, 'Send invoice');
   assert.equal(r.due, '2026-10-10');
   assert.equal(r.time, '15:00');
@@ -1635,7 +1635,7 @@ await test('Quick Add: reads the date and time, project, person and priority, an
   assert.equal(new Date(r.remindAt).getHours(), 15, 'a time with the date reminds then');
   assert.deepEqual(r.tokens.map((t) => [t.kind, t.text, t.label]), [
     ['date', 'tomorrow 3pm', 'Tomorrow 15:00'],
-    ['project', '#kopi', 'Lereng Coffee'],
+    ['project', '#lereng', 'Lereng Coffee'],
     ['person', '+intan', 'Intan'],
     ['priority', 'p1', 'P1'],
   ]);
@@ -1684,7 +1684,7 @@ await test('Quick Add: repeats, reminders, and words that only look like tokens'
 });
 await test('Quick Add: reads Indonesian too (besok, lusa, hari ini, minggu depan, Senin to Minggu, jam 3 sore, setiap Senin)', () => {
   const p = (t) => qa.parseQuickAdd(t, qctx);
-  const full = p('Kirim invoice besok jam 3 sore #kopi +intan p1');
+  const full = p('Kirim invoice besok jam 3 sore #lereng +intan p1');
   assert.equal(full.title, 'Kirim invoice');
   assert.equal(full.due, '2026-10-10');
   assert.equal(full.time, '15:00', 'jam 3 sore is 15:00');
@@ -1742,8 +1742,8 @@ await test('Quick Add: suggestions follow the word being typed', () => {
   assert.deepEqual(qa.triggerAt('Send #ko', 8), { char: '#', query: 'ko', start: 5 });
   assert.deepEqual(qa.triggerAt('Ask +', 5), { char: '+', query: '', start: 4 });
   assert.equal(qa.triggerAt('Send it', 7), null);
-  assert.equal(qa.asToken('#', 'Lereng Coffee'), '#Kopi-Harian');
-  assert.equal(qa.parseQuickAdd('Brief #Kopi-Harian', qctx).clientId, 'c-kopi', 'what a suggestion puts in is read back');
+  assert.equal(qa.asToken('#', 'Lereng Coffee'), '#Lereng-Coffee');
+  assert.equal(qa.parseQuickAdd('Brief #Lereng-Coffee', qctx).clientId, 'c-kopi', 'what a suggestion puts in is read back');
 });
 
 /* ---------- Needs you (src/needsYou.ts): Home and the connector's needs_me ---------- */

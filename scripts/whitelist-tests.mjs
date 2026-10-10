@@ -190,7 +190,7 @@ try {
   check((await support.post('/api/admin/whitelist/add', { workspaceId: 'pnp', aiLimit: 1, sesLimit: 1 })).status === 403, 'and adding is refused');
 
   /* finding a company */
-  for (const q of ['pixel', 'demo.sprint2go.com', 'raka@demo.sprint2go.com']) {
+  for (const q of ['studio', 'demo.sprint2go.com', 'raka@demo.sprint2go.com']) {
     const f = await op.get(`/api/admin/whitelist/find?q=${encodeURIComponent(q)}`);
     check(f.body.results?.some((x) => x.id === 'pnp'), `found by ${q.includes('@') ? 'owner email' : q.includes('.') ? 'domain' : 'name'}`);
   }
