@@ -25,6 +25,7 @@ const LEAVING = [
   '.ask-pill',
   '.huddle',
   '.huddle-bar',
+  '.huddle-banner',
   '.later-menu',
   '.track-menu',
   '.tb-popup',
@@ -37,6 +38,7 @@ const LEAVING = [
   '.demo-bar',
   '.task-bulk',
   '.mail-bulk',
+  '.gm-dialog-scrim',
 ].join(',');
 
 const MS = 200;
