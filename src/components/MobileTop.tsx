@@ -237,9 +237,7 @@ export function CompanySheet({
                 <small>{isSandbox(w) ? t('Your own copy to try things in') : (w.domains[0] ?? '')}</small>
               </span>
               {n > 0 && (
-                <b className="ws-unread" aria-label={tn(n, '{n} unread', '{n} unread')}>
-                  {n > 99 ? '99+' : n}
-                </b>
+                <b className="ws-unread">{n > 99 ? t('99+ new') : tn(n, '{n} new', '{n} new')}</b>
               )}
               {on && <Check size={20} className="ws-check" aria-label={t('Current')} />}
             </button>

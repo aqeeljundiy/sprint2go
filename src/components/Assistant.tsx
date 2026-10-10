@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { term } from '../terms';
-import { History, Minus, Plus, Send, Sparkles, X } from 'lucide-react';
+import { ArrowLeft, History, Minus, Plus, Send, Sparkles, X } from 'lucide-react';
 import { relative } from '../utils';
 import { Select } from './ui/Select';
 import { EmptyState } from './ui/EmptyState';
@@ -126,8 +126,12 @@ export function Assistant(p: Props) {
 
   return (
     <aside className="ask-drawer" role="dialog" aria-label={t('Ask AI')}>
-      <header className="cs-head">
-        <Sparkles size={15} />
+      <header className="cs-head ask-head">
+        {/* Phones: a full screen with Back on the left (the window controls below are desktop's). */}
+        <button className="icon-btn ask-back" onClick={p.onClose} aria-label={t('Back')}>
+          <ArrowLeft size={24} />
+        </button>
+        <Sparkles size={15} className="ask-mark" />
         <strong>{t('Ask AI')}</strong>
         {!p.live && <span className="demo-tag">{t('Demo AI')}</span>}
         <span className="spacer" />
@@ -137,10 +141,10 @@ export function Assistant(p: Props) {
         <button className="icon-btn sm" title={t('New chat')} aria-label={t('New chat')} onClick={() => (setChatId(null), setHistory(false))}>
           <Plus size={15} />
         </button>
-        <button className="icon-btn sm" title={t('Minimize')} aria-label={t('Minimize')} onClick={() => setMin(true)}>
+        <button className="icon-btn sm ask-min" title={t('Minimize')} aria-label={t('Minimize')} onClick={() => setMin(true)}>
           <Minus size={15} />
         </button>
-        <button className="icon-btn sm" onClick={p.onClose} aria-label={t('Close')}>
+        <button className="icon-btn sm ask-close" onClick={p.onClose} aria-label={t('Close')}>
           <X size={16} />
         </button>
       </header>

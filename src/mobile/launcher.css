@@ -363,6 +363,12 @@
   .ln-fab.fab {
     bottom: calc(env(safe-area-inset-bottom) + 16px);
   }
+  /* The launcher's + leaves at once when an app opens, so the app's own + is never shown next to it mid-fade. */
+  .launcher:not(.on) .ln-fab.fab {
+    visibility: hidden;
+    opacity: 0;
+    transition: none;
+  }
 
   /* ---------- The launcher button in every app's top bar ---------- */
 
@@ -539,5 +545,12 @@
   }
   .ea-row {
     animation: none;
+  }
+}
+
+/* The full Needs you list, pushed over the launcher from "See all". */
+@media (max-width: 767px) {
+  .ln-all .ln-all-card {
+    margin: 16px;
   }
 }

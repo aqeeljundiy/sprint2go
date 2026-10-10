@@ -38,4 +38,28 @@ export const NOTES: Note[] = [
     updatedAt: ago(120),
     updatedBy: 'u-henry',
   },
+  // Rimba Group, where James lands: his own notes, so Notes isn't empty on the first visit.
+  {
+    id: 'note-rimba-launch',
+    workspaceId: 'elk',
+    title: 'Website move: what to check on launch day',
+    html: '<p>Thomas points the domain once we give the go-ahead.</p><ul><li>Mail still arrives at connect@ after the switch</li><li>Forms on the contact page send to the shared inbox</li><li>Old links redirect to the new pages</li></ul>',
+    ownerId: 'u-james',
+    visibility: 'team',
+    pinned: true,
+    createdAt: ago(50),
+    updatedAt: ago(5),
+    updatedBy: 'u-james',
+  },
+  {
+    id: 'note-rimba-q4',
+    workspaceId: 'elk',
+    title: 'Q4 priorities',
+    html: '<ol><li>Supplements launch with the studio: ads live before 11.11</li><li>New website live this month</li><li>Hire a second person for customer service</li></ol>',
+    ownerId: 'u-james',
+    visibility: 'private',
+    createdAt: ago(120),
+    updatedAt: ago(30),
+    updatedBy: 'u-james',
+  },
 ];

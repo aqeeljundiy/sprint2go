@@ -44,9 +44,9 @@ export const ACCENTS = ['#5b5bf6', '#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '
 
 export const DEFAULT_SETTINGS: Settings = {
   name: 'James',
-  title: 'COO · sprint2go demo',
+  title: 'COO',
   avatarColor: '#5b5bf6',
-  signature: '<p><b>James</b><br>COO · sprint2go demo</p>',
+  signature: '<p><b>James</b><br>COO</p>',
   theme: 'system',
   accent: '#5b5bf6',
   density: 'comfortable',
@@ -107,6 +107,15 @@ export function useSettings(user: { id: string; name: string; title: string; col
         title: user.title,
         avatarColor: user.color,
         signature: `<p><b>${esc(user.name)}</b>${user.title ? `<br>${esc(user.title)}` : ''}</p>`,
+        // The demo owner signs as himself in each company: the title is his, the company comes from the address.
+        ...(user.id === 'u-james'
+          ? {
+              signatures: {
+                'james@demo.sprint2go.com': `<p><b>${esc(user.name)}</b><br>${esc(user.title || 'COO')} · sprint2go demo</p>`,
+                'james@rimbagroup.example': `<p><b>${esc(user.name)}</b><br>Rimba Group</p>`,
+              },
+            }
+          : {}),
       },
       user.id === 'u-james' ? 'pm-settings' : undefined, // keep settings saved before users existed
     ),

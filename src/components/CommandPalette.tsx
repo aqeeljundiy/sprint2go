@@ -88,7 +88,9 @@ export function CommandPalette({ items: all, onClose, queryActions, recentKey = 
       // Phones: search is for finding (creating is each app's own button): recent searches, then recently opened.
       if (phone) {
         const past: PaletteItem[] = searches.slice(0, 5).map((w) => ({ id: `s-${w}`, group: 'Recent searches', title: w, icon: Clock, run: () => setQ(w) }));
-        return [...past, ...recents.slice(0, 5).map((i) => ({ ...i, group: 'Recently opened' })), ...latest];
+        // Everywhere (no app picked): the people you work with, so there's always someone to reach before typing.
+        const people = scope ? [] : items.filter((i) => i.group === 'People' && !recents.some((r) => r.id === i.id)).slice(0, 6);
+        return [...past, ...recents.slice(0, 5).map((i) => ({ ...i, group: 'Recently opened' })), ...latest, ...people];
       }
       return [...needs, ...recents, ...latest, ...items.filter((i) => i.group === 'Actions')];
     }

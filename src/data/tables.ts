@@ -53,6 +53,27 @@ export const TABLES: DataTable[] = [
     createdBy: 'u-james',
     createdAt: at(20),
   },
+  // Rimba Group, where James lands: a small sample table, so Tables isn't empty on the first visit.
+  {
+    id: 'tb-rimba-stockists',
+    workspaceId: 'elk',
+    name: 'Stockists',
+    color: '#166534',
+    description: 'Shops that carry Rimba products, and where each one is.',
+    fields: [
+      { id: 'k-name', name: 'Shop', type: 'text' },
+      { id: 'k-city', name: 'City', type: 'text' },
+      { id: 'k-stage', name: 'Status', type: 'select', options: [ { id: 'o-talk', label: 'Talking', color: '#0ea5e9' }, { id: 'o-sample', label: 'Samples sent', color: '#f59e0b' }, { id: 'o-live', label: 'Selling', color: '#10b981' } ] },
+      { id: 'k-owner', name: 'Owner', type: 'person' },
+      { id: 'k-next', name: 'Next step', type: 'date' },
+    ],
+    views: [
+      { id: 'v-kgrid', name: 'All shops', kind: 'grid' },
+      { id: 'v-kboard', name: 'By status', kind: 'board', groupBy: 'k-stage' },
+    ],
+    createdBy: 'u-james',
+    createdAt: at(6),
+  },
 ];
 
 const lead = (n: number, name: string, email: string, phone: string, source: string, status: string, value: number | null, owner: string, follow: string | null, notes = '', daysAgo = n): TableRow => ({
@@ -77,7 +98,22 @@ const post = (n: number, title: string, stage: string, platform: string[], owner
   updatedAt: at(Math.max(0, 10 - n)),
 });
 
+const shop = (n: number, name: string, city: string, stage: string, owner: string, next: string | null): TableRow => ({
+  id: `r-rk-${n}`,
+  workspaceId: 'elk',
+  tableId: 'tb-rimba-stockists',
+  values: { 'k-name': name, 'k-city': city, 'k-stage': stage, 'k-owner': owner, 'k-next': next },
+  order: n,
+  createdBy: 'u-james',
+  createdAt: at(6 - n),
+  updatedAt: at(Math.max(0, 4 - n)),
+});
+
 export const ROWS: TableRow[] = [
+  shop(1, 'Toko Hijau', 'Bandung', 'o-live', 'u-james', null),
+  shop(2, 'Pasar Sehat', 'Jakarta', 'o-sample', 'u-ethan', '2026-10-14'),
+  shop(3, 'Daun Market', 'Yogyakarta', 'o-talk', 'u-james', '2026-10-16'),
+  shop(4, 'Kedai Rimba', 'Surabaya', 'o-live', 'u-thomas', null),
   lead(1, 'Nina Sasmita', 'nina.k@example.com', '+62 812 3456 7801', SRC.fb, S.qualified, 4_500_000, 'u-sophie', '2026-10-09', 'Wants the bundle for her clinic. Asked for a price list.'),
   lead(2, 'Diana King', 'diana.king@example.com', '+62 813 2233 4410', SRC.ig, S.contacted, 1_200_000, 'u-owen', '2026-10-10'),
   lead(3, 'Paige Adams', 'paige.ang@example.com', '+62 857 1100 2299', SRC.fb, S.new, null, 'u-owen', null),

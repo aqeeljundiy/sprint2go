@@ -4047,10 +4047,17 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     setRecentOpen((l) => (l[0]?.kind === kind && l[0].id === id ? l : [{ kind, id }, ...l.filter((x) => !(x.kind === kind && x.id === id))].slice(0, 8)));
   };
   const openProjectId = mode === 'projects' && projScope.kind === 'client' ? projScope.id : null;
-  useEffect(() => visit('project', openProjectId), [openProjectId]); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => visit('note', mode === 'notes' ? noteId : null), [mode, noteId]); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => visit('table', mode === 'tables' ? tableId : null), [mode, tableId]); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => visit('channel', mode === 'chat' ? chatId : null), [mode, chatId]); // eslint-disable-line react-hooks/exhaustive-deps
+  // A place counts once it has stayed open a few seconds: passing through an app (which may pick its first item) doesn't
+  // reshuffle the launcher's Continue row, so the row is the same each time you come back.
+  const stay = (kind: 'project' | 'note' | 'table' | 'channel', id: string | null | undefined) => {
+    if (!id) return;
+    const timer = setTimeout(() => visit(kind, id), 3000);
+    return () => clearTimeout(timer);
+  };
+  useEffect(() => stay('project', openProjectId), [openProjectId]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => stay('note', mode === 'notes' ? noteId : null), [mode, noteId]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => stay('table', mode === 'tables' ? tableId : null), [mode, tableId]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => stay('channel', mode === 'chat' ? chatId : null), [mode, chatId]); // eslint-disable-line react-hooks/exhaustive-deps
   const recents: Recent[] = recentOpen.flatMap((r): Recent[] => {
     if (r.kind === 'project') {
       const c = wsClients.find((x) => x.id === r.id);
@@ -4058,11 +4065,12 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     }
     if (r.kind === 'note') {
       const n = wsNotesAll.find((x) => x.id === r.id && !x.deletedAt);
-      return n && enabled.has('notes') ? [{ key: 'n' + r.id, title: n.title || t('Untitled'), icon: NotebookText, app: 'notes', run: () => openNote(r.id) }] : [];
+      // An untitled note says nothing on a chip ("Untitled ta…"): only named places are offered.
+      return n && n.title?.trim() && enabled.has('notes') ? [{ key: 'n' + r.id, title: n.title, icon: NotebookText, app: 'notes', run: () => openNote(r.id) }] : [];
     }
     if (r.kind === 'table') {
       const tb = wsTables.find((x) => x.id === r.id);
-      return tb && enabled.has('tables') ? [{ key: 't' + r.id, title: tb.name, icon: Table2, app: 'tables', run: () => openTable(r.id) }] : [];
+      return tb && tb.name.trim() && !/^untitled/i.test(tb.name) && enabled.has('tables') ? [{ key: 't' + r.id, title: tb.name, icon: Table2, app: 'tables', run: () => openTable(r.id) }] : [];
     }
     const c = wsChannels.find((x) => x.id === r.id);
     return c && enabled.has('chat') ? [{ key: 'c' + r.id, title: c.kind === 'dm' ? chanName(c, allUsers, user.id) : c.name, icon: c.kind === 'dm' ? MessageCircle : Hash, app: 'chat', run: () => openChannel(r.id) }] : [];
@@ -4899,7 +4907,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             onPortal={setPortalKey}
             onShared={myPortals.length > 1 ? () => setPortalKey('*') : undefined}
             onSearch={searchHere}
-            me={{ person: ME, onOpen: () => (setSettingsSection('account'), go('settings')) }}
+            me={{ person: { ...ME, email: user.email } /* the sign-in address, as Settings > Account shows it */, onOpen: () => (setSettingsSection('account'), go('settings')) }}
             status={{ emoji: statuses[user.id]?.emoji, text: statuses[user.id] ? statusText(statuses[user.id]!) : t('Available'), run: () => setStatusOpen(true) }}
             onSettings={() => (openSettingsList(), go('settings'))}
             claim={chrome.bar}
@@ -4992,7 +5000,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             portals={portalItems}
             onPortal={setPortalKey}
             onShared={myPortals.length > 1 ? () => setPortalKey('*') : undefined}
-            me={{ person: ME, onOpen: () => (setSettingsSection('account'), go('settings')) }}
+            me={{ person: { ...ME, email: user.email } /* the sign-in address, as Settings > Account shows it */, onOpen: () => (setSettingsSection('account'), go('settings')) }}
             status={{ emoji: statuses[user.id]?.emoji, text: statuses[user.id] ? statusText(statuses[user.id]!) : t('Available'), run: () => setStatusOpen(true) }}
             onSettings={() => (openSettingsList(), go('settings'))}
           />
