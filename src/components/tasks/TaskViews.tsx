@@ -27,7 +27,7 @@ import { PlanMyDay } from './PlanMyDay';
 import { BulkBar } from './BulkBar';
 import { dayWords, useTaskSheets } from './TaskSheets';
 import { copyTaskLink, doersOf, duplicateOf, quoted, type TaskOps } from './taskOps';
-import { t, tn } from '../../i18n';
+import { t, tn, tx } from '../../i18n';
 import { fmtTime } from '../../i18n/format';
 
 export type SwipeChoice = 'complete' | 'schedule' | 'delete' | 'none';
@@ -315,7 +315,7 @@ export function TaskViews({
       if (ids.length < 2) return rest.length ? [...out, { key: 'today', label: DATE_GROUPS[1].label as ReactNode, items: rest, reschedule: false }] : out;
       const named = ids
         .map((id) => ({ id, c: ops.clients.find((x) => x.id === id) }))
-        .sort((a, b) => (a.c ? a.c.name : '~').localeCompare(b.c ? b.c.name : '~'))
+        .sort((a, b) => Number(!a.c) - Number(!b.c) || (a.c?.name ?? '').localeCompare(b.c?.name ?? ''))
         .map(({ id, c }) => ({ key: `c:${id}`, label: c ? <><span className="dot" style={{ background: c.color }} />{c.name}</> : t('No {project}', { project: term.one }), items: rest.filter((task) => (task.clientId ?? '') === id), reschedule: false }));
       return [...out, ...named];
     }
@@ -493,7 +493,7 @@ export function TaskViews({
                 <b>{g.items.length}</b>
                 {g.reschedule && phone && canPlan && (
                   <button type="button" className="link-btn small t-resched t-plan" onClick={() => setPlanning(true)}>
-                    {t('Plan')}
+                    {tx('day', 'Plan')}
                   </button>
                 )}
                 {g.reschedule && (

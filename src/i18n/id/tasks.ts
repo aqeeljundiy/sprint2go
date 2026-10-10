@@ -742,6 +742,7 @@ const id: Record<string, string> = {
   '{date} · Tomorrow': '{date} · Besok',
   '{n} shown': '{n} ditampilkan',
   '{project}: {name}': '{project}: {name}',
+  'day::Plan': 'Rencanakan',
 };
 
 export default id;
