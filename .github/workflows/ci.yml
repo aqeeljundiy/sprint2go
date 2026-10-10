@@ -60,5 +60,7 @@ jobs:
         run: node --import ./server/register.mjs scripts/tables-tests.mjs
       - name: Phone mail apps (IMAP, SMTP submission, app passwords)
         run: node scripts/imap-tests.mjs
+      - name: Mail labels and filters (every criterion and action, order and stop, blocked senders, forwarding rules, existing mail and Undo, who may do what, IMAP folders)
+        run: node --import ./server/register.mjs scripts/mail-filters-tests.mjs
       - name: Whitelist (Unlimited lifts every limit, no invoices, AI and Boosted monthly limits, people's rules, operators only, audit, MRR)
         run: node --import ./server/register.mjs scripts/whitelist-tests.mjs

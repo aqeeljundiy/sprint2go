@@ -92,7 +92,7 @@ function mayChange(coll: 'mailLabels' | 'mailFilters', d: { workspaceId?: unknow
 }
 
 /** The rules for saving a label. Returns what's stored, or null (with why). */
-export function guardLabel(d: Doc, before: any, me: string, say: (w: Said) => void): Doc | null {
+export function guardLabel(d: Doc, before: any, me: string, say: (w: Said) => void, batch: Doc[] = []): Doc | null {
   const asked = d as any;
   if (before && (asked.workspaceId !== before.workspaceId || (asked.accountId ?? null) !== (before.accountId ?? null))) return null; // a label stays in its mailbox
   const can = mayChange('mailLabels', before ?? asked, me);
@@ -100,7 +100,8 @@ export function guardLabel(d: Doc, before: any, me: string, say: (w: Said) => vo
   const accountId = (before ?? asked).accountId ?? null;
   const name = cleanLabelName(asked.name);
   if (!name) return (say(mark('Give the label a name.')), null);
-  const all = allLabels();
+  // Labels saved together (a label and the one it's nested in) count as there.
+  const all = [...allLabels().filter((l) => !batch.some((b) => b.id === l.id)), ...(batch as unknown as MailLabel[]).filter((b) => b && typeof b.id === 'string')];
   const mine = all.filter((l) => l.workspaceId === can.ws.id && (l.accountId ?? null) === accountId);
   if (!before && mine.length >= MAX_LABELS) return (say(mark('That’s as many labels as one mailbox can have (500).')), null);
   // Nested under a label of the same mailbox (or both the company's), never under itself or its own sub-labels.
@@ -337,7 +338,8 @@ export function onArrival(thread: any, m: any, ctx: Arrival): { thread: any; aft
   if (own) return { thread: t, after: () => {} }; // our own mail in this mailbox (a sent copy) isn't filtered
   const hits: MailFilterRule[] = [];
   const todo: (() => void)[] = [];
-  let place: 'trash' | 'spam' | 'archive' | null = null;
+  let place: 'trash' | 'spam' | null = null;
+  let archive = false;
   let neverSpam = false;
   const valid = new Set(labelsOfMailbox(ctx.ws.id, ctx.account.id).map((l) => l.id));
   for (const f of filtersFor(ctx.ws.id, ctx.account.id)) {
@@ -352,7 +354,7 @@ export function onArrival(thread: any, m: any, ctx: Arrival): { thread: any; aft
     if (a.neverSpam) neverSpam = true;
     if (a.trash) place = 'trash';
     else if (a.spam && place !== 'trash') place = 'spam';
-    else if (a.archive && !place) place = 'archive';
+    if (a.archive) archive = true;
     if (a.assign && ctx.account.kind === 'shared' && (ctx.account.users ?? []).includes(a.assign)) {
       t.assignee = a.assign;
       t.assignedBy = f.createdBy;
@@ -366,8 +368,8 @@ export function onArrival(thread: any, m: any, ctx: Arrival): { thread: any; aft
   const verdict = ctx.spam || t.location === 'spam';
   if (place === 'trash') t.location = 'trash';
   else if (place === 'spam' && !neverSpam) t.location = 'spam';
-  else if (verdict && neverSpam) t.location = place === 'archive' ? 'archive' : 'inbox';
-  else if (place === 'archive' && t.location === 'inbox') t.location = 'archive';
+  else if (verdict && neverSpam) t.location = archive ? 'archive' : 'inbox';
+  else if (archive && t.location === 'inbox') t.location = 'archive';
   if (filed.length) t.filed = [...(t.filed ?? []), ...filed].slice(-10);
   const spamNow = t.location === 'spam' || t.location === 'trash';
   return {
@@ -621,7 +623,8 @@ export async function handleApi(p: string, x: Api): Promise<boolean> {
     const link = `${deps?.publicUrl() ?? ''}/api/mail/forwarding/confirm?token=${token}`;
     const text = `${hit.account.email} at ${hit.ws.name ?? 'sprint2go'} asked to forward email to ${address}.\n\nTo allow it, open this link:\n${link}\n\nIf you didn't expect this, ignore this email and nothing will be forwarded.`;
     const sent = await (deps?.sendNote(address, `Confirm forwarding from ${hit.account.email}`, text) ?? Promise.resolve(false)).catch(() => false);
-    deps?.log(`[filters] forwarding confirmation for ${hit.account.email} to ${address}${sent ? ' sent' : ' not sent (no system mail here)'}`);
+    // No system mail here (a local server): the link goes to this log, like sign-up codes.
+    deps?.log(sent ? `[filters] forwarding confirmation for ${hit.account.email} sent to ${address}` : `[filters] forwarding confirmation for ${hit.account.email} to ${address} (no system mail here): ${link}`);
     json(res, 200, { address, verified: false, sent });
     return true;
   }

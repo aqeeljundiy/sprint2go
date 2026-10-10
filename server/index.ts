@@ -1583,7 +1583,7 @@ function applySync(me: string, incoming: any, from: { conn?: string; operator?: 
       return mailTeam.guardTeamMail(readTracking.guardThread(mailer.guardDelivery(mailFilters.guardThread(d, before), before), before, DEMO), before, me, acct, now);
     }
     // Mail's labels and filters: who may change them, and what a filter may do (forwarding, assigning: mailFilters.ts).
-    if (coll === 'mailLabels') return mailFilters.guardLabel(d, before, me, say);
+    if (coll === 'mailLabels') return mailFilters.guardLabel(d, before, me, say, ok as db.Doc[]);
     if (coll === 'mailFilters') return mailFilters.guardFilter(d, before, me, say);
     // A channel's scheduled summaries and the server's last run stay, whatever an older copy in someone's app says.
     if (coll === 'channels' && before) return summaries.keepSummaries(d, before) as db.Doc;
