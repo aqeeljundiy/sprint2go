@@ -535,7 +535,22 @@ export function ChatView(p: ViewProps) {
           );
         });
       })()}
-      {top.length === 0 && <p className="chat-start">{channel.kind === 'dm' && other ? t('This is the start of your conversation with {name}.', { name: other.name }) : t('This is the start of {name}.', { name: title })}</p>}
+      {top.length === 0 &&
+        (channel.kind === 'dm' && other ? (
+          <div className="chat-start-dm">
+            <Avatar person={other} size={56} />
+            <strong>{other.name}</strong>
+            {other.title && <span>{other.title}</span>}
+            <p className="chat-start">{t('This is the start of your conversation with {name}.', { name: other.name })}</p>
+            {!guest && (
+              <button type="button" className="ghost-btn" onClick={() => setDetails('menu')}>
+                {t('View profile')}
+              </button>
+            )}
+          </div>
+        ) : (
+          <p className="chat-start">{t('This is the start of {name}.', { name: title })}</p>
+        ))}
     </div>
   );
 

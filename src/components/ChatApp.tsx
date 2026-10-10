@@ -458,7 +458,7 @@ export function ChatSidebar(p: SidebarProps) {
         </>
       )}
 
-      {phone && inBar && <TopBar app="chat" actions={part === 'home' ? undefined : filterBtn} />}
+      {phone && inBar && <TopBar app="chat" actions={part === 'home' || (part === 'activity' && !activityUnread) ? undefined : filterBtn} />}
       {phone && !inBar && (
         <div className="chat-switch-row" ref={switchRow}>
           <div className="segmented chat-switch" role="tablist" aria-label={t('Chat')}>
@@ -483,7 +483,7 @@ export function ChatSidebar(p: SidebarProps) {
               </button>
             ))}
           </div>
-          {part !== 'home' && filterBtn}
+          {part !== 'home' && !(part === 'activity' && !activityUnread) && filterBtn}
         </div>
       )}
       {phone ? (

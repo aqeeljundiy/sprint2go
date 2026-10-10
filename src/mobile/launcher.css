@@ -50,8 +50,8 @@
     background 0.15s;
 }
 :root[data-theme='dark'] .ln-sq {
-  background: color-mix(in srgb, var(--c) 22%, transparent);
-  color: color-mix(in srgb, var(--c) 70%, white);
+  background: color-mix(in srgb, var(--c) 30%, #2a2d35); /* brighter than a 22% tint on black: no muddy tiles */
+  color: color-mix(in srgb, var(--c) 55%, white);
 }
 .ln-tile:active .ln-sq,
 .ln-tile.lp-lifted .ln-sq {

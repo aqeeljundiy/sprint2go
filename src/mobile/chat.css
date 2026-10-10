@@ -1783,3 +1783,24 @@
     text-wrap: balance;
   }
 }
+
+@media (max-width: 767px) {
+  .chat-start-dm {
+    display: grid;
+    justify-items: center;
+    gap: 8px;
+    padding: 32px 16px 16px;
+    text-align: center;
+  }
+  .chat-start-dm strong {
+    font: var(--t-title);
+  }
+  .chat-start-dm > span {
+    font: var(--t-secondary);
+    color: var(--text-3);
+  }
+  .chat-start-dm .chat-start {
+    margin: 0;
+    padding: 0;
+  }
+}

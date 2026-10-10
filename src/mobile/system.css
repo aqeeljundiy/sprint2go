@@ -197,3 +197,40 @@
     color: var(--accent-text);
   }
 }
+
+@media (max-width: 767px) {
+  /* N9: no underlined links anywhere on phones. */
+  .app a,
+  .app .link-btn,
+  .client-app a {
+    text-decoration: none;
+  }
+  .app .link-btn {
+    min-height: var(--tap);
+    display: inline-flex;
+    align-items: center;
+  }
+  /* N8: a sideways strip keeps the gutter at its end too (padding-right is lost in a scrolling flex row). */
+  .md-chips::after,
+  .mh-chips::after,
+  .tdp-chips::after {
+    content: '';
+    flex: none;
+    width: 8px;
+    height: 1px;
+  }
+  .md-chips,
+  .mh-chips {
+    scroll-padding-inline: 16px;
+  }
+}
+/* N7: on touch screens a hover never sticks: rows and options go back to plain once the finger lifts. */
+@media (hover: none) {
+  .as-item:hover,
+  .sel-opt:hover,
+  .nav-item:not(.active):hover,
+  .mh-main:hover,
+  .proj-sec-row:hover {
+    background: none;
+  }
+}

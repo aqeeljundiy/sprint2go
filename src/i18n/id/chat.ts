@@ -29,6 +29,7 @@ const id: Record<string, string> = {
   'Which ones show, and in what order': 'Mana yang tampil, dan urutannya',
   '{n} new': '{n} baru',
   'Caught up': 'Semua sudah dibaca',
+  'View profile': 'Lihat profil',
   'You’re in every channel': 'Anda sudah ada di semua channel',
   'Channels you can join show up here. Start a new one for a topic or a project.': 'Channel yang bisa Anda ikuti muncul di sini. Buat yang baru untuk satu topik atau proyek.',
   'Start a huddle with {name}?': 'Mulai huddle dengan {name}?',

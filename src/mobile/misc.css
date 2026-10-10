@@ -1047,3 +1047,9 @@
     margin-top: 4px;
   }
 }
+
+@media (max-width: 767px) {
+  .request-modal .sel.date-sel {
+    justify-content: flex-start;
+  }
+}
