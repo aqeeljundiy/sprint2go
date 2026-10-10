@@ -721,6 +721,8 @@ const id: Record<string, string> = {
   'Marked read': 'Ditandai dibaca',
   'Reply in this thread': 'Balas di thread ini',
   Skipped: 'Dilewati',
+  'Copy huddle link': 'Salin link huddle',
+  'Moves it to Starred': 'Pindahkan ke Berbintang',
   // (end of chat)
 };
 

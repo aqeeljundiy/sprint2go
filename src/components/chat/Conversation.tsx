@@ -871,7 +871,7 @@ export function ChatView(p: ViewProps) {
             ) : summarizing === 'since' ? (
               <p className="muted catchme-wait">{t('Reading what came in since {when}…', { when: whenText(p.since) })}</p>
             ) : (
-              <p className="catchme-text">{sinceText ?? t('Nothing to catch up on.')}</p>
+              <SummaryText text={sinceText ?? t('Nothing to catch up on.')} />
             )}
             <button type="button" className="link-btn" onClick={() => (setCatchUp(false), setDetails('summary'))}>
               {t('All summaries of {name}', { name: title })}
@@ -977,6 +977,36 @@ export function ChatView(p: ViewProps) {
       </div>
       {overlays}
     </section>
+  );
+}
+
+/** An AI summary as Slack shows one: points as bullets, each with its lead words in bold ("Budget: …"). */
+function SummaryText({ text }: { text: string }) {
+  const lines = text.split('\n').map((l) => l.trim()).filter(Boolean);
+  const point = (l: string) => {
+    const m = /^([^:.]{2,40}):\s+(.+)$/.exec(l);
+    return m ? (
+      <>
+        <b>{m[1]}:</b> {m[2]}
+      </>
+    ) : (
+      l
+    );
+  };
+  const bullets = lines.filter((l) => /^[-•*]\s/.test(l));
+  if (!bullets.length) return <p className="catchme-text">{text}</p>;
+  return (
+    <div className="catchme-text">
+      {lines.map((l, i) =>
+        /^[-•*]\s/.test(l) ? (
+          <p key={i} className="cm-point">
+            {point(l.replace(/^[-•*]\s/, ''))}
+          </p>
+        ) : (
+          <p key={i}>{point(l)}</p>
+        ),
+      )}
+    </div>
   );
 }
 

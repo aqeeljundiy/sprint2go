@@ -157,6 +157,17 @@
     background: var(--ok-soft, rgba(15, 157, 107, 0.12));
     animation: fade-in 0.2s ease-out backwards;
   }
+  /* Hidden or joined: it folds away (the copy comes from src/exitAnimations.ts). */
+  .is-leaving.huddle-banner {
+    animation: hbn-out 0.18s cubic-bezier(0.4, 0, 1, 1) forwards;
+  }
+  @keyframes hbn-out {
+    to {
+      opacity: 0;
+      margin-bottom: -56px;
+      transform: scale(0.98);
+    }
+  }
   .hbn-main {
     flex: 1;
     min-width: 0;
@@ -1308,6 +1319,23 @@
   }
   .catchme-sheet .sheet-body {
     padding-bottom: 16px;
+  }
+  .catchme-text p {
+    margin: 0 0 8px;
+  }
+  .catchme-text .cm-point {
+    position: relative;
+    padding-left: 16px;
+  }
+  .catchme-text .cm-point::before {
+    content: '';
+    position: absolute;
+    left: 2px;
+    top: 0.65em;
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--text-3);
   }
 
   /* ---------- The huddle: a slim bar in its own row, and the call screen ---------- */
