@@ -501,6 +501,9 @@ const id: Record<string, string> = {
   'Their email is deleted on arrival. Unblock to get it in your inbox again.': 'Email mereka dihapus saat tiba. Buka blokir agar masuk ke kotak masuk Anda lagi.',
   'The order of the apps on your launcher, and the ones you hide.': 'Urutan aplikasi di layar aplikasi Anda, dan yang Anda sembunyikan.',
   'Send it to someone to walk through sign-up themselves.': 'Kirim ke seseorang agar bisa mencoba pendaftaran sendiri.',
+  'You sign in with this address in every company. Your mailbox here is {email}.': 'Anda masuk dengan alamat ini di setiap perusahaan. Kotak surat Anda di sini adalah {email}.',
+  'You sign in with this address in every company.': 'Anda masuk dengan alamat ini di setiap perusahaan.',
+  'Sign-in email': 'Email masuk',
 };
 
 export default id;

@@ -106,7 +106,7 @@ export function ImportSection({ ws, members, projects, toast }: { ws: Workspace;
               const Icon = SOURCE_ICON[s];
               const mine = waiting(s);
               const held = !!busy && busy.source !== s;
-              return <GRow key={s} pic={<span className="acct-icon"><Icon size={20} /></span>} label={SOURCE_NAME[s]} sub={HOW[s].line()} value={mine ? t('Open') : undefined} className={held ? 'is-off' : ''} onClick={held ? undefined : () => setOpen(mine ? { source: s, job: mine } : { source: s })} />;
+              return <GRow key={s} pic={<span className={`acct-icon imp-mark imp-${s}`}><Icon size={20} /></span>} label={SOURCE_NAME[s]} sub={HOW[s].line()} value={mine ? t('Open') : undefined} className={held ? 'is-off' : ''} onClick={held ? undefined : () => setOpen(mine ? { source: s, job: mine } : { source: s })} />;
             })}
           </Group>
           {error && <p className="g-foot g-err">{t(error)}</p>}
@@ -117,7 +117,7 @@ export function ImportSection({ ws, members, projects, toast }: { ws: Workspace;
                 return (
                   <GRow
                     key={j.id}
-                    pic={<span className="acct-icon"><Icon size={20} /></span>}
+                    pic={<span className={`acct-icon imp-mark imp-${j.source}`}><Icon size={20} /></span>}
                     label={`${SOURCE_NAME[j.source]} · ${j.preview?.board?.name ?? j.fileName}`}
                     sub={j.undoUntil ? `${statusLine(j)}. ${t('Can be undone until {when}', { when: untilWords(j.undoUntil) })}` : statusLine(j)}
                     value={j.status === 'failed' ? t('Stopped') : j.status === 'ready' ? t('Continue') : undefined}

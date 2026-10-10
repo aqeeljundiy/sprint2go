@@ -1446,3 +1446,20 @@ button.tb-page-title:active {
 .tb-sheet .segmented button {
   min-height: 32px;
 }
+
+/* A step inside a sheet: the back chevron sits before the title. */
+.tb-sheet-step {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: -8px;
+}
+
+/* Phones: an empty board column is only as tall as its header and one line, not as tall as the longest column. */
+.tb-board-wrap.phone .tb-board {
+  align-items: flex-start;
+}
+.tb-board-wrap.phone .tb-col-empty {
+  padding: 8px;
+  font: var(--t-secondary);
+}

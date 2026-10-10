@@ -946,3 +946,121 @@
   vertical-align: -4px;
   color: var(--text-2);
 }
+
+@media (max-width: 767px) {
+  /* Email delivery: the four ways are radio rows in one card (no box per option, no box in a box). */
+  .settings-push .ed-cards {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    border-radius: var(--r-card);
+    background: var(--surface);
+    overflow: hidden;
+  }
+  .settings-push .ed-cards .ob-setup {
+    position: relative;
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    min-height: var(--row-2);
+    padding: 12px 16px 12px 48px;
+    border: 0;
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+    text-align: left;
+  }
+  .settings-push .ed-cards .ob-setup + .ob-setup::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 48px;
+    right: 0;
+    height: 1px;
+    background: var(--line);
+  }
+  .settings-push .ed-cards .ob-setup > svg {
+    display: none; /* the radio says it; one marker per row */
+  }
+  .settings-push .ed-cards .ob-setup::after {
+    content: '';
+    position: absolute;
+    left: 16px;
+    top: 12px;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    box-shadow: inset 0 0 0 2px var(--text-3);
+    transition: box-shadow 0.15s ease;
+  }
+  .settings-push .ed-cards .ob-setup.on::after {
+    box-shadow: inset 0 0 0 6px var(--accent);
+  }
+  .settings-push .ed-cards .ob-setup strong {
+    font: var(--t-body);
+  }
+  .settings-push .ed-cards .ob-setup small {
+    display: block;
+    font: var(--t-secondary);
+    color: var(--text-3);
+  }
+  /* Groups and other empty lists in a settings card: centred like every empty state (N2). */
+  .settings-push .acct-list > .empty-state.compact {
+    padding: 24px 16px 8px;
+    text-align: center;
+  }
+  .settings-push .acct-list > .empty-state.compact + .acct-add {
+    justify-content: center;
+  }
+  /* Import: each source in its own colour, like its mark (Slack, Trello, Google Drive, Gmail). */
+  .imp-mark {
+    color: #fff;
+  }
+  .imp-mark.imp-slack {
+    background: #4a154b;
+  }
+  .imp-mark.imp-trello {
+    background: #0079bf;
+  }
+  .imp-mark.imp-drive {
+    background: #1a73e8;
+  }
+  .imp-mark.imp-mail {
+    background: #ea4335;
+  }
+  /* Plan & billing on a phone: the plan cards are one column of grouped cards, the toggles full width. */
+  .settings-push .plan-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .settings-push .plan-controls .segmented {
+    width: 100%;
+  }
+  .settings-push .plan-controls .segmented button {
+    flex: 1;
+    min-height: 36px;
+  }
+  .settings-push .tier-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .settings-push .tier-grid .tier {
+    padding: 16px;
+    border-radius: var(--r-card);
+    background: var(--surface);
+  }
+  .settings-push .tier-grid .tier .primary-btn,
+  .settings-push .tier-grid .tier .ghost-btn {
+    justify-content: center;
+    width: 100%;
+    min-height: var(--tap);
+  }
+  .settings-push .trial-note {
+    padding: 12px 16px;
+    border-radius: var(--r-card);
+    background: var(--surface);
+    font: var(--t-secondary);
+  }
+}

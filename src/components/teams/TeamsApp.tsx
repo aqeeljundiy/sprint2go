@@ -17,6 +17,7 @@ import { Select } from '../ui/Select';
 import { SmoothHeight, TabPane } from '../ui/Smooth';
 import { useCreateAction, useFocusedScreen, useTitleMenu } from '../../mobile/chrome';
 import { toastUndo } from '../../toast';
+import { TopBar } from '../../mobile/TopBar';
 import { term } from '../../terms';
 import { t, tn, tx } from '../../i18n';
 import { fmtDay } from '../../i18n/format';
@@ -374,7 +375,9 @@ export function TeamPage({
   // Phones: the team takes the screen with Back to all teams, and its name is the title (a switcher to the others).
   useFocusedScreen(true, onBack);
 
-  useTitleMenu('teams', !!onOpen && { label: t('Teams'), value: tm.id, options: teams.map((x) => ({ value: x.id, label: x.name, icon: <span className="team-square" style={{ background: x.color }} /> })), onChange: onOpen });
+  // A team is a sub-screen on phones (D2): back arrow and its name at 17/600, no switcher. Computers keep the switcher.
+  const subPhone = usePhone();
+  useTitleMenu('teams', !!onOpen && !subPhone && { label: t('Teams'), value: tm.id, options: teams.map((x) => ({ value: x.id, label: x.name, icon: <span className="team-square" style={{ background: x.color }} /> })), onChange: onOpen });
   const [tab, setTab] = useState<TeamTab>('members');
   const tabs: { id: TeamTab; label: string }[] = [
     { id: 'members', label: t('People') },
@@ -385,6 +388,7 @@ export function TeamPage({
   const lead = users.find((u) => u.id === tm.leadId);
   return (
     <section className="tasks-pane view-enter team-page">
+      {subPhone && <TopBar app="teams" title={<h1 className="mt-title plain small">{tm.name}</h1>} />}
       <header className="tracking-head tasks-head">
         <button className="icon-btn menu-btn" onClick={onBack} aria-label={t('All teams')}>
           <ArrowLeft size={18} />

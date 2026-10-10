@@ -222,10 +222,11 @@ export function AccountPhone({ s, update, email, me, onPhoto, security }: { s: S
       <Group>
         <GRow pic={<Avatar person={person} size={40} />} label={t('Photo and colour')} onClick={() => setPhoto(true)} />
       </Group>
-      <Group footer={t('Your address is set up by your administrator.')}>
+      {/* Account is the person, not one company's mailbox: the address you sign in with, the same in every company. */}
+      <Group footer={me?.email && me.email !== email ? t('You sign in with this address in every company. Your mailbox here is {email}.', { email }) : t('You sign in with this address in every company.')}>
         <TextRow label={t('Display name')} value={s.name} allowEmpty={false} autoComplete="name" onSave={(v) => update({ name: v })} />
         <TextRow label={t('Title')} value={s.title} onSave={(v) => update({ title: v })} />
-        <GRow label={t('Email address')} value={email} />
+        <GRow label={t('Sign-in email')} value={me?.email ?? email} />
       </Group>
       <Group footer={t('The app’s words, dates and numbers. It follows you to your other devices.')}>
         <ChoiceRow<Lang> label={t('Language')} value={s.language ?? getLang()} onChange={(v) => update({ language: v })} options={LANGS.map((l) => ({ value: l.id, label: l.name }))} />

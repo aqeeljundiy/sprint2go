@@ -23,7 +23,13 @@ import { t, tn, tx, textOf } from '../../i18n';
 export function ViewsSheet({ table, current, onPick, onAdd, onClose, gridAsList }: { table: DataTable; current: string; gridAsList?: (viewId: string) => boolean; onPick: (id: string) => void; onAdd?: (kind: TableViewDef['kind']) => void; onClose: () => void }) {
   const [adding, setAdding] = useState(false);
   return (
-    <Sheet title={adding ? t('Add a view') : t('Views')} onClose={onClose} className="tb-sheet" head={adding && <button type="button" className="ghost-btn sm" onClick={() => setAdding(false)}>{t('Back')}</button>}>
+    <Sheet
+      // Adding a view is a step inside the sheet: a back chevron before its title, on the left like every back.
+      title={adding ? <span className="tb-sheet-step"><button type="button" className="icon-btn" onClick={() => setAdding(false)} aria-label={t('Back')}><ChevronLeft size={24} /></button>{t('Add a view')}</span> : t('Views')}
+      label={adding ? t('Add a view') : t('Views')}
+      onClose={onClose}
+      className="tb-sheet"
+    >
       <TabPane key={adding ? 'add' : 'list'}>
         <div className="as-list">
           {adding
@@ -83,10 +89,7 @@ export function FilterSheet({ table, view, rows, ctx, shown, onChange, onClose }
   return (
     <Sheet
       title={
-        <span className="tb-fs-title">
-          {title}
-          <small>{tn(shown, '{n} row', '{n} rows')}</small>
-        </span>
+        <span className="tb-fs-title">{title}</span>
       }
       label={title}
       onClose={onClose}
@@ -98,8 +101,9 @@ export function FilterSheet({ table, view, rows, ctx, shown, onChange, onClose }
             <ChevronLeft size={18} /> {t('Back')}
           </button>
         ) : (
+          // The count lives on the button that shows them (iOS: "Show 2 rows"), not next to the title.
           <button type="button" className="tb-fs-head-btn strong" onClick={onClose}>
-            {t('Done')}
+            {tn(shown, 'Show {n} row', 'Show {n} rows')}
           </button>
         )
       }
