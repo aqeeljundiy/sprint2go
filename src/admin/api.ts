@@ -34,7 +34,7 @@ export const copy = (text: string) => navigator.clipboard?.writeText(text).catch
 export const duration = (mins: number | null) =>
   mins === null ? t('none yet') : mins < 60 ? t('{n} min', { n: mins }) : mins < 48 * 60 ? t('{n} h', { n: fmtNumber(mins / 60, { maximumFractionDigits: mins < 600 ? 1 : 0, minimumFractionDigits: mins < 600 ? 1 : 0 }) }) : tn(Math.round(mins / 1440), '{n} day', '{n} days');
 
-export type State = 'free' | 'trial' | 'paused' | 'comp' | 'paying' | 'suspended';
+export type State = 'free' | 'trial' | 'paused' | 'comp' | 'paying' | 'suspended' | 'unlimited';
 export type Perm = 'view' | 'support' | 'impersonate' | 'customers' | 'billing' | 'product' | 'platform' | 'team' | 'danger';
 export type OpRole = 'owner' | 'admin' | 'support' | 'finance' | 'readonly';
 export interface Health {
@@ -52,6 +52,7 @@ export interface PlanInfo {
   discount: { code: string; kind: string; value: number; until?: string } | null;
   addons: { mailboxes: number; storage50: number; meetHours10: number; branding: boolean };
   billing: { company: string; npwp?: string; address?: string; emails: string[] } | null;
+  unlimited?: boolean; // on the Whitelist
 }
 export interface CompanyRow {
   id: string;
@@ -129,6 +130,7 @@ export const STATE_LABEL: Record<State, string> = {
   get comp() { return t('Free months'); },
   get paying() { return t('Paying'); },
   get suspended() { return t('Suspended'); },
+  get unlimited() { return t('Unlimited'); },
 };
 export const STATUS_LABEL: Record<TicketStatus, string> = {
   get new() { return tx('ticket', 'New'); },
@@ -159,6 +161,7 @@ export const ROLE_HINT: Record<OpRole, string> = {
 };
 /** "Studio AI · yearly": the plan's name stays as it is (a product name), the rest is translated. */
 export const planLabel = (p: PlanInfo | null) => {
+  if (p?.unlimited) return t('Unlimited');
   if (!p || p.tier === 'free') return t('Free');
   const name = `${p.tier[0].toUpperCase()}${p.tier.slice(1)}${p.track === 'ai' ? ' AI' : ''}`;
   return p.cycle === 'yearly' ? t('{plan} · yearly', { plan: name }) : name;

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Activity, ArrowLeft, Building2, Check, ClipboardList, CreditCard, Eye, Gauge, Inbox, Languages, LifeBuoy, LogOut, Megaphone, Menu, Monitor, Moon, Search, ServerCog, ShieldCheck, Sparkles, Sun, TrendingUp, UserCog, Users, X, type LucideIcon } from 'lucide-react';
+import { Activity, ArrowLeft, Building2, Check, ClipboardList, CreditCard, Eye, Gauge, Inbox, Infinity as InfinityIcon, Languages, LifeBuoy, LogOut, Megaphone, Menu, Monitor, Moon, Search, ServerCog, ShieldCheck, Sparkles, Sun, TrendingUp, UserCog, Users, X, type LucideIcon } from 'lucide-react';
 import { Wordmark } from '../components/Logo';
 import { signOut } from '../sync';
 import { ApiError, get, post, ROLE_LABEL, type Perm } from './api';
@@ -14,6 +14,7 @@ import { Product } from './pages/Product';
 import { Platform } from './pages/Platform';
 import { Team } from './pages/Team';
 import { AIPage } from './pages/AI';
+import { Whitelist } from './pages/Whitelist';
 import { Popover } from '../components/ui/Popover';
 import { LANGS, getLang, isLang, rememberLang, setLang, t, tx, type Lang } from '../i18n';
 import { tj } from '../i18n/tj';
@@ -23,7 +24,7 @@ type Item = { id: string; label: string; icon: LucideIcon; perm?: Perm };
 // Getters: each read gives the words in the console's language of the moment (docs/i18n.md).
 const NAV: { group: string; items: Item[] }[] = [
   { get group() { return tx('nav', 'Inbox'); }, items: [{ id: 'today', get label() { return t('Today'); }, icon: Gauge }, { id: 'tickets', get label() { return t('Tickets'); }, icon: LifeBuoy }] },
-  { get group() { return t('Customers'); }, items: [{ id: 'companies', get label() { return t('Companies'); }, icon: Building2 }, { id: 'people', get label() { return t('People'); }, icon: Users }] },
+  { get group() { return t('Customers'); }, items: [{ id: 'companies', get label() { return t('Companies'); }, icon: Building2 }, { id: 'people', get label() { return t('People'); }, icon: Users }, { id: 'whitelist', get label() { return t('Whitelist'); }, icon: InfinityIcon }] },
   { get group() { return t('Business'); }, items: [{ id: 'money', get label() { return tx('nav', 'Money'); }, icon: CreditCard }, { id: 'ai', label: 'AI', icon: Sparkles }, { id: 'growth', get label() { return t('Growth'); }, icon: TrendingUp }] },
   { get group() { return tx('nav', 'Run'); }, items: [{ id: 'product', get label() { return t('Product'); }, icon: Megaphone }, { id: 'platform', get label() { return t('Platform'); }, icon: ServerCog }, { id: 'team', get label() { return t('Team & settings'); }, icon: UserCog }] },
 ];
@@ -203,6 +204,7 @@ export function AdminApp() {
   if (section === 'tickets') page = a ? <TicketPage id={a} key={a} /> : <Tickets />;
   else if (section === 'companies') page = a ? <CompanyPage id={a} tab={b || 'overview'} key={a} /> : <Companies />;
   else if (section === 'people') page = a ? <PersonPage id={a} key={a} /> : <People />;
+  else if (section === 'whitelist') page = <Whitelist />;
   else if (section === 'money') page = <Money tab={a || 'revenue'} />;
   else if (section === 'ai') page = <AIPage tab={a || 'margin'} />;
   else if (section === 'growth') page = <Growth />;

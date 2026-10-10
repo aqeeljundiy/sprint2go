@@ -390,6 +390,13 @@ const id: Record<string, string> = {
   'Your account and companies': 'Akun dan perusahaan Anda',
   'Try the demo': 'Coba demonya',
   '{n} of {total} done': '{n} dari {total} selesai',
+
+  // Unlimited (the operators’ Whitelist): AI off for a person, or the month’s AI used up
+  "AI is switched off for you here. Ask your admin.": "AI dimatikan untuk Anda di sini. Tanyakan ke admin Anda.",
+  "AI is switched off for you here.": "AI dimatikan untuk Anda di sini.",
+  "This month’s AI is used up. Ask your admin.": "AI bulan ini sudah habis. Tanyakan ke admin Anda.",
+  "Unlimited": "Unlimited",
+  "this month’s AI is used up.": "AI bulan ini sudah habis.",
 };
 
 export default id;

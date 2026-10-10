@@ -283,13 +283,13 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const sendable = myAccounts.filter((a) => boxReady(a.id).send);
   // AI: on when the company has it (included or its own key), or in a demo.
   const [aiOn, setAiOn] = useState(true);
-  const [aiWhy, setAiWhy] = useState<'no-key' | 'down' | 'used-up' | null>(null); // why it's off: nothing set up, our AI is down, or the allowance is used up
+  const [aiWhy, setAiWhy] = useState<'no-key' | 'down' | 'used-up' | 'off' | null>(null); // why it's off: nothing set up, our AI is down, or the allowance is used up
   useEffect(() => {
     if (!server.on || inSandbox) return (setAiOn(true), setAiWhy(null)); // the demo company answers with samples
     let on = true;
     fetch(`/api/ai/status?ws=${encodeURIComponent(ws.id)}`)
       .then((r) => (r.ok ? r.json() : { live: false }))
-      .then((d: { live: boolean; why?: 'no-key' | 'down' | 'used-up' | null }) => on && (setAiOn(d.live || caps.demo), setAiWhy(d.why ?? null)), () => on && setAiOn(caps.demo));
+      .then((d: { live: boolean; why?: 'no-key' | 'down' | 'used-up' | 'off' | null }) => on && (setAiOn(d.live || caps.demo), setAiWhy(d.why ?? null)), () => on && setAiOn(caps.demo));
     return () => {
       on = false;
     };
@@ -577,7 +577,12 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     showToast({ text, ms: 7000, action: fix && ws.members.some((m) => m.userId === user.id && m.role !== 'member') ? { label: t('Set it up'), run: () => (setSettingsSection(fix), go('settings')) } : undefined });
   /** AI is off: why, in one sentence (`notSetUp`: what it means where it was asked for, when AI isn't set up). */
   const aiOff = (notSetUp = t('AI isn’t set up for this company yet. An admin can add an AI key in Settings, AI, or switch to the AI plan.')) =>
-    aiWhy === 'used-up'
+    // Unlimited (the operators' Whitelist): nothing to buy; an admin set this person's AI, or the month's limit is reached.
+    aiWhy === 'off'
+      ? explainOff(t('AI is switched off for you here. Ask your admin.'))
+      : aiWhy === 'used-up' && ws.plan?.unlimited
+      ? explainOff(t('This month’s AI is used up. Ask your admin.'))
+      : aiWhy === 'used-up'
       ? explainOff(t('The company’s AI allowance for this month is used up. An admin can add a top-up in Settings, Plan & billing.'), 'billing')
       : aiWhy === 'down'
         ? explainOff(t('AI isn’t available right now. We’ve been told; try again in a few minutes.'))
@@ -4366,7 +4371,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
                     },
                     { key: 'people', label: t('Your team'), hint: ws.members.length > 1 ? tn(ws.members.length, '{n} person in', '{n} people in') : t('Invite the people you work with'), done: ws.members.length > 1, onOpen: () => (setSettingsSection('workspace'), go('settings')) },
                     { key: 'brand', label: t('Logo and colour'), hint: ws.logo ? t('Set') : t('Your logo on the app and in shared spaces'), done: !!ws.logo, onOpen: () => (setSettingsSection('workspace'), go('settings')) },
-                    { key: 'plan', label: t('Plan'), hint: ws.plan?.payment ? t('Payment set up') : ws.plan?.trialEnds ? t('Trial ends {date}; pick a plan before then', { date: fmtDay(ws.plan.trialEnds) }) : t('Pick a plan'), done: !!ws.plan?.payment || ws.plan?.tier === 'free', onOpen: () => (setSettingsSection('billing'), go('settings')) },
+                    { key: 'plan', label: t('Plan'), hint: ws.plan?.unlimited ? t('Unlimited') : ws.plan?.payment ? t('Payment set up') : ws.plan?.trialEnds ? t('Trial ends {date}; pick a plan before then', { date: fmtDay(ws.plan.trialEnds) }) : t('Pick a plan'), done: !!ws.plan?.payment || ws.plan?.tier === 'free' || !!ws.plan?.unlimited, onOpen: () => (setSettingsSection('billing'), go('settings')) },
                   ]
                 : undefined
             }
@@ -4551,8 +4556,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             summaryOff={
               server.on && !aiOn
                 ? {
-                    text: aiWhy === 'used-up' ? t('the company’s AI allowance for this month is used up.') : aiWhy === 'down' ? t('AI isn’t available right now. They start again by themselves when it’s back.') : t('AI isn’t set up for this company yet.'),
-                    fix: isAdmin && aiWhy !== 'down' ? { label: aiWhy === 'used-up' ? t('Add a top-up') : t('Set up AI'), run: () => (setSettingsSection(aiWhy === 'used-up' ? 'billing' : 'ai'), go('settings')) } : undefined,
+                    text: aiWhy === 'off' ? t('AI is switched off for you here.') : aiWhy === 'used-up' && ws.plan?.unlimited ? t('this month’s AI is used up.') : aiWhy === 'used-up' ? t('the company’s AI allowance for this month is used up.') : aiWhy === 'down' ? t('AI isn’t available right now. They start again by themselves when it’s back.') : t('AI isn’t set up for this company yet.'),
+                    fix: isAdmin && aiWhy !== 'down' && aiWhy !== 'off' && !(aiWhy === 'used-up' && ws.plan?.unlimited) ? { label: aiWhy === 'used-up' ? t('Add a top-up') : t('Set up AI'), run: () => (setSettingsSection(aiWhy === 'used-up' ? 'billing' : 'ai'), go('settings')) } : undefined,
                   }
                 : undefined
             }

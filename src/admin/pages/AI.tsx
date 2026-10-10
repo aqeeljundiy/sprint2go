@@ -78,6 +78,8 @@ interface Money {
   losing: { id: string; name: string; plan: string; earned: number; cost: number; forecast: number }[];
   other: { id: string; name: string; why: 'trial' | 'comp' | 'internal' | 'other'; cost: number }[];
   otherCost: number;
+  unlimited?: { id: string; name: string; cost: number }[]; // the Whitelist: never in the verdict
+  unlimitedCost?: number;
   jobs: { job: string; name: string; uses: number; cost: number; perUse: number; models: string[] }[];
   unpriced: { model: string; name: string; uses: number }[];
 }
@@ -235,6 +237,20 @@ function Margin({ d }: { d: AIData }) {
                   <strong>{c.name}</strong>
                 </span>
                 <Badge tone={c.why === 'trial' ? 'accent' : 'neutral'}>{WHY_LABEL[c.why]}</Badge>
+                <span className="adm-num-r">{rp(c.cost)}</span>
+              </button>
+            ))}
+          </div>
+        </Section>
+      )}
+      {!!m.unlimited?.length && (
+        <Section title={t('Unlimited')} hint={t('{amount} of AI this month on the Whitelist, left out of the margin above', { amount: rp(m.unlimitedCost ?? 0) })}>
+          <div className="adm-mini-list">
+            {m.unlimited.map((c) => (
+              <button key={c.id} type="button" className="adm-ai-line" onClick={() => go('/admin/whitelist')}>
+                <span className="grow">
+                  <strong>{c.name}</strong>
+                </span>
                 <span className="adm-num-r">{rp(c.cost)}</span>
               </button>
             ))}
