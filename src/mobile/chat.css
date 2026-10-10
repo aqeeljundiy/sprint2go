@@ -738,7 +738,7 @@
     color: var(--text);
   }
   /* Back is the text colour, not the brand's (Slack). */
-  :is(.chat-push, .thread-push, .chat-details, .chat-pane-screen, .newmsg-push) > .push-head .push-back {
+  :is(.chat-push, .thread-push, .chat-details, .chat-pane-screen, .newmsg-push, .huddle-push, .page-catchup, .chat-page-push) > .push-head .push-back {
     color: var(--text);
   }
   .huddle-icon.live {
@@ -1316,16 +1316,15 @@
     display: flex;
     align-items: center;
     gap: 4px;
-    min-height: 56px;
-    padding: 4px 8px 4px 12px;
+    min-height: 48px;
+    padding: 2px 8px 2px 16px;
     background: var(--ok-soft, rgba(15, 157, 107, 0.12));
-    border-bottom: 1px solid var(--line, var(--border));
     animation: hb-in 0.22s cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
   }
   @keyframes hb-in {
     from {
       opacity: 0;
-      margin-bottom: -56px;
+      margin-bottom: -48px;
     }
   }
   /* Leaving the huddle: the bar folds up out of its row (the copy comes from src/exitAnimations.ts). */
@@ -1335,7 +1334,7 @@
   @keyframes hb-out {
     to {
       opacity: 0;
-      margin-bottom: -56px;
+      margin-bottom: -48px;
     }
   }
   .hb-main {
@@ -1366,6 +1365,7 @@
   }
   .hb-text strong {
     font-size: 14px;
+    font-weight: 600;
   }
   .hb-text small {
     font-size: 12.5px;
@@ -1387,17 +1387,31 @@
     color: #fff;
     border-radius: 14px;
   }
-  .huddle-sheet .sheet-body {
+  /* The call: a full screen with Leave as a red pill, the people, and the controls at the bottom. */
+  .huddle-push .push-body {
     display: flex;
     flex-direction: column;
   }
-  .hs-status {
-    margin: 0 16px 4px;
-    text-align: center;
-    color: var(--text-2);
+  .huddle-push .huddle-fold {
+    margin: 8px 16px 0;
   }
-  .huddle-sheet .huddle-fold {
-    margin: 0 8px;
+  .hp-leave {
+    height: 32px;
+    padding: 0 14px;
+    margin-right: 8px;
+    border-radius: 16px;
+    background: var(--danger);
+    color: #fff;
+    font-size: 14px;
+    font-weight: 600;
+    transition: transform 0.15s;
+  }
+  .hp-leave:active {
+    transform: scale(0.96);
+  }
+  .huddle-push .push-foot {
+    padding: 0 0 calc(8px + env(safe-area-inset-bottom));
+    border-top: 0;
   }
   .huddle-note .ghost-btn.sm {
     min-height: 40px;
@@ -1405,7 +1419,8 @@
   .hs-people {
     flex: 1;
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+    grid-template-columns: repeat(auto-fill, 96px);
+    justify-content: center;
     align-content: center;
     gap: 20px 8px;
     padding: 20px 8px;
