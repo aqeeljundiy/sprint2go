@@ -1714,3 +1714,102 @@
     color: var(--text-3);
   }
 }
+
+/* ---------- Month on phones (iOS Calendar's): dates with dots, the picked day's events under the grid ---------- */
+@media (max-width: 767px) {
+  .mp {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow-y: auto;
+  }
+  .mp-head,
+  .mp-grid {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    padding: 0 8px;
+  }
+  .mp-head span {
+    display: grid;
+    place-items: center;
+    height: 24px;
+    font: var(--t-chip);
+    color: var(--text-3);
+  }
+  .mp-grid {
+    flex: none;
+    touch-action: pan-y;
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 8px;
+    animation: fade 0.18s ease-out;
+  }
+  .mp-day {
+    display: grid;
+    justify-items: center;
+    align-content: start;
+    gap: 4px;
+    min-height: 48px;
+    padding: 4px 0 0;
+    color: var(--text);
+  }
+  .mp-day.out {
+    color: var(--text-3);
+  }
+  .mp-num {
+    display: grid;
+    place-items: center;
+    width: 32px;
+    height: 32px;
+    border-radius: var(--r-round);
+    font: var(--t-body);
+    transition: background 0.15s, color 0.15s;
+  }
+  .mp-day.today .mp-num {
+    color: var(--accent-text);
+    font-weight: 700;
+  }
+  .mp-day.on .mp-num {
+    background: var(--text);
+    color: var(--surface);
+  }
+  .mp-day.on.today .mp-num {
+    background: var(--accent);
+    color: #fff;
+  }
+  .mp-dots {
+    display: flex;
+    gap: 2px; /* system: dots sit as close as iOS Calendar's */
+    height: 6px;
+  }
+  .mp-dots i {
+    width: 6px;
+    height: 6px;
+    border-radius: var(--r-round);
+  }
+  .mp-list {
+    display: grid;
+    gap: 8px;
+    padding: 16px 16px var(--fab-space);
+  }
+  .mp-list-head {
+    margin: 0;
+    font: var(--t-heading);
+  }
+  .mp-free {
+    justify-self: start;
+    min-height: var(--tap);
+    font: var(--t-secondary);
+    color: var(--text-3);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mp-grid {
+    animation: none;
+  }
+}
+
+@media (max-width: 767px) {
+  .is-phone .sch-task .sch-task-title {
+    color: var(--text);
+  }
+}

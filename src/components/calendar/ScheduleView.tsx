@@ -31,6 +31,7 @@ export function ScheduleView({
   onToggleTask,
   onOpenTask,
   onEmptyDay,
+  onTopDay,
 }: {
   events: CalEvent[];
   cursor: Date;
@@ -39,8 +40,10 @@ export function ScheduleView({
   onToggleTask?: (id: string) => void;
   onOpenTask?: (id: string) => void;
   onEmptyDay?: (d: Date) => void; // "Nothing planned": tap to add something
+  onTopDay?: (d: Date) => void; // the day at the top as the list scrolls (the bar's month follows it)
 }) {
   const scroll = useRef<HTMLDivElement>(null);
+  const frame = useRef(0);
   const [from, setFrom] = useState(() => startOfWeek(cursor));
   const [weeks, setWeeks] = useState(WEEKS);
   const [now, setNow] = useState(() => Date.now());
@@ -143,7 +146,19 @@ export function ScheduleView({
     });
   };
   return (
-    <div className="sch" ref={scroll}>
+    <div
+      className="sch"
+      ref={scroll}
+      onScroll={(e) => {
+        if (!onTopDay || frame.current) return;
+        const box = e.currentTarget;
+        frame.current = requestAnimationFrame(() => {
+          frame.current = 0;
+          const row = [...box.querySelectorAll<HTMLElement>('[data-day]')].find((r) => r.offsetTop + r.offsetHeight > box.scrollTop + 8);
+          if (row) onTopDay(new Date(Number(row.dataset.day)));
+        });
+      }}
+    >
       <button type="button" className="sch-earlier" onClick={earlier}>
         <ChevronUp size={15} /> {t('Earlier')}
       </button>

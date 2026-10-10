@@ -166,7 +166,7 @@ const id: Record<string, string> = {
   'My teams': 'Tim saya',
   'My {projects}': '{Projects} saya',
   '{Projects} × teams': '{Projects} × tim',
-  'Past {projects}': '{Projects} lama',
+  'Past {projects}': '{Projects} selesai',
   'Your views': 'Tampilan Anda',
   '{n} to do': '{n} perlu dikerjakan',
   '{n} to review': '{n} perlu direview',

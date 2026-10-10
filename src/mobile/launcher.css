@@ -134,7 +134,7 @@
     height: 100%;
     overflow-y: auto;
     overscroll-behavior: contain;
-    padding: env(safe-area-inset-top) 0 calc(env(safe-area-inset-bottom) + var(--fab-space));
+    padding: env(safe-area-inset-top) 0 calc(var(--fab-bottom) + 56px + 16px); /* the last row ends above the + */
   }
 
   /* ---------- Top bar: logo, search, Ask AI, bell, you ---------- */
@@ -358,7 +358,7 @@
 
   /* New, bottom right (the same create button as in every app; no bar under it). */
   .ln-fab.fab {
-    bottom: calc(env(safe-area-inset-bottom) + 16px);
+    bottom: var(--fab-bottom); /* the same spot as in every app, so it doesn't jump on the way in */
   }
   /* The launcher's + leaves at once when an app opens, so the app's own + is never shown next to it mid-fade. */
   .launcher:not(.on) .ln-fab.fab {

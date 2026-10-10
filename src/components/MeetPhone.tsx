@@ -422,7 +422,7 @@ export function MeetFolders({ clients, meetings, onPage, onSettings }: { clients
             <div className="mh-card">
               {clients.map((c) => {
                 const n = meetings.filter((m) => m.clientId === c.id).length;
-                return row(c.id, <IconTile letter={c.name} color={c.color} size={40} />, c.name, n ? tn(n, '{n} meeting', '{n} meetings') : t('No meetings yet'), { kind: 'folder', clientId: c.id });
+                return row(c.id, <IconTile letter={c.name} color={c.color} size={32} />, c.name, n ? tn(n, '{n} meeting', '{n} meetings') : t('No meetings yet'), { kind: 'folder', clientId: c.id });
               })}
             </div>
           </>

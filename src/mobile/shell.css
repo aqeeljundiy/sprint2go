@@ -667,7 +667,7 @@
   .fab {
     position: fixed;
     right: 16px;
-    bottom: calc(var(--bar-space) + 16px);
+    bottom: max(var(--fab-bottom), calc(var(--bar-space) + 16px)); /* one spot in every app; above the keyboard when open */
     z-index: 34;
     display: inline-flex;
     align-items: center;

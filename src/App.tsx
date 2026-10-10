@@ -141,7 +141,7 @@ import { Huddle } from './components/Huddle';
 import { usePushBridge } from './pushBridge';
 import { routeBase } from './tryOut';
 import { useAppLanguage, useLang } from './i18n/useLang';
-import { getLang, mark, msg, phrase, t, textOf, tn, type Msg } from './i18n';
+import { getLang, mark, msg, phrase, t, textOf, tn, tx, type Msg } from './i18n';
 import { fmtDay, fmtList, fmtNumber, fmtWeekday } from './i18n/format';
 import { setBrand } from './brandInk';
 
@@ -189,7 +189,10 @@ function bootRoute(): Route {
   const phone = isPhone();
   const url = pathNow();
   if (!phone) return parseRoute(url, false);
-  const to = startPath(url, readLastPlace(), Date.now());
+  // `/` is the launcher. Only opening the app itself from the home screen (a cold start of the installed app) picks up
+  // where you were, and only within 10 minutes; a page load of `/` in the browser always shows the launcher.
+  const coldStart = matchMedia('(display-mode: standalone)').matches || (navigator as { standalone?: boolean }).standalone === true;
+  const to = startPath(url, coldStart ? readLastPlace() : null, Date.now());
   const r = parseRoute(to, true);
   if (!r.launcher && !hashRouting) {
     setPath('/', 'replace');
@@ -3870,7 +3873,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         label: term.Many,
         value: projScope.kind === 'client' ? projScope.id : projScope.kind === 'past' ? 'past' : mobile && projMine ? 'mine' : 'all',
         options: [
-          { value: 'all', label: t('All {projects}', { projects: term.many }), group: term.Many },
+          { value: 'all', label: mobile ? tx('projects', 'Active') : t('All {projects}', { projects: term.many }), group: term.Many },
           ...(mobile ? [{ value: 'mine', label: t('My {projects}', { projects: term.many }), group: term.Many }] : []), // the bar's Mine
           ...wsClients.map((c) => ({ value: c.id, label: c.name, group: term.Many })),
           { value: 'past', label: t('Past {projects}', { projects: term.many }), group: t('More') },
@@ -4091,7 +4094,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
   const launcherDot = !launcher && !!leftWith && myApps.shown.some((id) => id !== mode && badgeOf(id) > (leftWith[id] ?? 0));
 
   // Each app's sections on phones: what's selected now, and how to get to one (from its bar, the URL or Back).
-  const [chatPart, setChatPart] = useState<'home' | 'dms' | 'activity'>('home');
+  const [chatPart, setChatPart] = useState<'home' | 'dms' | 'activity' | 'you'>('home');
   const [calMeetings, setCalMeetings] = useState(false);
   const [meetPart, setMeetPart] = useState<'meetings' | 'notes'>('meetings');
   const [teamsPart, setTeamsPart] = useState<'teams' | 'people'>('teams');
@@ -4248,7 +4251,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         return true;
     }
   };
-  const SEARCH_SECTIONS: Record<string, AppId> = { mail: 'mail', chat: 'chat', notes: 'notes' };
+  const SEARCH_SECTIONS: Record<string, AppId> = { mail: 'mail', notes: 'notes' };
   /** Mail's Search tab: Gmail's search screen over the list (MessageList), from the inbox when another part is open. */
   const mailSearch = () => {
     if (view.kind === 'files' || view.kind === 'contacts' || view.kind === 'tracking') {
@@ -4272,6 +4275,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     else if (sec && sec !== sectionNow(m)) setSectionFor(m, sec);
     return setItemFor(m, r.id, clear);
   };
+  // Meet's title is a menu like every other app's: its three sections (views only, no settings).
+  useTitleMenu('meet', mobile && mode === 'meet' && meetPage.kind !== 'meeting' && { label: t('Meet'), value: sectionNow('meet') ?? 'meetings', options: [{ value: 'meetings', label: t('Meetings') }, { value: 'notes', label: t('Notes') }, { value: 'folders', label: t('Folders') }], onChange: (v) => setSectionFor('meet', v) });
   const appBar: AppSections | null = (() => {
     const cur = sectionNow(mode) ?? '';
     const bar = (sections: AppSection[]): AppSections => ({ sections, current: cur, onChange: (id) => setSectionFor(mode, id), onReselect: (id) => setSectionFor(mode, id) });
@@ -4288,7 +4293,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
           { id: 'home', label: t('Home'), icon: House },
           { id: 'dms', label: t('DMs'), icon: MessageCircle, badge: dmUnread },
           { id: 'activity', label: t('Activity'), icon: Bell, badge: chatActivity },
-          { id: 'search', label: t('Search'), icon: SearchIcon, run: () => openSearch('chat') },
+          // Slack's fourth tab: you (status, saved, drafts, Chat's settings). Search is the top bar's magnifier.
+          { id: 'you', label: t('You'), icon: UserRound },
         ]);
       case 'tasks':
         return bar([
@@ -4299,9 +4305,9 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
         ]);
       case 'calendar':
         return bar([
-          { id: 'schedule', label: t('Schedule'), icon: List },
+          { id: 'schedule', label: tx('calendar view', 'Schedule'), icon: List }, // the noun ("Jadwal"), not the verb
           { id: 'month', label: t('Month'), icon: CalendarDays },
-          { id: 'meetings', label: t('Meetings'), icon: Video },
+          // Meetings live in Meet (one place for them); Calendar is Schedule and Month.
         ]);
       case 'notes':
         return bar([
@@ -4918,7 +4924,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
           <MobileTop
             title={mode === 'settings' ? t('Settings') : (APPS.find((a) => a.id === mode)?.name ?? '')}
             menu={chrome.title ?? mobileSwitcher}
-            settings={settingsRows}
+            settings={mode === 'chat' || mode === 'tasks' ? [] : settingsRows}
             back={chrome.back ?? (mode === 'home' ? toLauncher : undefined)}
             onLauncher={toLauncher}
             launcherDot={launcherDot}
@@ -4945,6 +4951,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             <ChatSidebar
               variant="phone"
               part={chatPart}
+              settings={settingsRows}
               channels={visibleChannels}
               messages={wsMessages}
               users={members}

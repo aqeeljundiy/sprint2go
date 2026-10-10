@@ -249,3 +249,26 @@
     background: none;
   }
 }
+
+/* ---------- 44 pt to touch, whatever the look: chips and segments draw 32 but answer a finger over 44 ---------- */
+@media (max-width: 767px) {
+  :is(.mh-chip, .act-chips > button, .md-chip, .segmented > button, .client-tabs > button, .chip-btn) {
+    position: relative;
+  }
+  :is(.mh-chip, .act-chips > button, .md-chip, .segmented > button, .client-tabs > button, .chip-btn)::after {
+    content: '';
+    position: absolute;
+    inset: -6px 0;
+  }
+  .chat-tile {
+    min-height: var(--tap);
+  }
+  .is-phone .sch-task .ev-check {
+    width: var(--tap);
+    height: var(--tap);
+  }
+  .ln-h .link-btn {
+    min-width: var(--tap);
+    justify-content: flex-end;
+  }
+}

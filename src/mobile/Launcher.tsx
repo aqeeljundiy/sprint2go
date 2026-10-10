@@ -156,16 +156,7 @@ export function Launcher(p: {
             </div>
           </section>
         )}
-        {list.length === 0 && (
-          <section className="ln-sec">
-            <h2 className="ln-h">
-              <span>{t('You’re clear for now')}</span>
-              <button type="button" className="link-btn" onClick={p.onSeeAll}>
-                {t('Home')}
-              </button>
-            </h2>
-          </section>
-        )}
+        {/* Nothing needs you: the line under the greeting says so; no second heading and no stray link. */}
 
         {p.recents.length > 0 && (
           <section className="ln-sec" aria-label={t('Continue where you left off')}>
