@@ -6,7 +6,7 @@ import { CopyBtn, deltaOf, Empty, Failed, Loading, Page, Stat, Stats, useAct, us
 import { t, tn, tx } from '../../i18n';
 
 interface TodayData {
-  kpis: { mrr: number; mrrLastMonth: number | null; companies: number; newThisMonth: number; active7: number; activePrev7: number; people: number; openTickets: number; medianFirstReplyMin: number | null; satisfaction: number | null };
+  kpis: { mrr: number; mrrLastMonth: number | null; companies: number; unlimited?: number; newThisMonth: number; active7: number; activePrev7: number; people: number; openTickets: number; medianFirstReplyMin: number | null; satisfaction: number | null };
   queue: {
     breaching: { id: string; number: number; subject: string; company: string | null; requester: string; dueAt: string; priority: string }[];
     unassigned: { id: string; number: number; subject: string; company: string | null; requester: string; createdAt: string; priority: string }[];
@@ -71,7 +71,7 @@ export function Today() {
     <Page title={hello} sub={total ? tn(total, '{n} thing needs you, most urgent first.', '{n} things need you, most urgent first.') : t('Nothing needs you right now.')}>
       <Stats>
         <Stat i={0} label={t('Monthly revenue')} value={rpShort(k.mrr)} delta={deltaOf(k.mrr, k.mrrLastMonth, true, rpShort)} hint={k.mrrLastMonth === null ? t('booked from plans') : t('vs last month')} onClick={() => go('/admin/money/revenue')} />
-        <Stat i={1} label={t('Companies')} value={k.companies} hint={k.newThisMonth ? t('+{n} this month', { n: k.newThisMonth }) : t('none new this month')} onClick={() => go('/admin/companies')} />
+        <Stat i={1} label={t('Companies')} value={k.companies} hint={`${k.newThisMonth ? t('+{n} this month', { n: k.newThisMonth }) : t('none new this month')}${k.unlimited ? ` · ${t('{n} Unlimited', { n: k.unlimited })}` : ''}`} onClick={() => go('/admin/companies')} />
         <Stat i={2} label={t('Active people, 7 days')} value={k.active7} delta={deltaOf(k.active7, k.activePrev7 || null)} hint={t('of {n}', { n: k.people })} onClick={() => go('/admin/growth')} />
         <Stat i={3} label={t('Open tickets')} value={k.openTickets} tone={q.breaching.length ? 'bad' : undefined} hint={`${t('first reply {time}', { time: duration(k.medianFirstReplyMin) })}${k.satisfaction !== null ? ` · ${t('{n}% happy', { n: k.satisfaction })}` : ''}`} onClick={() => go('/admin/tickets')} />
       </Stats>

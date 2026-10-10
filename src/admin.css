@@ -2973,3 +2973,174 @@ button.adm-q-text:hover strong {
   font-style: normal;
   color: var(--text-3);
 }
+
+/* ---------- the Whitelist ---------- */
+
+.adm-use {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: min(100%, 140px);
+  padding-right: 16px;
+}
+.adm-use-text {
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.adm-use-track {
+  display: block;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--hover);
+  overflow: hidden;
+}
+.adm-use-track > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  transition: width 0.25s ease-out, background-color 0.2s;
+}
+.adm-use.warn .adm-use-track > span {
+  background: var(--ad-amber);
+}
+.adm-use.bad .adm-use-track > span {
+  background: var(--ad-red);
+}
+.adm-use.bad .adm-use-text {
+  color: var(--ad-red);
+}
+.adm-wl-disk {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text-2);
+}
+.adm-wl-disk svg {
+  flex: none;
+  margin-top: 3px;
+  color: var(--text-3);
+}
+.adm-wl-amount {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.adm-wl-amount .segmented {
+  flex: none;
+}
+.adm-wl-amount input,
+.adm-wl-amount .adm-money {
+  flex: 1;
+}
+.adm-wl-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.adm-wl-search svg {
+  position: absolute;
+  left: 11px;
+  color: var(--text-3);
+  pointer-events: none;
+}
+.adm-field .adm-wl-search input:not([type='checkbox']):not([type='range']) {
+  padding-left: 32px;
+}
+.adm-wl-results {
+  display: flex;
+  flex-direction: column;
+  max-height: 260px;
+  overflow-y: auto;
+  margin-top: 6px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 4px;
+  animation: adm-wl-in 0.18s ease-out backwards;
+}
+.adm-wl-results > button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.adm-wl-results > button > :first-child {
+  flex: 1;
+  min-width: 0;
+}
+.adm-wl-results > button:hover,
+.adm-wl-results > button:focus-visible {
+  background: var(--hover);
+}
+.adm-wl-go {
+  flex: none;
+  color: var(--accent);
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.adm-wl-results > button:hover .adm-wl-go,
+.adm-wl-results > button:focus-visible .adm-wl-go {
+  opacity: 1;
+}
+.adm-wl-results > small {
+  padding: 10px 8px;
+}
+.adm-wl-picked {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--hover);
+  animation: adm-wl-in 0.18s ease-out backwards;
+}
+.adm-wl-picked > :first-child {
+  flex: 1;
+  min-width: 0;
+}
+.adm-wl-now {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.adm-foot-start {
+  margin-right: auto;
+}
+@keyframes adm-wl-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+@media (max-width: 767px) {
+  .adm-wl-results > button {
+    min-height: var(--tap, 44px);
+  }
+  .adm-field .adm-wl-search input,
+  .adm-wl-amount input {
+    font-size: var(--fs-field);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .adm-wl-results,
+  .adm-wl-picked {
+    animation: none;
+  }
+  .adm-use-track > span {
+    transition: none;
+  }
+}

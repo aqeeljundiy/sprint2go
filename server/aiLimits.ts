@@ -50,7 +50,8 @@ export function checkAlerts(ws: Ws | undefined, spendRp: (wsId: string) => numbe
   const month = monthStart().slice(0, 7);
   // `what`: words translated when the notice is read (phrase(), src/i18n).
   const meters: { key: string; share: number; what: Msg }[] = [];
-  if (aiplan.planAI(ws).ok) {
+  // Unlimited companies hear about their own monthly limit instead (server/whitelist.ts).
+  if (aiplan.planAI(ws).ok && aiplan.planAI(ws).why !== 'unlimited') {
     const a = aiplan.allowanceOf(ws);
     if (!a.unlimited && a.capRp > 0) meters.push({ key: 'allowance', share: a.usedRp / a.capRp, what: phrase('the AI allowance for this month') });
   }

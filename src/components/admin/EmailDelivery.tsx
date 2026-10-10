@@ -24,6 +24,8 @@ interface Setup {
   credits: number;
   /** Boosted credits bought by bank transfer: invoices waiting for payment, and why buying isn't possible here (if so). */
   creditOrders?: { orders: { invoiceId: string; number: string; credits: number; total: number; dueAt: string }[]; blocked: string | null; bank: string | null };
+  /** Unlimited: Boosted sending has a monthly limit instead of credits (`mine`: whether it's on for this person). */
+  unlimited?: { limit: number; used: number; mine: boolean } | null;
   records: { type: string; host: string; value: string; note: string; key: string }[];
   checks: { at: string; allOk: boolean; checks: { key: string; ok: boolean; found: string; want: string }[] } | null;
   stats: { received: number; spam: number; sent: number; boosted: number; failed: number; queued: number };
@@ -265,19 +267,33 @@ export function EmailDeliverySection({
               <span className="ed-route-head">
                 <Zap size={18} />
                 <strong>{t('Boosted sending')}</strong>
-                <em>{info?.boostedAvailable ? t('Credits') : t('Coming soon')}</em>
+                <em>{!info?.boostedAvailable ? t('Coming soon') : info.unlimited ? t('Included') : t('Credits')}</em>
               </span>
               <ul>
                 <li className="pro">{t('Proven delivery to Gmail and Outlook from day one')}</li>
                 <li className="pro">{t('Bounces and complaints handled for you')}</li>
-                <li className="con">{t('Paid per email: {packs}', { packs: MAIL_PACKS.map((p) => t('{n} for {price}', { n: fmtNumber(p.n), price: fmtMoney(p.price) })).join(', ') })}</li>
+                {info?.unlimited ? (
+                  <li className="pro">{t('Included with Unlimited: {n} emails a month', { n: fmtNumber(info.unlimited.limit) })}</li>
+                ) : (
+                  <li className="con">{t('Paid per email: {packs}', { packs: MAIL_PACKS.map((p) => t('{n} for {price}', { n: fmtNumber(p.n), price: fmtMoney(p.price) })).join(', ') })}</li>
+                )}
                 <li className="con">{t('Three extra signing records on your domain')}</li>
               </ul>
             </button>
           </div>
           )}
           <SmoothHeight>
-            {route === 'boosted' && info?.boostedAvailable && (
+            {route === 'boosted' && info?.boostedAvailable && info.unlimited && (
+              <div className="ed-credits">
+                <span>
+                  {info.unlimited.used >= info.unlimited.limit
+                    ? t('This month’s {n} Boosted emails are used up, so mail goes out from our server until the 1st. Ask your admin.', { n: fmtNumber(info.unlimited.limit) })
+                    : tj('{used} of {n} Boosted emails used this month.', { used: <strong>{fmtNumber(info.unlimited.used)}</strong>, n: fmtNumber(info.unlimited.limit) })}
+                  {!info.unlimited.mine && <small className="ed-orders">{t('Boosted sending is switched off for you, so your mail goes out from our server.')}</small>}
+                </span>
+              </div>
+            )}
+            {route === 'boosted' && info?.boostedAvailable && !info.unlimited && (
               <div className="ed-credits">
                 <span>
                   {info.credits === 0
@@ -451,7 +467,9 @@ export function EmailDeliverySection({
             {/* The plan's room for hosted mailboxes, where people add them (the server holds the same rule). */}
             {(setup === 'hosted' || setup === 'mix') && (
               <p className={`small ${boxRoom.used > boxRoom.total ? 'ed-room over' : 'muted'}`}>
-                {boxRoom.sharedFree
+                {boxRoom.total === Infinity
+                  ? tn(boxRoom.used, '{n} hosted mailbox in use. Unlimited has room for as many as you need.', '{n} hosted mailboxes in use. Unlimited has room for as many as you need.')
+                  : boxRoom.sharedFree
                   ? tn(boxRoom.total, '{used} of {n} hosted mailbox in use: one comes with the plan for each person, and shared inboxes are free.', '{used} of {n} hosted mailboxes in use: one comes with the plan for each person, and shared inboxes are free.', { used: fmtNumber(boxRoom.used) })
                   : tn(boxRoom.total, '{used} of {n} hosted mailbox in use: on Free, each hosted mailbox is an add-on.', '{used} of {n} hosted mailboxes in use: on Free, each hosted mailbox is an add-on.', { used: fmtNumber(boxRoom.used) })}
                 {boxRoom.used > boxRoom.total ? ` ${t('{n} of them receive mail but can’t send until there’s room.', { n: fmtNumber(boxRoom.used - boxRoom.total) })}` : ''}

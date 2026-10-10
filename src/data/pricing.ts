@@ -81,7 +81,7 @@ export const ADDONS = {
 } as const;
 
 /** The branding add-on, or Business, which includes it. A company's own address for its guests goes live only with it. */
-export const hasBranding = (plan?: { tier?: string; addons?: { branding?: boolean } } | null) => plan?.tier === 'business' || !!plan?.addons?.branding;
+export const hasBranding = (plan?: { tier?: string; unlimited?: boolean; addons?: { branding?: boolean } } | null) => plan?.tier === 'business' || !!plan?.unlimited || !!plan?.addons?.branding;
 
 export const TOP_UP = {
   price: 99_000,
@@ -116,7 +116,9 @@ export const pauseDaysLeft = (pauses: { from: string; to?: string }[] | undefine
  * Hosted mailboxes a plan has room for. Paid plans (and the trial) include one personal mailbox per person, and
  * shared inboxes are free; on Free every hosted mailbox is an add-on. Mailbox add-ons add to either.
  */
-export function mailboxRoom(plan: Pick<Plan, 'tier' | 'addons' | 'trialEnds'>, people: number, at = new Date().toISOString()) {
+export function mailboxRoom(plan: Pick<Plan, 'tier' | 'addons' | 'trialEnds' | 'unlimited'>, people: number, at = new Date().toISOString()) {
+  // Unlimited (the operators' Whitelist): as many hosted mailboxes as the company wants.
+  if (plan.unlimited) return { included: Infinity, addon: 0, total: Infinity, sharedFree: true };
   const trial = !!plan.trialEnds && plan.trialEnds > at;
   const free = plan.tier === 'free' && !trial;
   const included = free ? 0 : seatsFor(trial ? 'studio' : plan.tier, people);
@@ -179,12 +181,13 @@ export function storageGB(plan: Plan, people: number) {
 
 /** Meeting bot hours per month (Free 2; paid plans 10 per person on AI plans, unlimited on Business). */
 export function meetHours(plan: Plan, people: number) {
-  if (plan.tier === 'business') return Infinity;
+  if (plan.tier === 'business' || plan.unlimited) return Infinity;
   const base = plan.tier === 'free' ? 2 : plan.track === 'ai' ? 10 * seatsFor(plan.tier, people) : 4 * seatsFor(plan.tier, people);
   return base + plan.addons.meetHours10 * 10;
 }
 
 export function monthlyTotal(plan: Plan, people: number) {
+  if (plan.unlimited) return { base: 0, addons: 0, total: 0 }; // Unlimited is never billed
   const base = priceFor(plan.track, plan.tier, people) ?? 0;
   const addons =
     plan.addons.mailboxes * ADDONS.mailboxes.price +
@@ -233,7 +236,7 @@ const monthName = (ms: number) => fmtDate(ms, { month: 'long', timeZone: 'UTC' }
  */
 export function prorate(prev: Plan, next: Pick<Plan, 'track' | 'tier' | 'cycle'>, people: number, at = new Date(), invoiced = true): Omit<PlanAdjustment, 'id'> | null {
   const iso = at.toISOString();
-  if (prev.tier === 'free' || next.tier === 'free' || prev.cycle !== next.cycle) return null;
+  if (prev.unlimited || prev.tier === 'free' || next.tier === 'free' || prev.cycle !== next.cycle) return null;
   if (prev.tier === next.tier && prev.track === next.track) return null;
   if ((prev.trialEnds && prev.trialEnds > iso) || (prev.comp?.until && prev.comp.until > iso) || prev.paused) return null;
   const p = billingPeriod(prev, at);

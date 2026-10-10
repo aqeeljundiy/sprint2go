@@ -129,7 +129,11 @@ export function StorageSection({ ws, people, plan, drive, users, byChannel, canM
     <>
       <h2>{t('Storage')}</h2>
       <p className="set-intro">
-        {live && !room ? t('Adding up what your files take…') : t('{used} of {total} used, shared by the whole company. A heavy video editor uses the team’s pool, not their own.', { used: fmtSize(used), total: fmtSize(pool) })}
+        {live && !room
+          ? t('Adding up what your files take…')
+          : plan.unlimited
+            ? t('{used} used. Unlimited has no storage limit of its own: {left} free on the server right now, shared by the whole company.', { used: fmtSize(used), left: fmtSize(Math.max(0, pool - used)) })
+            : t('{used} of {total} used, shared by the whole company. A heavy video editor uses the team’s pool, not their own.', { used: fmtSize(used), total: fmtSize(pool) })}
       </p>
       <div className="stack-bar">
         {parts.map((x) => (
@@ -144,7 +148,7 @@ export function StorageSection({ ws, people, plan, drive, users, byChannel, canM
         ))}
       </div>
       {live && <p className="muted small">{t('Counts files uploaded to Drive, chat, tables and the shared spaces, and email attachments. The text of emails and meeting recordings aren’t counted.')}</p>}
-      {used / pool > 0.8 && (
+      {used / pool > 0.8 && !plan.unlimited && (
         <p className="trial-note">
           {tj('You’ve used {percent}. Add 50 GB for {price} a month, or {plans}.', {
             percent: fmtPercent(used / pool),

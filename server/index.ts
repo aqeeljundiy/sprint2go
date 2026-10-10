@@ -47,6 +47,7 @@ import * as whatsapp from './whatsapp.ts';
 import * as billing from './billing.ts';
 import * as bimi from './bimi.ts';
 import * as aiLimits from './aiLimits.ts';
+import * as whitelist from './whitelist.ts';
 import { gzipSync } from 'node:zlib';
 import { accessFor, can, channelsFor, clientPeople, companyOf, filesFor, guestRow, guestTable, isFreemail, meetingsFor, tasksFor } from '../src/clientView.ts';
 import { DEFAULT_STAGES, cleanStages, stageIdFor, stagesFrom } from '../src/stages.ts';
@@ -129,6 +130,8 @@ if (process.env.S2G_DEMO === '1' || process.env.NODE_ENV !== 'production') {
 }
 
 platform.bootstrapOperators();
+// The Whitelist tells owners, people and operators at 80% and 100% of its monthly limits (server/whitelist.ts).
+whitelist.init({ notify: (ids, text, url, wsId) => notifyUsers(ids, text, url, wsId), operators: (kind, text, to) => admin.tellOperators(kind, text, to, notifyUsers) });
 admin.loadPricing();
 billing.rememberExistingTrials(); // trials companies had before "one per person" count too
 // Companies that had "Require two-step sign-in" on before it did anything: their days start now, and people hear.
@@ -903,9 +906,10 @@ function recheckModels(wsId: string, provider: string) {
  * Our AI only while the plan's allowance lasts. At the end of it: an automatic top-up when the company has them on
  * (the existing billing setting), else the company's own keys, else a message saying what to do.
  */
-function withinAllowance(ws: any, chain: AIConfig[]): { chain: AIConfig[]; message?: string } {
-  if (!ws || !chain.some((c) => c.included)) return { chain };
-  const g = aiplan.gate(ws);
+function withinAllowance(ws: any, chain: AIConfig[], userId?: string | null): { chain: AIConfig[]; message?: string } {
+  // Unlimited with nothing to run on: a used-up month still says so, rather than "AI isn’t available".
+  if (!ws || (!chain.some((c) => c.included) && !(whitelist.on(ws) && !chain.length))) return { chain };
+  const g = aiplan.gate(ws, undefined, userId);
   if (g.state === 'ok') return { chain };
   if (g.state === 'topup') {
     const fresh = db.getDoc('workspaces', ws.id) as any;
@@ -922,8 +926,9 @@ function withinAllowance(ws: any, chain: AIConfig[]): { chain: AIConfig[]; messa
 }
 const NO_AI = mark('AI isn’t set up for this company yet. An admin can add an AI key in Settings, AI, or switch to the AI plan.');
 /** After AI ran for a company: its admins hear at 50%, 80% and 100% of a limit (server/aiLimits.ts). */
-const aiAlerts = (wsId: string) => {
+const aiAlerts = (wsId: string, userId?: string | null) => {
   try {
+    whitelist.checkAlerts(db.getDoc('workspaces', wsId), userId); // Unlimited: its monthly limit and the person's share
     aiLimits.checkAlerts(db.getDoc('workspaces', wsId) as any, (id) => spendRp(db.usageSince(id, new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1)).toISOString()) as any), (ids, text, url, id) => notifyUsers(ids, text, url, id));
   } catch (e) {
     console.error('[ai alerts]', e instanceof Error ? e.message : e);
@@ -938,6 +943,9 @@ const OUR_AI_DOWN = mark('AI isn’t available right now. We’ve been told; try
  */
 function planFromApp(next: any, prev: any): { plan: any; why?: string; whyWords?: lang.Said } {
   if (!next) return { plan: prev };
+  // Unlimited (the operators' Whitelist) is theirs alone: the app can't set it, end it or change that plan.
+  if (prev?.unlimited) return { plan: prev };
+  if (next.unlimited) next = { ...next, unlimited: undefined };
   // Cancelling keeps the plan until the end of the period that's paid for; "Keep the plan" undoes it.
   if (next.cancel === true && prev && prev.tier !== 'free') next = { ...next, tier: prev.tier, track: prev.track, cycle: prev.cycle };
   const max = new Date(Date.now() + 14 * 86_400_000).toISOString();
@@ -2107,7 +2115,7 @@ createServer(async (req, res) => {
       const text = String(b.body ?? '').trim();
       if (!subject || !text) return json(res, 400, { error: mark('Tell us what it’s about and what happened.') });
       const ws = (memberOf(me).find((w: any) => w.id === b.workspaceId) ?? memberOf(me)[0]) as any;
-      const paying = ws ? admin.mrrOf(ws, ws.members.length).state === 'paying' : false;
+      const paying = ws ? ['paying', 'unlimited'].includes(admin.mrrOf(ws, ws.members.length).state) : false; // Unlimited gets paying customers' support
       const attachments = ticketFiles(b.attachments, me);
       const t = support.createTicket({
         subject,
@@ -2120,7 +2128,7 @@ createServer(async (req, res) => {
         paying,
         priority: b.urgent ? 'urgent' : undefined,
         tags: b.channel === 'crash' ? ['crash'] : [],
-        context: b.context && typeof b.context === 'object' ? { ...b.context, plan: ws?.plan ? `${ws.plan.tier} ${ws.plan.track}` : 'none', company: ws?.name ?? null } : undefined,
+        context: b.context && typeof b.context === 'object' ? { ...b.context, plan: ws?.plan ? (ws.plan.unlimited ? 'unlimited' : `${ws.plan.tier} ${ws.plan.track}`) : 'none', company: ws?.name ?? null } : undefined,
         attachments,
       });
       supportNotify(t, msg('New ticket #{number} from {name}: {subject}', { number: t.number, name: meDoc?.name ?? meDoc?.email ?? '', subject: t.subject.slice(0, 70) }));
@@ -2169,7 +2177,7 @@ createServer(async (req, res) => {
         if (a.audience === 'list') return mine.some((w) => a.companies.includes(w.id));
         if (a.audience === 'owners') return mine.some((w) => w.members.some((m: any) => m.userId === me && m.role === 'owner'));
         const states = mine.map((w) => admin.mrrOf(w, w.members.length).state);
-        return a.audience === 'paying' ? states.includes('paying') : states.includes('trial');
+        return a.audience === 'paying' ? states.includes('paying') || states.includes('unlimited') : states.includes('trial');
       });
       return json(res, 200, { announcements: list.map((a) => ({ id: a.id, text: a.text, link: a.link, kind: a.kind })) });
     }
@@ -2185,6 +2193,28 @@ createServer(async (req, res) => {
       const active = billing.activePeople(ws);
       return json(res, 200, { pay, active: { people: active.active, team: active.team }, invoices: platform.invoices(ws.id).filter((i) => i.status !== 'draft').map((i) => ({ id: i.id, number: i.number, period: i.period, total: i.total, status: i.status, dueAt: i.dueAt, paidAt: i.paidAt, overdue: i.status === 'sent' && i.dueAt < new Date().toISOString(), credits: billing.isCreditInvoice(i.id) || undefined })) });
     }
+    // Unlimited (the operators' Whitelist, server/whitelist.ts): its two monthly limits, what's used, and each person's
+    // rules. Everyone on the team who may see billing reads it; owners and admins set the rules.
+    if (p === '/api/unlimited' && req.method === 'GET') {
+      const ws = memberOf(me).find((w: any) => w.id === url.searchParams.get('ws')) as any;
+      if (!ws || !whitelist.on(ws)) return json(res, 404, { error: mark('This company isn’t on Unlimited.') });
+      const manage = isAdminOf(me, ws.id);
+      const room = storageRoom(ws.id);
+      const v = whitelist.view(ws, room);
+      if (!v) return json(res, 404, { error: mark('This company isn’t on Unlimited.') });
+      // Members who may see billing see the company's limits; each person's rules are for owners and admins (and their own).
+      return json(res, 200, { ...v, canManage: manage, rate: aiplan.config().rate, people: manage || ws.permissions?.seeBilling ? v.people : v.people.filter((x: any) => x.userId === me) });
+    }
+    if (p === '/api/unlimited/rules' && req.method === 'POST') {
+      const b = await body(req);
+      const ws = memberOf(me).find((w: any) => w.id === b.workspaceId) as any;
+      if (!ws || !isAdminOf(me, ws.id)) return json(res, 403, { error: mark('Only owners and admins can set people’s rules.') });
+      if (!whitelist.on(ws)) return json(res, 404, { error: mark('This company isn’t on Unlimited.') });
+      const r = whitelist.saveRules(ws, b.rules, me, storageRoom(ws.id).total);
+      if (!r.ok) return json(res, 400, { error: r.error });
+      platform.event('unlimited.rules', ws.id, me, `${whitelist.rules(ws.id).length} people with rules`);
+      return json(res, 200, { ok: true, ...whitelist.view(ws, storageRoom(ws.id)) });
+    }
     if (p === '/api/billing/invoice' && req.method === 'GET') {
       const inv = platform.invoice(url.searchParams.get('id') ?? '');
       const ws = inv && (memberOf(me).find((w: any) => w.id === inv.workspaceId) as any);
@@ -2199,6 +2229,7 @@ createServer(async (req, res) => {
       if (!ws || !ws.members.some((m: any) => m.userId === me && m.role === 'owner')) return json(res, 403, { error: mark('Only owners can add a code.') });
       if (tooMany(`coupon:${ws.id}`, 10, 60 * 60_000)) return json(res, 429, { error: mark('Too many tries. Try again later.') });
       if (!ws.plan) return json(res, 400, { error: mark('Pick a plan first.') });
+      if (whitelist.on(ws)) return json(res, 409, { error: mark('Unlimited is never billed, so there’s nothing for a code to take off.') });
       if (ws.plan.discount || (ws.plan.comp?.note ?? '').startsWith('Code ')) return json(res, 409, { error: mark('This company already has a code.') });
       const ok = platform.couponUsable(String(b.code ?? ''));
       if (!ok.ok) return json(res, 400, { error: ok.error });
@@ -2237,8 +2268,11 @@ createServer(async (req, res) => {
       const ownership = ownDomain ? domainOwnership(ws, domain) : null;
       const cert = opRecord ? certState(mailer.MAIL_HOST) : undefined;
       // Boosted credits: what's waiting for payment, and why they can't be bought here (if so).
-      const credits = { orders: billing.openOrders(saved.id), blocked: billing.creditsBlocked(mailer.boostedAvailable()), bank: platform.settings().billing.bank || null };
-      return json(res, 200, { host: mailer.MAIL_HOST, ip: mailer.MAIL_IP, domain, ownDomain, route: ws.mailRoute ?? 'own', boostedAvailable: mailer.boostedAvailable(), credits: ws.mailCredits ?? 0, creditOrders: credits, records, checks: ws.mailChecks ?? null, stats: mailer.mailStats(ws.id, monthStart()), health, dnsHost: dns.dnsHost, nameservers: dns.nameservers, ownership, cert });
+      const credits = { orders: billing.openOrders(saved.id), blocked: billing.creditsBlocked(mailer.boostedAvailable(), saved), bank: platform.settings().billing.bank || null };
+      // Unlimited: Boosted sending has a monthly limit instead of credits.
+      const wl = whitelist.on(saved) ? whitelist.entry(saved.id) : null;
+      const unlimited = wl ? { limit: wl.sesLimit, used: whitelist.sesUsed(saved.id), mine: whitelist.featureOn(saved, me, 'boosted') } : null;
+      return json(res, 200, { host: mailer.MAIL_HOST, ip: mailer.MAIL_IP, domain, ownDomain, route: ws.mailRoute ?? 'own', boostedAvailable: mailer.boostedAvailable(), credits: ws.mailCredits ?? 0, creditOrders: credits, unlimited, records, checks: ws.mailChecks ?? null, stats: mailer.mailStats(ws.id, monthStart()), health, dnsHost: dns.dnsHost, nameservers: dns.nameservers, ownership, cert });
     }
     if (p === '/api/mail/unsubscribe' && req.method === 'POST') {
       const { threadId } = await body(req);
@@ -2334,7 +2368,7 @@ createServer(async (req, res) => {
       const { workspaceId, pack } = await body(req);
       const ws = memberOf(me).find((w) => w.id === workspaceId) as any;
       if (!ws || !isAdminOf(me, ws.id)) return json(res, 403, { error: mark('Only admins can buy credits.') });
-      const blocked = billing.creditsBlocked(mailer.boostedAvailable()) ?? billing.readOnlyWords(ws);
+      const blocked = billing.creditsBlocked(mailer.boostedAvailable(), ws) ?? billing.readOnlyWords(ws);
       if (blocked) return json(res, 409, { error: blocked });
       if (tooMany(`credits:${ws.id}`, 5, 60 * 60_000)) return json(res, 429, { error: mark('That’s a lot of orders in an hour. Pay the invoices that are waiting first.') });
       const r = billing.orderCredits(ws, Number(pack), me);
@@ -2861,6 +2895,7 @@ createServer(async (req, res) => {
       if (ws.meetings?.whoCanRecord === 'admins' && !isAdminOf(me, ws.id)) return json(res, 403, { error: mark('Only admins can send the notetaker here.') });
       const ro = billing.readOnlyWords(ws);
       if (ro) return json(res, 403, { error: ro });
+      if (!whitelist.featureOn(ws, me, 'notetaker')) return json(res, 403, { error: whitelist.featureOff('notetaker'), reason: 'off' });
       if (!RECORDER_URL || !RECORDER_SECRET) return json(res, 409, { error: mark('The recorder isn’t set up on this server.') });
       if (typeof meeting.id !== 'string' || !/^[\w-]{4,80}$/.test(meeting.id)) return json(res, 400, { error: mark('Bad meeting.') });
       // An existing meeting only when it's this company's and this person may see it (never someone else's by its id).
@@ -2961,9 +2996,11 @@ createServer(async (req, res) => {
       if (!team && !guest) return json(res, 403, { error: portalsOf(me).some((pt) => pt.workspaceId === wsId) ? 'You can’t add files here.' : 'Not in this company.' });
       const ro = billing.readOnlyWords(db.getDoc('workspaces', wsId));
       if (ro) return json(res, 403, { error: ro });
-      const room = storageRoom(wsId);
+      const room = storageRoom(wsId, me);
       const cap = Math.min(MAX_UPLOAD, room.left);
-      const tooBig = () => (room.left < MAX_UPLOAD ? `It doesn’t fit: the company has ${mb(room.left)} left of its ${mb(room.total)}. An admin can add more in Settings, Plan & billing.` : `Files up to ${mb(MAX_UPLOAD)}.`);
+      // Unlimited: the disk's safety reserve, or the person's own cap (server/whitelist.ts), with a plain message.
+      const tooBig = (): lang.Words =>
+        room.left >= MAX_UPLOAD ? `Files up to ${mb(MAX_UPLOAD)}.` : !room.unlimited ? `It doesn’t fit: the company has ${mb(room.left)} left of its ${mb(room.total)}. An admin can add more in Settings, Plan & billing.` : room.why === 'person' ? whitelist.personFull(room.cap ?? 0) : (whitelist.diskAlert(true), whitelist.DISK_FULL);
       if (Number(req.headers['content-length'] ?? 0) > cap) return json(res, 413, { error: tooBig() });
       const id = randomBytes(16).toString('hex');
       const path = db.filePath(id);
@@ -2987,6 +3024,7 @@ createServer(async (req, res) => {
         return json(res, 413, { error: tooBig() });
       }
       db.recordFile({ id, workspaceId: wsId, by: me, name, type, size });
+      if (room.unlimited) whitelist.checkStorage(db.getDoc('workspaces', wsId), me, room.mine + size);
       return json(res, 200, { id, url: `/api/files/${id}`, name, type, size });
     }
     // How much room a company has, and when to ask before an upload (Settings, Storage).
@@ -2994,7 +3032,7 @@ createServer(async (req, res) => {
       const wsId = String(url.searchParams.get('workspaceId') ?? '');
       const team = memberOf(me).some((w) => w.id === wsId);
       if (!team && !portalsOf(me).some((pt) => pt.workspaceId === wsId)) return json(res, 403, { error: mark('Not in this company.') });
-      const room = storageRoom(wsId);
+      const room = storageRoom(wsId, team ? me : null);
       const w = workspaces().find((x) => x.id === wsId) as any;
       return json(res, 200, { askOverMb: w?.storage?.askOver ?? 500, used: room.used, total: room.total, left: room.left, maxUpload: MAX_UPLOAD, ...(team ? { video: room.video, byPerson: room.byPerson } : {}) });
     }
@@ -3401,7 +3439,8 @@ createServer(async (req, res) => {
       if (!asClient && !memberOf(me).some((w) => w.id === wsId)) return json(res, 403, {});
       const w = workspaces().find((x) => x.id === wsId);
       const jobs = asClient ? ['ask'] : Array.from(new Set(Object.values(JOB_OF)));
-      const usedUp = onOurAI(w) && aiplan.gate(w).state === 'out';
+      if (!asClient && !whitelist.featureOn(w, me, 'ai')) return json(res, 200, { live: false, why: 'off', message: whitelist.featureOff('ai') });
+      const usedUp = onOurAI(w) && aiplan.gate(w, undefined, asClient ? null : me).state === 'out';
       const chains = jobs.map((j) => aiFor(wsId, j));
       const live = chains.some((c) => c.some((x) => !x.included || !usedUp));
       // Why it's off: the allowance is used up, our AI is down, or nothing is set up.
@@ -3443,8 +3482,11 @@ createServer(async (req, res) => {
         if (caps.companyRp && spendRp(rows) >= caps.companyRp) return json(res, 429, { error: msg('The company’s AI budget for this month ({budget}) is used up. An admin can raise it in Settings, AI.', { budget: `Rp ${caps.companyRp.toLocaleString('id-ID')}` }) });
         if (caps.personRp && spendRp(db.usageSinceFor(b.workspaceId, me, monthStart) as any) >= caps.personRp) return json(res, 429, { error: msg('Your AI budget for this month ({budget}) is used up. An admin can raise it in Settings, AI.', { budget: `Rp ${caps.personRp.toLocaleString('id-ID')}` }) });
       }
+      // Unlimited: an owner or admin can switch AI off for one person (Settings, Plan & billing).
+      if (!asClient && !whitelist.featureOn(capWs, me, 'ai')) return json(res, 403, { error: whitelist.featureOff('ai'), reason: 'off' });
+      whitelist.checkAlerts(capWs, asClient ? null : me); // Unlimited: 80% and 100% are told even when this one doesn't run
       const job = JOB_OF[action];
-      const route = withinAllowance(capWs, aiFor(b.workspaceId, job));
+      const route = withinAllowance(capWs, aiFor(b.workspaceId, job), me);
       if (!route.chain.length) {
         if (route.message) return json(res, 429, { error: route.message, reason: 'used-up' });
         if (onOurAI(capWs)) return json(res, 503, { error: OUR_AI_DOWN });
@@ -3452,7 +3494,7 @@ createServer(async (req, res) => {
       }
       const log = (cfg: AIConfig, inTokens: number, outTokens: number) => db.logUsage({ workspaceId: b.workspaceId, userId: me, job, provider: cfg.included ? 'included' : cfg.provider, via: cfg.provider, model: cfg.model, inTokens, outTokens });
       const answer = await aiplan.runChain(route.chain, log, () => routes[action](b));
-      aiAlerts(b.workspaceId);
+      aiAlerts(b.workspaceId, me);
       return json(res, 200, answer);
     }
     return json(res, 404, { error: mark('Not found') });
@@ -3613,7 +3655,7 @@ mailer.onSupportMail(async ({ to, parsed, mid, refs, spam, attachments }) => {
   const u = (db.allDocs('users') as any[]).find((x) => String(x.email ?? '').toLowerCase() === email && !x.deletedAt);
   const ws = u ? (memberOf(u.id)[0] as any) : null;
   const tag = to.startsWith('abuse@') ? 'abuse' : to.startsWith('postmaster@') ? 'postmaster' : null;
-  const t = support.createTicket({ subject: subject.replace(/^\s*((re|fwd?)\s*:\s*)+/i, '') || '(no subject)', body: text || '(empty)', channel: 'email', email, name: from?.name || u?.name || null, userId: u?.id ?? null, workspaceId: ws?.id ?? null, paying: ws ? admin.mrrOf(ws, ws.members.length).state === 'paying' : false, priority: tag === 'abuse' ? 'high' : undefined, tags: tag ? [tag] : [], attachments, mid });
+  const t = support.createTicket({ subject: subject.replace(/^\s*((re|fwd?)\s*:\s*)+/i, '') || '(no subject)', body: text || '(empty)', channel: 'email', email, name: from?.name || u?.name || null, userId: u?.id ?? null, workspaceId: ws?.id ?? null, paying: ws ? ['paying', 'unlimited'].includes(admin.mrrOf(ws, ws.members.length).state) : false, priority: tag === 'abuse' ? 'high' : undefined, tags: tag ? [tag] : [], attachments, mid });
   supportNotify(t, msg('New ticket #{number} by email from {name}: {subject}', { number: t.number, name: from?.name || email, subject: t.subject.slice(0, 70) }));
   // A short receipt so they know it arrived (not for auto-replies).
   if (!parsed.headers.get('auto-submitted') && !/no-?reply|mailer-daemon/i.test(email))
@@ -3689,7 +3731,7 @@ const hourly = async () => {
       for (const inv of platform.overdueInvoices()) {
         if (inv.dueAt > new Date(Date.now() - s.autoSuspendDays * 86_400_000).toISOString()) continue;
         const ws = db.getDoc('workspaces', inv.workspaceId) as any;
-        if (!ws || ws.suspended) continue;
+        if (!ws || ws.suspended || whitelist.on(ws)) continue; // Unlimited is never billed, so never suspended for it
         const next = { ...ws, suspended: { at, by: 'system', reason: `Invoice ${inv.number} is ${s.autoSuspendDays} days overdue. Pay it to carry on.`, why: 'unpaid' } };
         db.writeDocs('workspaces', [next], [], null);
         broadcast('workspaces', [next], []);
@@ -3719,6 +3761,8 @@ const planClock = () => {
     const tell = (ids: string[], text: lang.Words, wsId: string) => notifyUsers(ids, text, '/settings/billing', wsId);
     billing.resumeExpiredPauses(save, tell);
     billing.endCancelled(save, tell);
+    // Unlimited: usage nobody asked for (meeting notes, summaries) still reaches its 80% and 100% alerts.
+    for (const w of workspaces()) if (whitelist.on(w as any)) whitelist.checkAlerts(w);
   } catch (e) {
     console.error('[plans]', e instanceof Error ? e.message : e);
   }

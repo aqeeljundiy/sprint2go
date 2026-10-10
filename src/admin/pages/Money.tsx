@@ -34,6 +34,7 @@ interface RevenueData {
   trials: { count: number; after: number };
   comped: number;
   paused: number;
+  unlimited?: number; // the Whitelist: never billed, counted on its own
   discounts: number;
   movement: { month: string; mrr: number; new: number; expansion: number; contraction: number; churn: number }[];
   byTier: Record<string, { companies: number; mrr: number }>;
@@ -77,7 +78,7 @@ function Revenue() {
       </Section>
       <div className="adm-split">
         <Section title={t('By plan')}>
-          {tiers.length === 0 ? (
+          {tiers.length === 0 && !data.unlimited ? (
             <Empty title={t('No companies yet')} />
           ) : (
             <div className="adm-mini-list">
@@ -88,6 +89,13 @@ function Revenue() {
                   <span className="adm-num-r">{rpShort(x.mrr)}</span>
                 </div>
               ))}
+              {!!data.unlimited && (
+                <button type="button" className="adm-mini-row" onClick={() => go('/admin/whitelist')}>
+                  <span className="grow">{t('Unlimited (never billed)')}</span>
+                  <span className="muted">{data.unlimited}</span>
+                  <span className="adm-num-r">Rp 0</span>
+                </button>
+              )}
             </div>
           )}
         </Section>

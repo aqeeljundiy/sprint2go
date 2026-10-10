@@ -854,6 +854,7 @@ export interface Plan {
   cancel?: boolean; // the app asks to cancel (true) or to keep the plan (false); the server turns it into cancelAt
   adjustments?: PlanAdjustment[]; // the server's: prorated plan switches waiting for the next invoice
   trialRefused?: string; // the server's: why this company started on Free instead of a trial (one per person and domain)
+  unlimited?: boolean; // the server's: on the operators' Whitelist ("Unlimited"): every feature, no plan limits, never billed (server/whitelist.ts)
 }
 
 /**

@@ -60,7 +60,7 @@ type RoutePick = { provider: string; providerName: string; model: string; modelN
 /** What the server says about this company and our AI (GET /api/ai/plan). */
 interface PlanView {
   eligible: boolean;
-  why: 'plan' | 'trial' | 'comp' | null;
+  why: 'plan' | 'trial' | 'comp' | 'unlimited' | null;
   until: string | null;
   route: { job: string; name: string; run: RoutePick | null; backup: RoutePick | null }[];
   allowance: { unlimited: boolean; share: number; left: Record<string, number | null>; pool: Record<string, number>; uses: Record<string, number>; seats: number; topUps: number; resets: string } | null;
@@ -330,7 +330,7 @@ export function AISection({ ws, people, users, me, canManage, onAI, onBilling, t
           <div className="payer-pick">
             {(
               [
-                ['sprint2go', `${product.name}`, included ? t('Included in {plan}: shared allowance for the whole company', { plan: planName(plan!) }) : t('Needs an “AI included” plan')],
+                ['sprint2go', `${product.name}`, included ? (plan?.unlimited ? t('Included in Unlimited: a monthly limit for the whole company') : t('Included in {plan}: shared allowance for the whole company', { plan: planName(plan!) })) : t('Needs an “AI included” plan')],
                 ['own', t('Our own keys'), t('Your providers bill you directly. Cheapest plans')],
                 ['both', t('Both'), t('Your keys first; the plan’s allowance as backup')],
               ] as const
@@ -387,7 +387,9 @@ export function AISection({ ws, people, users, me, canManage, onAI, onBilling, t
                 {usedUp ? (
                   <p>
                     <b>{t('Used up for this month.')}</b>{' '}
-                    {view?.why === 'trial'
+                    {view?.why === 'unlimited'
+                      ? t('It starts again on the 1st.')
+                      : view?.why === 'trial'
                       ? tj('The trial’s AI starts again on the 1st. {link} or add your own key above to carry on now.', {
                           link: (
                             <button type="button" className="link-btn" onClick={onBilling}>
@@ -670,7 +672,8 @@ export function AISection({ ws, people, users, me, canManage, onAI, onBilling, t
           </SmoothHeight>
         </div>
 
-        <AISpend ws={ws.id} ai={ai} plan={plan} people={people} typical={{ braindump: 41, ask: 118, meeting: 22, summary: 236, draft: 97, replies: 180, todos: 420, sorting: 300 }} listPrice={(p, m) => lists[p]?.models.find((x) => x.id === m)?.price ?? null} />
+        {/* Unlimited pays nothing for AI: no cost comparison to make. */}
+        {!plan?.unlimited && <AISpend ws={ws.id} ai={ai} plan={plan} people={people} typical={{ braindump: 41, ask: 118, meeting: 22, summary: 236, draft: 97, replies: 180, todos: 420, sorting: 300 }} listPrice={(p, m) => lists[p]?.models.find((x) => x.id === m)?.price ?? null} />}
 
         {(() => {
           // On its own keys the company picks a model per job, in plain sight; on ours alone the choice is folded away.

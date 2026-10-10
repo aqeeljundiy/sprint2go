@@ -12,7 +12,7 @@ import { t, tn, tx } from '../../i18n';
 import { tj } from '../../i18n/tj';
 import { fmtDate, fmtNumber } from '../../i18n/format';
 
-export const STATE_TONE: Record<State, 'good' | 'accent' | 'warn' | 'bad' | 'neutral' | 'info'> = { paying: 'good', trial: 'accent', comp: 'info', paused: 'warn', suspended: 'bad', free: 'neutral' };
+export const STATE_TONE: Record<State, 'good' | 'accent' | 'warn' | 'bad' | 'neutral' | 'info'> = { paying: 'good', trial: 'accent', comp: 'info', paused: 'warn', suspended: 'bad', free: 'neutral', unlimited: 'info' };
 export function StateBadge({ s }: { s: State }) {
   return <Badge tone={STATE_TONE[s]}>{STATE_LABEL[s]}</Badge>;
 }
@@ -73,6 +73,7 @@ export function Companies() {
           { id: 'trial', label: t('On trial'), test: (c) => !c.internal && c.state === 'trial' },
           { id: 'ending', label: t('Trial ending'), test: (c) => !c.internal && c.state === 'trial' && !!c.plan?.trialEnds && c.plan.trialEnds < soon() },
           { id: 'risk', label: t('At risk'), test: (c) => !c.internal && c.health.label === 'risk' && c.state !== 'free' },
+          { id: 'unlimited', label: STATE_LABEL.unlimited, test: (c) => c.state === 'unlimited' },
           { id: 'suspended', label: STATE_LABEL.suspended, test: (c) => !!c.suspended },
           { id: 'internal', label: t('Ours & tests'), test: (c) => c.internal },
         ]}
@@ -119,7 +120,7 @@ export function Companies() {
             label: t('Plan'),
             width: 'minmax(0, 1.3fr)',
             hide: 'phone',
-            sort: (c) => ['suspended', 'free', 'paused', 'comp', 'trial', 'paying'].indexOf(c.state),
+            sort: (c) => ['suspended', 'free', 'paused', 'comp', 'unlimited', 'trial', 'paying'].indexOf(c.state),
             render: (c) => (
               <span className="adm-cell-inline">
                 <span className="adm-ellipsis">{planLabel(c.plan)}</span> <StateBadge s={c.state} />
@@ -681,6 +682,21 @@ function AddPerson({ companyId, onClose, onDone }: { companyId: string; onClose:
   );
 }
 
+/** A whitelisted company's billing tab: nothing to bill; where its limits are set. */
+function UnlimitedTab({ c }: { c: Full }) {
+  const { go } = useAdmin();
+  return (
+    <Section title={t('Plan')}>
+      <div className="adm-banner note">
+        <span>{t('{company} is on the Whitelist: every feature, no plan limits and no invoices. Its monthly limits for AI and Boosted sending are set there.', { company: c.name })}</span>
+        <button type="button" className="ghost-btn sm" onClick={() => go('/admin/whitelist')}>
+          {t('Open the Whitelist')}
+        </button>
+      </div>
+    </Section>
+  );
+}
+
 const INV_TONE = { draft: 'neutral', sent: 'accent', paid: 'good', void: 'neutral' } as const;
 function BillingTab({ c, reload }: { c: Full; reload: () => void }) {
   const { may } = useAdmin();
@@ -696,6 +712,8 @@ function BillingTab({ c, reload }: { c: Full; reload: () => void }) {
   const d = p?.discount;
   const off = !d ? '' : d.kind === 'percent' ? (d.until ? t('{value}% off until {date}', { value: d.value, date: day(d.until) }) : t('{value}% off, for good', { value: d.value })) : d.until ? t('{amount} off a month until {date}', { amount: rp(d.value), date: day(d.until) }) : t('{amount} off a month, for good', { amount: rp(d.value) });
   const invStatus = { get draft() { return t('Draft'); }, get sent() { return t('Sent'); }, get paid() { return t('Paid'); }, get void() { return t('Void'); } };
+  // On the Whitelist: its plan and limits live there, and it's never invoiced.
+  if (p?.unlimited) return <UnlimitedTab c={c} />;
   return (
     <div className="adm-split">
       <div>

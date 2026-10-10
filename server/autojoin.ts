@@ -8,6 +8,7 @@ import { botJoins, callKey, meetingLinkOf, notetakerJoins, type JoinMode } from 
 import { meetHours } from '../src/data/pricing.ts';
 import { teamSize } from './aiplan.ts';
 import { readOnlyWhy } from './billing.ts';
+import { featureOn } from './whitelist.ts';
 import { msg } from '../src/i18n/index.ts';
 import type { Said } from './lang.ts';
 import { expandEvents } from '../src/repeat.ts';
@@ -81,7 +82,8 @@ export async function runAutoJoin(deps: AutoJoinDeps, now = Date.now()): Promise
       const title = String(e.title || 'Meeting').slice(0, 200);
       // "Who can record": only admins send the notetaker in this company.
       const role = (ws.members ?? []).find((m: any) => m.userId === e.userId)?.role;
-      if (ws.meetings?.whoCanRecord === 'admins' && role === 'member') {
+      // Unlimited: the notetaker can be switched off for one person (server/whitelist.ts).
+      if ((ws.meetings?.whoCanRecord === 'admins' && role === 'member') || !featureOn(ws, e.userId, 'notetaker')) {
         remember(key, e.id, ws.id, 'not-allowed');
         out.push({ eventId: e.id, workspaceId: ws.id, outcome: 'not-allowed' });
         continue;

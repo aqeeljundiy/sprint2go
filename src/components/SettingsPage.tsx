@@ -12,6 +12,7 @@ import { TaskStagesSection } from './admin/TaskStages';
 import { HOLIDAY_COUNTRIES } from '../data/holidays';
 import { AISection } from './admin/AISection';
 import { BillingSection } from './admin/BillingSection';
+import { UnlimitedSection } from './admin/UnlimitedSection';
 import { AppsSection, MyAppsSection, MeetingsSection, PermissionsSection, SecuritySection, StorageSection, TeamsLink } from './admin/AdminMore';
 import { trialPlan } from '../data/workspaces';
 import { Badge, PersonCell } from './ui/Person';
@@ -412,7 +413,7 @@ export function SettingsPage({ email, settings: s, update, section, onSection, u
             company={ws.name || t('Company')}
             me={users.find((u) => u.id === me)}
             values={{
-              billing: plan.trialEnds && Date.parse(plan.trialEnds) > Date.now() ? t('Trial, {n} days left', { n: Math.max(1, Math.ceil((Date.parse(plan.trialEnds) - Date.now()) / 86_400_000)) }) : planName(plan),
+              billing: plan.unlimited ? t('Unlimited') : plan.trialEnds && Date.parse(plan.trialEnds) > Date.now() ? t('Trial, {n} days left', { n: Math.max(1, Math.ceil((Date.parse(plan.trialEnds) - Date.now()) / 86_400_000)) }) : planName(plan),
               storage: usage ? t('{used} of {total}', { used: fmtSize(usage.mail + usage.drive), total: fmtSize(usage.quota) }) : undefined,
               appearance: s.theme === 'dark' ? t('Dark') : s.theme === 'light' ? t('Light') : t('Automatic'),
             }}
@@ -963,7 +964,7 @@ export function SettingsPage({ email, settings: s, update, section, onSection, u
           {section === 'meetings' && <MeetingsSection ws={ws} canManage={canManage} onMeetings={admin.onMeetings} />}
           {!sections.some((x) => x.id === section) && <p className="muted">{demo?.inDemo && DEMO_OUT.includes(section) ? t('The demo company has no billing, AI keys, mail delivery, brand or sign-in rules of its own: they’re set in your real company.') : t('Ask an admin about this.')}</p>}
           {section === 'ai' && sections.some((x) => x.id === 'ai') && <AISection ws={ws} people={admin.people} users={wsUsers} me={me} canManage={canManage} onAI={admin.onAI} onBilling={() => onSection('billing')} toast={admin.toast} />}
-          {section === 'billing' && sections.some((x) => x.id === 'billing') && <BillingSection ws={ws} people={admin.people} isOwner={myRole === 'owner'} onPlan={admin.onPlan} onExport={admin.onExport} toast={admin.toast} />}
+          {section === 'billing' && sections.some((x) => x.id === 'billing') && (plan.unlimited ? <UnlimitedSection ws={ws} users={wsUsers} me={me} canManage={canManage} onExport={admin.onExport} toast={admin.toast} /> : <BillingSection ws={ws} people={admin.people} isOwner={myRole === 'owner'} onPlan={admin.onPlan} onExport={admin.onExport} toast={admin.toast} />)}
           {section === 'import' && sections.some((x) => x.id === 'import') && <ImportSection ws={ws} members={wsUsers} projects={admin.projects} toast={admin.toast} />}
           {section === 'security' && <SecuritySection ws={ws} me={me} isOwner={myRole === 'owner'} canManage={canManage} onWorkspace={onWorkspace} onExport={admin.onExport} onDelete={admin.onDelete} onAccount={() => onSection('account')} users={wsUsers} toast={admin.toast} />}
         </div>
