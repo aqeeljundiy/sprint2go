@@ -1,5 +1,7 @@
 import { useState } from 'react';
-import { Menu, Plus, Table2, X } from 'lucide-react';
+import { ChevronRight, Menu, Plus, Table2, X } from 'lucide-react';
+import { Group } from '../ui/Grouped';
+import { usePhone } from '../../mobile/media';
 import type { Client, DataTable, TableRow } from '../../types';
 import { term } from '../../terms';
 import { uid } from '../../utils';
@@ -164,6 +166,30 @@ export function TablesHome({ tables, rows, clients, onOpen, onNew, onMenu }: { t
   useCreateAction('tables', { label: t('New table'), icon: Plus, run: onNew });
   useTableLinkOpen(null, onOpen); // a link to a table, a view or a row
   const groups = [{ id: '', name: t('Company'), list: tables.filter((tb) => !tb.clientId) }, ...clients.map((c) => ({ id: c.id, name: c.name, list: tables.filter((tb) => tb.clientId === c.id) }))].filter((g) => g.list.length);
+  const phone = usePhone();
+  // Phones: Notion's home, as iOS grouped rows under who they belong to. No counts.
+  if (phone && tables.length)
+    return (
+      <section className="tasks-pane view-enter g-page tb-home-phone">
+        <div className="tracking-scroll">
+          {groups.map((g) => (
+            <Group key={g.id || 'company'} title={g.name}>
+              {g.list.map((tb) => (
+                <button key={tb.id} type="button" className="g-row has-icon tb-home-row" onClick={() => onOpen(tb.id)}>
+                  <span className="tb-home-tile" style={{ background: tb.color }} aria-hidden>
+                    {tb.name.charAt(0).toUpperCase()}
+                  </span>
+                  <span className="g-label">
+                    <span className="g-text">{tb.name}</span>
+                  </span>
+                  <ChevronRight size={18} className="g-chev" aria-hidden />
+                </button>
+              ))}
+            </Group>
+          ))}
+        </div>
+      </section>
+    );
   return (
     <section className="tasks-pane view-enter">
       <header className="tracking-head tasks-head tb-head-bar tb-home-head">

@@ -20,7 +20,7 @@ export interface CardHandlers {
   onAdd?: (values: Record<string, CellValue>, label?: string) => void; // + in a group
 }
 
-/** One row as a card: the name, the status as a pill you can tap, and two or three chosen fields. */
+/** One row (Notion's List view on phones): the name, then the status as a tag you can tap and two or three chosen fields. */
 function Card({ t: tb, view, row, ctx, status, meta, selecting, selected, leaving, h, i }: { t: DataTable; view: TableViewDef; row: TableRow; ctx: CellCtx; status?: TableField; meta: TableField[]; selecting: boolean; selected: boolean; leaving: boolean; h: CardHandlers; i: number }) {
   const menu = useActionMenu(() => h.actions(row), { title: rowName(tb, row), disabled: selecting });
   const tint = rowColors(tb, view, row, ctx);
@@ -61,10 +61,11 @@ function Card({ t: tb, view, row, ctx, status, meta, selecting, selected, leavin
         <span className="tb-crd-body">
           <span className="tb-crd-top">
             <strong className="tb-crd-name">{rowName(tb, row)}</strong>
-            {pill}
           </span>
-          {shown.length > 0 && (
+          {/* Notion's List view: the title line stays clean; the status and the view's fields share line two. */}
+          {(pill || shown.length > 0) && (
             <span className="tb-crd-meta">
+              {pill}
               {shown.map(({ f, v }) => (
                 <span key={f.id} className="tb-crd-f" title={f.name} style={tint.cells[f.id] ? { ['--tint' as string]: tint.cells[f.id] } : undefined} data-tinted={tint.cells[f.id] ? '' : undefined}>
                   <CellView f={f} v={v} ctx={ctx} />

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Copy, CopyPlus, GripVertical, LayoutTemplate, Link2, Maximize2, Minimize2, MoreHorizontal, Plus, Send, Trash2, X } from 'lucide-react';
+import { ChevronDown, ChevronRight, ChevronUp, Copy, CopyPlus, GripVertical, LayoutTemplate, Link2, Maximize2, Minimize2, MoreHorizontal, Plus, Send, Trash2, X } from 'lucide-react';
 import type { CellValue, Channel, DataTable, TableField, TablePage, TableRow, User } from '../../types';
 import { FieldMenu } from './FieldMenu';
 import { Avatar } from '../Avatar';
@@ -534,9 +534,8 @@ function PhoneField({ f, table, row, ctx, readOnly, onEdit, onCell }: { f: Table
 }
 
 /**
- * A row on a phone: its own page. The name, the key fields pinned as chips under it, every field label above value,
- * empty ones folded away, tabs when it's long, and the row's main button pinned at the bottom with the rows before
- * and after on either side.
+ * A row on a phone: its own page (Notion's). The name, then every field as a label-and-value row (the pinned ones
+ * first), empty ones folded away, tabs when it's long, and the row's main button pinned at the bottom.
  */
 function RecordPage({ table, row, ctx, me, onCell, onComment, onDelete, onDuplicate, onCopyLink, onClose, onOpenRow, readOnly, guest, nav }: RecordProps) {
   const { pinned, main: mainField, body, sections, folded } = layoutOf(table, row, ctx, true, true);
@@ -566,12 +565,14 @@ function RecordPage({ table, row, ctx, me, onCell, onComment, onDelete, onDuplic
       ...(onCopyLink ? [{ label: t('Copy link'), icon: Link2, run: onCopyLink }] : []),
       ...(!readOnly && !guest ? [{ label: t('Duplicate'), icon: CopyPlus, run: onDuplicate }, { label: t('Delete'), icon: Trash2, danger: true, group: 'end', run: () => confirm(t('Delete “{name}”?', { name: rowName(table, row) })) && onDelete() }] : []),
     ],
-    { title: rowName(table, row) },
+    // When and by whom it was added lives here (Notion keeps it out of the page's way).
+    { title: rowName(table, row), header: <div className="tb-page-meta"><Meta row={row} ctx={ctx} /></div> },
   );
   const moreBtn = useRef<HTMLButtonElement>(null);
+  // Notion's page: one list of label-and-value rows, the pinned fields first.
   const fields: ReactNode = (
     <>
-      <div className="tb-pf-list">{body.map(field)}</div>
+      <div className="tb-pf-list">{[...pinned, ...body].map(field)}</div>
       {sections.map((s) => (
         <div key={s.id} className="tb-pf-section">
           <h4>{s.name}</h4>
@@ -601,23 +602,13 @@ function RecordPage({ table, row, ctx, me, onCell, onComment, onDelete, onDuplic
     </>
   );
   const filesPane = <div className="tb-pf-list">{fileFields.map(field)}</div>;
-  const footer =
-    main || (nav && nav.count > 1) ? (
-      <div className="tb-page-foot">
-        <button type="button" className="icon-btn tb-page-step" disabled={!nav?.prev} onClick={nav?.prev} aria-label={t('Previous row')}>
-          <ChevronLeft size={22} />
-        </button>
-        {main ? (
-          <span className="tb-page-main">
-            <ButtonCell f={main} row={row} ctx={ctx} />
-          </span>
-        ) : (
-          <small className="muted tb-page-pos">{nav ? t('{index} of {count}', { index: nav.index + 1, count: nav.count }) : ''}</small>
-        )}
-        <button type="button" className="icon-btn tb-page-step" disabled={!nav?.next} onClick={nav?.next} aria-label={t('Next row')}>
-          <ChevronRight size={22} />
-        </button>
-      </div>
+  // Phones have no previous / next (Back, or a swipe from the left edge, is the way out); the row's main button stays.
+  const footer = main ? (
+    <div className="tb-page-foot">
+      <span className="tb-page-main">
+        <ButtonCell f={main} row={row} ctx={ctx} />
+      </span>
+    </div>
     ) : undefined;
   return (
     <PushScreen
@@ -640,20 +631,6 @@ function RecordPage({ table, row, ctx, me, onCell, onComment, onDelete, onDuplic
           <button type="button" className="tb-page-title" onClick={() => setEditing(table.fields[0].id)} aria-label={t('{field}: {value}, change', { field: table.fields[0].name, value: rowName(table, row) })}>
             {rowName(table, row)}
           </button>
-        )}
-        <Meta row={row} ctx={ctx} />
-        {pinned.length > 0 && (
-          <div className="tb-pins">
-            {pinned.map((f) => {
-              const v = valueOf(table, f, row, ctx);
-              return (
-                <button key={f.id} type="button" className="tb-pin" disabled={ro(f) || isComputed(f)} onClick={() => (f.type === 'checkbox' ? onCell(f.id, !v) : setEditing(f.id))}>
-                  <small>{f.name}</small>
-                  <span>{isEmpty(v) ? <span className="muted">{tx('value', 'Empty')}</span> : <CellView f={f} v={v} ctx={ctx} />}</span>
-                </button>
-              );
-            })}
-          </div>
         )}
         {long ? (
           <>

@@ -716,7 +716,8 @@ export const TEMPLATES: { id: TemplateId; name: string; hint: string }[] = [
   { id: 'blank', get name() { return tx('template', 'Blank'); }, get hint() { return t('Start with one column and build your own'); } },
 ];
 
-const grid = (hidden: string[] = []): TableViewDef => ({ id: uid(), name: tx('view', 'Grid'), kind: 'grid', hidden });
+// The first view is named for what it holds ("All leads"), not for a layout: on a phone a grid shows as a list.
+const grid = (name: string, hidden: string[] = []): TableViewDef => ({ id: uid(), name, kind: 'grid', hidden });
 const board = (groupBy: string, name = tx('view', 'Board')): TableViewDef => ({ id: uid(), name, kind: 'board', groupBy });
 
 /**
@@ -739,18 +740,18 @@ export function templateFields(id: TemplateId): { fields: TableField[]; views: T
       f(t('Follow-up'), 'date'),
       f(t('Notes'), 'longtext'),
     ];
-    return { fields, views: [grid(), board(status.id, t('Pipeline'))] };
+    return { fields, views: [grid(t('All leads')), board(status.id, t('Pipeline'))] };
   }
   if (id === 'pipeline') {
     const stage = f(t('Stage'), 'select', { options: [option(t('Idea'), '#64748b'), option(t('Script'), '#0ea5e9'), option(t('Shooting'), '#f59e0b'), option(t('Editing'), '#f97316'), option(t('Review'), '#8b5cf6'), option(t('Posted'), '#10b981')] });
     const fields = [f(tx('field', 'Title'), 'text'), stage, f(t('Platform'), 'multi', { options: [option('Instagram', '#ec4899'), option('TikTok', '#0f172a'), option('YouTube', '#ef4444')] }), owner(), f(tx('field', 'Due'), 'date'), f(t('Brief'), 'longtext')];
-    return { fields, views: [board(stage.id), grid()] };
+    return { fields, views: [board(stage.id), grid(t('All content'))] };
   }
   if (id === 'tracker') {
     const status = f(t('Status'), 'select', { options: [option(t('To do'), '#64748b'), option(t('Doing'), '#3b82f6'), option(t('Done'), '#10b981')] });
-    return { fields: [f(t('Item'), 'text'), status, owner(), f(tx('field', 'Due'), 'date')], views: [grid(), board(status.id)] };
+    return { fields: [f(t('Item'), 'text'), status, owner(), f(tx('field', 'Due'), 'date')], views: [grid(t('All items')), board(status.id)] };
   }
-  return { fields: [f(t('Name'), 'text'), f(t('Notes'), 'longtext')], views: [grid()] };
+  return { fields: [f(t('Name'), 'text'), f(t('Notes'), 'longtext')], views: [grid(t('All rows'))] };
 }
 
 /** A value from outside (a webhook, a CSV cell) turned into what the field holds: choices by label (new ones added), Indonesian or English number formats, dates, people by email or name. */

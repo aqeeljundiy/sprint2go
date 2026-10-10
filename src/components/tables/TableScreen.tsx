@@ -28,6 +28,7 @@ import { ViewTabs } from './ViewTabs';
 import { ColorRulesEditor, FieldsEditor, FilterPanel, GroupEditor, SortEditor } from './ViewTools';
 import { BulkBar, BulkEditSheet, FilterLine, FilterSheet, QuickCreate, SettingsSheet, ViewsSheet, openWithFocus, type SettingsActions } from './PhoneBits';
 import { EditSheet } from './EditSheet';
+import { EmptyState } from '../ui/EmptyState';
 import { VIEW_KINDS, kindDefaults, newView, viewIcon } from './viewKinds';
 import { NARROW_PANE, clearTableLink, readTableLink, tableLink, usePaneWidth, useTweaks } from './hooks';
 import { download, rowsToCsv } from './csv';
@@ -583,7 +584,8 @@ export function TableScreen(p: ScreenProps) {
   };
 
   const buttonField = buttonFor ? tb.fields.find((f) => f.id === buttonFor && f.type === 'button') : undefined;
-  const ViewIcon = view ? viewIcon(view.kind) : Table2;
+  // The pill shows the layout as it renders here: a grid shown as rows on a phone is a list.
+  const ViewIcon = view ? viewIcon(cards ? 'list' : view.kind) : Table2;
   const showPlus = canAdd && !!view && (!phone || !!g);
   return (
     <ButtonSetupCtx.Provider value={setButtonFor}>
@@ -1000,7 +1002,7 @@ export function TableScreen(p: ScreenProps) {
               onTouchCell={touchCell}
             />
           )}
-          {view && !shown.length && (mine.length ? <p className="muted small tb-none">{q.trim() ? t('No rows match the search.') : t('No rows match the filters.')}</p> : view.kind === 'board' || view.kind === 'calendar' || view.kind === 'timeline' ? null : <p className="muted small tb-none">{narrow ? t('No rows yet.') : t('No rows yet. Add one, paste from a spreadsheet, or they’ll arrive from a form or import.')}</p>)}
+          {view && !shown.length && (mine.length ? <p className="muted small tb-none">{q.trim() ? t('No rows match the search.') : t('No rows match the filters.')}</p> : view.kind === 'board' || view.kind === 'calendar' || view.kind === 'timeline' ? null : narrow ? <EmptyState className="tb-empty" icon={<ViewIcon size={22} />} title={t('No rows yet')} text={canAdd ? t('Tap + to add the first one.') : undefined} /> : <p className="muted small tb-none">{t('No rows yet. Add one, paste from a spreadsheet, or they’ll arrive from a form or import.')}</p>)}
         </TabPane>
       </div>
 
@@ -1075,7 +1077,7 @@ export function TableScreen(p: ScreenProps) {
           </div>
         </Sheet>
       )}
-      {sheet === 'views' && <ViewsSheet table={tb} current={base?.id ?? ''} onPick={(id) => (setViewId(id), setSelected(new Set()), setSelecting(false))} onAdd={structure ? addView : undefined} onClose={() => setSheet(null)} />}
+      {sheet === 'views' && <ViewsSheet table={tb} gridAsList={narrow && (cardsOn[base?.id ?? ''] ?? true)} current={base?.id ?? ''} onPick={(id) => (setViewId(id), setSelected(new Set()), setSelecting(false))} onAdd={structure ? addView : undefined} onClose={() => setSheet(null)} />}
       {sheet === 'filter' && view && <FilterSheet table={tb} view={view} rows={mine} ctx={textCtx} shown={shown.length} onChange={patchView} onClose={() => setSheet(null)} />}
       {sheet === 'settings' && view && <SettingsSheet table={tb} view={view} ctx={textCtx} a={settingsActions} onClose={() => setSheet(null)} />}
       {sheet === 'bulk' && <BulkEditSheet table={tb} rows={pickedRows} ctx={ctx} onApply={(fieldId, v) => bulkSet([...selected], fieldId, v)} onClose={() => setSheet(null)} />}

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { flushSync } from 'react-dom';
 import { ArrowDownLeft, ArrowUpDown, Check, ChevronLeft, ChevronRight, Copy, CopyPlus, Download, Eye, FileUp, Filter, Group, Info, LayoutTemplate, Palette, PencilLine, Plus, Share2, SlidersHorizontal, Trash2, Users, X, Zap } from 'lucide-react';
-import type { CellValue, Client, DataTable, RowTemplate, TableField, TableRow, TableViewDef } from '../../types';
+import type { CellValue, Client, DataTable, RowTemplate, TableField, TableFilter, TableRow, TableViewDef } from '../../types';
 import { Sheet } from '../ui/Sheet';
 import { TabPane } from '../ui/Smooth';
 import { ProjectPicker } from '../ProjectPicker';
@@ -13,14 +13,14 @@ import { CardSettings, cardFieldsOf } from './BoardView';
 import { ColorRulesEditor, FieldsEditor, FilterPanel, GroupEditor, SortEditor } from './ViewTools';
 import { EditSheet } from './EditSheet';
 import { VIEW_KINDS, viewIcon } from './viewKinds';
-import { TABLE_COLORS, fieldIcon, filterCount, isComputed, repeatWords, sortsOf, viewFields, type TCtx } from './fields';
+import { TABLE_COLORS, fieldIcon, filterCount, isComputed, quickFilters, repeatWords, sortsOf, viewFields, type TCtx } from './fields';
 import { statusFieldOf } from './CardList';
 import { t, tn, tx, textOf } from '../../i18n';
 
 /* The phone's pieces for Tables: the views sheet, filter and settings sheets, quick create, picking several rows. */
 
 /** The views of a table, with a tick on the one showing and "Add a view" for people who may. */
-export function ViewsSheet({ table, current, onPick, onAdd, onClose }: { table: DataTable; current: string; onPick: (id: string) => void; onAdd?: (kind: TableViewDef['kind']) => void; onClose: () => void }) {
+export function ViewsSheet({ table, current, onPick, onAdd, onClose, gridAsList }: { table: DataTable; current: string; gridAsList?: boolean; onPick: (id: string) => void; onAdd?: (kind: TableViewDef['kind']) => void; onClose: () => void }) {
   const [adding, setAdding] = useState(false);
   return (
     <Sheet title={adding ? t('Add a view') : t('Views')} onClose={onClose} className="tb-sheet" head={adding && <button type="button" className="ghost-btn sm" onClick={() => setAdding(false)}>{t('Back')}</button>}>
@@ -37,7 +37,7 @@ export function ViewsSheet({ table, current, onPick, onAdd, onClose }: { table: 
                 </button>
               ))
             : table.views.map((v) => {
-                const I = viewIcon(v.kind);
+                const I = viewIcon(v.kind === 'grid' && gridAsList ? 'list' : v.kind); // a grid shows as rows on a phone
                 return (
                   <button key={v.id} type="button" className="as-item" aria-current={v.id === current} onClick={() => (onPick(v.id), onClose())}>
                     <I size={18} className="as-icon" />
@@ -61,21 +61,118 @@ export function ViewsSheet({ table, current, onPick, onAdd, onClose }: { table: 
   );
 }
 
-/** The filter on a phone: values with counts first, conditions under them, and a button that says what you'll see. */
+/**
+ * The filter on a phone (Notion's one menu): what's filtered now, then the fields to filter by. A field opens its
+ * values inside the sheet (a tick on the one in use, counts on the right); results change as you tick, and the count
+ * is in the title. The full conditions builder is behind "Advanced filter".
+ */
 export function FilterSheet({ table, view, rows, ctx, shown, onChange, onClose }: { table: DataTable; view: TableViewDef; rows: TableRow[]; ctx: TCtx; shown: number; onChange: Parameters<typeof FilterPanel>[0]['onChange']; onClose: () => void }) {
+  const [page, setPage] = useState<string | null>(null); // a field's id, 'advanced', or null for the menu
+  const filters = view.filters ?? [];
+  const groups = view.filterGroups ?? [];
+  const quick = quickFilters(table, view, rows, ctx);
+  const qOf = (fieldId: string) => quick.find((q) => q.field.id === fieldId);
+  const summary = (flt: TableFilter) => qOf(flt.fieldId)?.items.find((i) => i.on && i.filter.op === flt.op && (i.filter.value ?? '') === (flt.value ?? ''))?.label ?? t('Custom condition');
+  const pick = (flt: TableFilter, on: boolean) => {
+    const others = filters.filter((x) => x.fieldId !== flt.fieldId);
+    onChange({ filters: on ? others : [...others, flt] });
+  };
+  const remove = (i: number) => onChange({ filters: filters.filter((_, j) => j !== i) });
+  const field = page && page !== 'advanced' ? qOf(page) : undefined;
+  const title = page === 'advanced' ? t('Advanced filter') : field ? field.field.name : t('Filter');
   return (
     <Sheet
-      title={t('Filter')}
+      title={
+        <span className="tb-fs-title">
+          {title}
+          <small>{tn(shown, '{n} row', '{n} rows')}</small>
+        </span>
+      }
+      label={title}
       onClose={onClose}
-      size="tall"
+      size={page === 'advanced' ? 'tall' : 'auto'}
       className="tb-sheet tb-filter-sheet"
-      footer={
-        <button type="button" className="primary-btn tb-sheet-wide" onClick={onClose}>
-          {tn(shown, 'Show {n} row', 'Show {n} rows')}
-        </button>
+      head={
+        page ? (
+          <button type="button" className="tb-fs-head-btn" onClick={() => setPage(null)}>
+            <ChevronLeft size={18} /> {t('Back')}
+          </button>
+        ) : (
+          <button type="button" className="tb-fs-head-btn strong" onClick={onClose}>
+            {t('Done')}
+          </button>
+        )
       }
     >
-      <FilterPanel table={table} view={view} rows={rows} ctx={ctx} onChange={onChange} />
+      <TabPane key={page ?? 'menu'}>
+        {page === 'advanced' ? (
+          <FilterPanel table={table} view={view} rows={rows} ctx={ctx} onChange={onChange} />
+        ) : field ? (
+          <div className="as-list">
+            {field.items.map((c) => (
+              <button key={c.label} type="button" className="as-item tb-fs-val" aria-pressed={c.on} onClick={() => pick(c.filter, c.on)}>
+                {c.color ? <i className="tb-fs-tag" style={{ ['--c' as string]: c.color }}>{c.label}</i> : <span className="as-label">{c.label}</span>}
+                {c.color && <span className="as-label" />}
+                <small className="tb-fs-count">{c.count}</small>
+                <Check size={18} className={`as-check tb-fs-tick${c.on ? ' on' : ''}`} />
+              </button>
+            ))}
+          </div>
+        ) : (
+          <div className="as-list">
+            {filters.length + groups.length > 0 && (
+              <>
+                {filters.map((flt, i) => {
+                  const f = table.fields.find((x) => x.id === flt.fieldId);
+                  if (!f) return null;
+                  const I = fieldIcon(f.type);
+                  return (
+                    <div key={i} className="tb-fs-on">
+                      <button type="button" className="as-item" onClick={() => setPage(qOf(f.id) ? f.id : 'advanced')}>
+                        <I size={18} className="as-icon" />
+                        <span className="as-label">{f.name}</span>
+                        <small className="tb-fs-sum">{summary(flt)}</small>
+                        <ChevronRight size={16} className="tb-fs-chev" />
+                      </button>
+                      <button type="button" className="icon-btn tb-fs-x" aria-label={t('Remove the filter on {field}', { field: f.name })} onClick={() => remove(i)}>
+                        <X size={16} />
+                      </button>
+                    </div>
+                  );
+                })}
+                {groups.length > 0 && (
+                  <button type="button" className="as-item" onClick={() => setPage('advanced')}>
+                    <Filter size={18} className="as-icon" />
+                    <span className="as-label">{tn(groups.length, '{n} group of conditions', '{n} groups of conditions')}</span>
+                    <ChevronRight size={16} className="tb-fs-chev" />
+                  </button>
+                )}
+                <button type="button" className="as-item danger" onClick={() => onChange({ filters: [], filterGroups: [] })}>
+                  <X size={18} className="as-icon" />
+                  <span className="as-label">{t('Clear all')}</span>
+                </button>
+                <div className="as-sep" role="separator" />
+              </>
+            )}
+            <p className="tb-fs-head">{t('Filter by')}</p>
+            {quick.map(({ field: f }) => {
+              const I = fieldIcon(f.type);
+              return (
+                <button key={f.id} type="button" className="as-item" onClick={() => setPage(f.id)}>
+                  <I size={18} className="as-icon" />
+                  <span className="as-label">{f.name}</span>
+                  <ChevronRight size={16} className="tb-fs-chev" />
+                </button>
+              );
+            })}
+            <button type="button" className="as-item" onClick={() => setPage('advanced')}>
+              <SlidersHorizontal size={18} className="as-icon" />
+              <span className="as-label">{t('Advanced filter')}</span>
+              <ChevronRight size={16} className="tb-fs-chev" />
+            </button>
+          </div>
+        )}
+      </TabPane>
     </Sheet>
   );
 }

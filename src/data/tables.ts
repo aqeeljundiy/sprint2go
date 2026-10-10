@@ -48,7 +48,7 @@ export const TABLES: DataTable[] = [
     ],
     views: [
       { id: 'v-cboard', name: 'Board', kind: 'board', groupBy: 'c-stage' },
-      { id: 'v-cgrid', name: 'Grid', kind: 'grid' },
+      { id: 'v-cgrid', name: 'All content', kind: 'grid' },
     ],
     createdBy: 'u-aqeel',
     createdAt: at(20),

@@ -1037,6 +1037,20 @@ const id: Record<string, string> = {
   Bugs: 'Bug',
   Sponsors: 'Sponsor',
   Vendors: 'Vendor',
+
+  // Phones: Notion's List view, the row page and the one filter menu
+  'All leads': 'Semua prospek',
+  'All content': 'Semua konten',
+  'All items': 'Semua item',
+  'All rows': 'Semua baris',
+  'No rows yet': 'Belum ada baris',
+  'Tap + to add the first one.': 'Ketuk + untuk menambah yang pertama.',
+  'Advanced filter': 'Filter lanjutan',
+  'Custom condition': 'Syarat khusus',
+  'Filter by': 'Filter menurut',
+  'Remove the filter on {field}': 'Hapus filter pada {field}',
+  '{n} group of conditions': '{n} kelompok syarat',
+  '{n} groups of conditions': '{n} kelompok syarat',
 };
 
 export default id;
