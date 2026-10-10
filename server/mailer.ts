@@ -277,6 +277,22 @@ export interface DnsCheck {
 const pub = new dns.Resolver({ timeout: 4000, tries: 2 });
 pub.setServers(['1.1.1.1', '8.8.8.8']);
 const txt = (host: string) => pub.resolveTxt(host).then((r) => r.map((x) => x.join('')), () => [] as string[]);
+/**
+ * The same lookup, but telling a domain with no record apart from a lookup that failed (a timeout, a resolver hiccup):
+ * tried three times, `failed` only when every try errored with something other than "no such record".
+ */
+async function txtSure(host: string): Promise<{ values: string[]; failed: boolean }> {
+  for (let i = 0; i < 3; i++) {
+    try {
+      return { values: (await pub.resolveTxt(host)).map((x) => x.join('')), failed: false };
+    } catch (e) {
+      const code = (e as { code?: string }).code;
+      if (code === 'ENODATA' || code === 'ENOTFOUND') return { values: [], failed: false };
+      await new Promise((r) => setTimeout(r, 400 * (i + 1)));
+    }
+  }
+  return { values: [], failed: true };
+}
 export async function checkDomain(ws: Ws): Promise<{ domain: string; at: string; checks: DnsCheck[]; allOk: boolean }> {
   const domain = mailDomainOf(ws);
   const checks: DnsCheck[] = [];
@@ -1186,8 +1202,18 @@ export async function mailReadiness(ws: Ws & { mailRouting?: { verifiedAt?: stri
       continue;
     }
     const mx = await pub.resolveMx(d).then((r) => r.sort((a, b) => a.priority - b.priority).map((x) => lower(x.exchange)), () => [] as string[]);
-    const apex = await txt(d);
-    const dkim = (await txt(`${SELECTOR}._domainkey.${d}`)).find((t) => t.includes('p=')) ?? '';
+    const apexLook = await txtSure(d);
+    const dkimLook = await txtSure(`${SELECTOR}._domainkey.${d}`);
+    // DNS didn't answer: keep what the last check found for this domain instead of switching sending off on a hiccup.
+    if (apexLook.failed || dkimLook.failed) {
+      const prev = accounts.filter((a) => lower(a.email.split('@')[1] ?? '') === d).map((a) => (ws as { mailReady?: MailReady }).mailReady?.mailboxes?.[a.id]).find(Boolean) as { send?: boolean; receive?: boolean; sendWhy?: string } | undefined;
+      if (prev) {
+        domains.set(d, { mxHere: mx[0] === MAIL_HOST, signs: !!prev.send, why: prev.send ? undefined : prev.sendWhy });
+        continue;
+      }
+    }
+    const apex = apexLook.values;
+    const dkim = dkimLook.values.find((t) => t.includes('p=')) ?? '';
     // Another company holds the domain: none of its mail comes here or goes out for this company.
     const own = settleDomain(ws, d, { mxHere: mx[0] === MAIL_HOST, dkim, txt: apex });
     if (own.state === 'held' || own.state === 'taken') {
