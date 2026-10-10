@@ -37,6 +37,7 @@ const LEAVING = [
   '.demo-bar',
   '.task-bulk',
   '.mail-bulk',
+  '.cal-create-menu',
 ].join(',');
 
 const MS = 200;

@@ -1,16 +1,19 @@
-import type { ReactNode } from 'react';
-import { AlarmClock, Check, Clock, Globe, Lock, Mail, MapPin, Mic, Pencil, Repeat, Send, StickyNote, Trash2, Users, Video, X } from 'lucide-react';
+import { useRef, useState, type ReactNode } from 'react';
+import { AlarmClock, Bell, Check, CircleHelp, Clock, Copy, EllipsisVertical, Globe, Lock, Mail, MapPin, Mic, Pencil, Repeat, Send, StickyNote, TextAlignStart, Trash2, Users, Video, X } from 'lucide-react';
 import type { CalEvent, CalendarDef, GuestAnswer, RsvpStatus } from '../../types';
 import { MEETING_NAME, meetingLinkOf, notetakerJoins } from '../../meetingLinks';
 import { Avatar } from '../Avatar';
 import { Badge, type BadgeTone } from '../ui/Person';
 import { Sheet } from '../ui/Sheet';
-import { fromWall, isPending, startsIn, wallIn, whenLine, zoneCity } from './calTools';
+import { ActionSheet, type SheetAction } from '../ui/ActionSheet';
+import { toast } from '../../toast';
+import { fromWall, isPending, placeOf, startsIn, wallIn, whenLine, zoneCity } from './calTools';
 import { deviceTz, isZone } from '../../jobTimes';
 import { remindWords } from './EventForm';
 import { repeatWords } from '../../repeat';
 import { mark, t, tn } from '../../i18n';
-import { fmtTime } from '../../i18n/format';
+import { fmtDate, fmtTime } from '../../i18n/format';
+import { fmtTimeRange, sameDay, addDays } from '../../calendarUtils';
 import { calLabel } from '../../data/calendar';
 
 export type { GuestAnswer };
@@ -38,6 +41,8 @@ export interface DetailProps {
   answers?: Record<string, GuestAnswer>;
   /** Instead of the invite's state (the demo: nothing is emailed). */
   inviteNote?: string;
+  /** Phones: the ⋮ menu (Duplicate, Move to tomorrow, Copy link, Delete), the one home for them. */
+  more?: SheetAction[];
 }
 
 const ANSWER: Record<GuestAnswer, { label: string; tone: BadgeTone }> = {
@@ -76,12 +81,7 @@ export function EventDetail(p: DetailProps) {
       )}
     </div>
   );
-  if (p.phone)
-    return (
-      <Sheet onClose={p.onClose} label={event.title} head={actions} footer={rsvp} className="ev-sheet" size="auto">
-        <DetailBody {...p} />
-      </Sheet>
-    );
+  if (p.phone) return <PhoneDetail {...p} rsvp={p.onRsvp && (pending || !!event.inviteUid) ? <Rsvp value={pending ? undefined : event.rsvp} onPick={p.onRsvp} phone /> : null} />;
   return (
     <aside className="ev-detail" style={{ ['--c' as string]: p.calendar?.color }} aria-label={event.title}>
       {actions}
@@ -91,14 +91,21 @@ export function EventDetail(p: DetailProps) {
   );
 }
 
-function Rsvp({ value, onPick }: { value?: RsvpStatus; onPick: (s: RsvpStatus, at?: Element) => void }) {
-  const opts: [RsvpStatus, string][] = [
-    ['accepted', t('Yes')],
-    ['tentative', t('Maybe')],
-    ['declined', t('No')],
-  ];
+function Rsvp({ value, onPick, phone }: { value?: RsvpStatus; onPick: (s: RsvpStatus, at?: Element) => void; phone?: boolean }) {
+  // Google's order on phones: Yes, No, Maybe.
+  const opts: [RsvpStatus, string][] = phone
+    ? [
+        ['accepted', t('Yes')],
+        ['declined', t('No')],
+        ['tentative', t('Maybe')],
+      ]
+    : [
+        ['accepted', t('Yes')],
+        ['tentative', t('Maybe')],
+        ['declined', t('No')],
+      ];
   return (
-    <div className="ev-rsvp" role="group" aria-label={t('Going?')}>
+    <div className={`ev-rsvp${phone ? ' phone' : ''}`} role="group" aria-label={t('Going?')}>
       <span className="ev-rsvp-q">{t('Going?')}</span>
       {opts.map(([v, l]) => (
         <button key={v} type="button" className={`ev-rsvp-btn${value === v ? ' on' : ''}`} aria-pressed={value === v} onClick={(e) => onPick(v, e.currentTarget)}>
@@ -267,5 +274,249 @@ function DetailBody(p: DetailProps) {
         </button>
       )}
     </div>
+  );
+}
+
+/** "Mon 12 Oct · 09:30 to 09:45" (all day: "Mon 12 Oct", or "Mon 12 to Wed 14 Oct"). */
+function whenWords(e: CalEvent) {
+  const s = new Date(e.start);
+  const end = new Date(e.end);
+  const day = (d: Date) => fmtDate(d, { weekday: 'short', day: 'numeric', month: 'short' });
+  if (e.allDay) {
+    const last = addDays(end, -1);
+    return sameDay(s, last) || last < s ? day(s) : t('{first} to {last}', { first: day(s), last: day(last) });
+  }
+  return sameDay(s, end) ? `${day(s)} · ${fmtTimeRange(s, end)}` : t('{first} to {last}', { first: `${day(s)} · ${fmtTime(s)}`, last: `${day(end)} · ${fmtTime(end)}` });
+}
+
+const BADGE: Record<GuestAnswer, { icon: typeof Check; tone: string }> = {
+  accepted: { icon: Check, tone: 'yes' },
+  declined: { icon: X, tone: 'no' },
+  tentative: { icon: CircleHelp, tone: 'maybe' },
+  'needs-action': { icon: CircleHelp, tone: 'wait' },
+  delegated: { icon: CircleHelp, tone: 'wait' },
+};
+
+/** A row of the phone details: the icon in the 56 px column, then its text. */
+function DRow({ icon, children, onClick, end, className = '' }: { icon: ReactNode; children: ReactNode; onClick?: () => void; end?: ReactNode; className?: string }) {
+  const body = (
+    <>
+      <span className="dr-icon">{icon}</span>
+      <span className="dr-text">{children}</span>
+    </>
+  );
+  return (
+    <div className={`dr-row ${className}`}>
+      {onClick ? (
+        <button type="button" className="dr-main" onClick={onClick}>
+          {body}
+        </button>
+      ) : (
+        <div className="dr-main">{body}</div>
+      )}
+      {end}
+    </div>
+  );
+}
+
+/**
+ * Phones: Google Calendar's details page, full screen. X, the pencil and ⋮ at the top; the colour, title and when;
+ * then rows: Join, the notetaker, the place, the reminder, the guests with their answers, notes, the calendar. An
+ * invite has Yes, No and Maybe in a bar at the bottom.
+ */
+function PhoneDetail(p: DetailProps & { rsvp: ReactNode }) {
+  const { event, calendar, task } = p;
+  const link = meetingLinkOf(event);
+  const now = Date.now();
+  const ended = new Date(event.end).getTime() < now;
+  const startMs = new Date(event.start).getTime();
+  const startsSoon = startMs - now < 15 * 60_000;
+  const guests = event.guests ?? [];
+  const place = placeOf(event, link?.url);
+  const pending = isPending(event);
+  const [menu, setMenu] = useState(false);
+  const dots = useRef<HTMLButtonElement>(null);
+  const answers = guests.map((g) => p.answers?.[g.email.toLowerCase()]);
+  const tally = (s: GuestAnswer) => answers.filter((a) => a === s).length;
+  const yes = tally('accepted');
+  const no = tally('declined');
+  const maybe = tally('tentative');
+  const waiting = guests.length - yes - no - maybe;
+  const people = [event.organizer && !guests.some((g) => g.email.toLowerCase() === event.organizer!.email.toLowerCase()) ? { ...event.organizer, organiser: true } : null, ...guests.map((g) => ({ ...g, organiser: !!event.organizer && g.email.toLowerCase() === event.organizer.email.toLowerCase() }))].filter(Boolean) as (typeof guests[number] & { organiser: boolean })[];
+  const copy = (text: string) =>
+    navigator.clipboard?.writeText(text).then(
+      () => toast({ text: t('Call link copied') }),
+      () => toast({ text: t('Couldn’t copy it here. Open the event and copy from there.') }),
+    );
+  const zone = event.timeZone && isZone(event.timeZone) && event.timeZone !== deviceTz() && !event.allDay;
+  return (
+    <>
+      <Sheet
+        onClose={p.onClose}
+        label={event.title}
+        size="full"
+        className="ev-page ev-detail-page"
+        footer={p.rsvp}
+        head={
+          <>
+            <button type="button" className="icon-btn ev-page-x" onClick={p.onClose} aria-label={t('Close')}>
+              <X size={22} />
+            </button>
+            <span className="spacer" />
+            {!p.readOnly && p.onEdit && (
+              <button type="button" className="icon-btn ev-page-act" onClick={p.onEdit} aria-label={t('Edit event')}>
+                <Pencil size={20} />
+              </button>
+            )}
+            {!!p.more?.length && (
+              <button ref={dots} type="button" className="icon-btn ev-page-act" onClick={() => setMenu(true)} aria-label={t('More')}>
+                <EllipsisVertical size={20} />
+              </button>
+            )}
+          </>
+        }
+      >
+        <div className="ev-dp" style={{ ['--c' as string]: calendar?.color }}>
+          <div className="ev-dp-title">
+            <span className="ev-dp-swatch" aria-hidden />
+            <div>
+              <h2>{event.title}</h2>
+              <p>{whenWords(event)}</p>
+              {event.rrule && <p>{repeatWords({ rrule: event.rrule, start: event.occurrence ?? event.start, timeZone: event.timeZone })}</p>}
+              {zone && (
+                <p>
+                  {(() => {
+                    const s = wallIn(new Date(event.start), event.timeZone!);
+                    const e = wallIn(new Date(event.end), event.timeZone!);
+                    const at = (w: { date: string; time: string }) => fmtTime(fromWall(w.date, w.time, null));
+                    return t('{first} to {last} in {city}', { first: at(s), last: at(e), city: zoneCity(event.timeZone!) });
+                  })()}
+                </p>
+              )}
+            </div>
+          </div>
+
+          {link && !ended && (
+            <div className="dr-row dr-join">
+              <a className="dr-main" href={link.url} target="_blank" rel="noopener noreferrer">
+                <span className="dr-icon">
+                  <Video size={20} />
+                </span>
+                <span className="dr-text">
+                  <strong>{t('Join {app}', { app: MEETING_NAME[link.kind] })}</strong>
+                  <small>{link.url.replace(/^https?:\/\//, '')}</small>
+                </span>
+              </a>
+              <button type="button" className="icon-btn dr-end" onClick={() => void copy(link.url)} aria-label={t('Copy call link')}>
+                <Copy size={18} />
+              </button>
+            </div>
+          )}
+          {link && !ended && notetakerJoins(link.kind) && (p.sentBot || p.botWill !== undefined || p.onNotetaker) && (
+            p.sentBot ? (
+              <DRow icon={<Mic size={20} />} onClick={p.sentBot}>
+                {t('The notetaker is on its way. Open the meeting')}
+              </DRow>
+            ) : p.botWill !== undefined && (p.botWill || !startsSoon) ? (
+              <DRow
+                icon={<Mic size={20} />}
+                onClick={() => p.onBotJoin?.(!p.botWill)}
+                end={
+                  <span className={`switch dr-switch ${p.botWill ? 'on' : ''}`} aria-hidden>
+                    <span />
+                  </span>
+                }
+              >
+                {t('Notetaker joins')}
+              </DRow>
+            ) : (
+              p.onNotetaker && (
+                <DRow icon={<Mic size={20} />} onClick={p.onNotetaker}>
+                  {t('Send notetaker')}
+                </DRow>
+              )
+            )
+          )}
+          {place && <DRow icon={<MapPin size={20} />}>{place}</DRow>}
+          {typeof event.remind === 'number' && <DRow icon={<Bell size={20} />}>{remindWords(event.remind)}</DRow>}
+
+          {people.length > 0 && (
+            <div className="dr-guests">
+              <DRow icon={<Users size={20} />}>
+                <span>{tn(people.length, '{n} guest', '{n} guests')}</span>
+                {p.answers && (
+                  <small>
+                    {[yes && t('{n} yes', { n: yes }), no && t('{n} no', { n: no }), maybe && t('{n} maybe', { n: maybe }), waiting && t('{n} awaiting', { n: waiting })].filter(Boolean).join(', ')}
+                  </small>
+                )}
+                {event.sendInvites && guests.length > 0 && !event.inviteUid && <small>{p.inviteNote ?? inviteWords(event)}</small>}
+              </DRow>
+              {people.map((g) => {
+                const a = p.answers?.[g.email.toLowerCase()];
+                const B = a ? BADGE[a] : null;
+                return (
+                  <div key={g.email} className="dr-guest">
+                    <span className="dr-guest-av">
+                      <Avatar person={g} size={32} />
+                      {B && (
+                        <i className={`dr-badge ${B.tone}`} aria-label={t(ANSWER[a!].label)}>
+                          <B.icon size={9} strokeWidth={3.5} />
+                        </i>
+                      )}
+                    </span>
+                    <span className="dr-guest-text">
+                      <span>{g.name}</span>
+                      {g.organiser && <small>{t('Organiser')}</small>}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {event.notes && (
+            <DRow icon={<TextAlignStart size={20} />} className="top">
+              <span className="dr-notes">{event.notes}</span>
+            </DRow>
+          )}
+          {calendar && (
+            <DRow icon={<span className="dr-cal-dot" style={{ background: calendar.color }} />}>
+              <span className="dr-muted">{calLabel(calendar)}</span>
+            </DRow>
+          )}
+          {event.feed && (
+            <DRow icon={<Lock size={18} />}>
+              <span className="dr-muted">
+                {event.feed === 'holidays' ? (event.workspaceId ? t('Public holiday, shown to everyone in the company.') : t('Public holiday in a country you chose to see. Just on your calendar.')) : t('Read only. Change it in the calendar it comes from; this copy updates every 30 minutes.')}
+              </span>
+            </DRow>
+          )}
+          {task && (
+            <div className="dr-task">
+              <DRow icon={<Clock size={20} />}>{task.done ? t('Task done') : t('Time blocked for a task')}</DRow>
+              {!task.done && (
+                <div className="dr-chips">
+                  <button className="dr-chip" onClick={() => p.onExtend?.(30)}>
+                    {t('Extend 30 min')}
+                  </button>
+                  <button className="dr-chip" onClick={p.onTomorrow}>
+                    {t('Tomorrow')}
+                  </button>
+                  <button className="dr-chip" onClick={p.onTaskDone}>
+                    {t('Mark done')}
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+          {event.threadId && (
+            <DRow icon={<Mail size={20} />} onClick={() => p.onOpenThread(event.threadId!)}>
+              {pending ? t('Open the invite email') : t('Open related email')}
+            </DRow>
+          )}
+        </div>
+      </Sheet>
+      <ActionSheet open={menu} onClose={() => setMenu(false)} title={event.title} actions={p.more ?? []} anchor={dots} menu />
+    </>
   );
 }

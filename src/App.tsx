@@ -4801,6 +4801,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             onOpenTask={openTask}
             calendarsPanel={calendarPanel}
             dialogOpen={!!connectCal}
+            company={ws}
+            appSettings={settingsRows}
             canEdit={(e) => !e.calendarId.startsWith('mate-') && !e.feed && !extCals.find((c) => c.id === e.calendarId)?.readOnly && events.some((x) => x.id === (e.seriesId ?? e.id))}
             onNotetaker={botOn ? sendNotetakerTo : undefined}
             botWillJoin={autoJoin === 'live' ? (e) => !sentFor[e.id] && botWillJoin(e) : undefined}

@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { Check, ChevronUp } from 'lucide-react';
+import { Check, ChevronUp, Circle, CircleCheck } from 'lucide-react';
 import type { CalEvent } from '../../types';
 import { addDays, eventsOn, sameDay, startOfDay, startOfWeek } from '../../calendarUtils';
 import { EventCard, type CardKit } from './EventCard';
@@ -67,12 +67,14 @@ export function ScheduleView({
     if (!box) return;
     const rows = [...box.querySelectorAll<HTMLElement>('[data-day]')];
     const key = startOfDay(d).getTime();
-    const row = rows.find((r) => Number(r.dataset.day) >= key);
+    let row: Element | undefined = rows.find((r) => Number(r.dataset.day) >= key);
     if (!row) return;
+    // Phones: the week's range row above the day comes along.
+    while (row.previousElementSibling?.classList.contains('sch-week')) row = row.previousElementSibling;
     // The month's name sticks to the top: the day goes just under it (or the name itself when the day starts a month).
     const opens = row.previousElementSibling?.classList.contains('sch-month');
     const sticky = opens ? 0 : (box.querySelector<HTMLElement>('.sch-month')?.offsetHeight ?? 0);
-    const top = (opens ? (row.previousElementSibling as HTMLElement) : row).offsetTop - sticky;
+    const top = (opens ? (row.previousElementSibling as HTMLElement) : (row as HTMLElement)).offsetTop - sticky;
     box.scrollTo({ top: Math.max(0, top), behavior: instant || matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
   }
 
@@ -119,6 +121,25 @@ export function ScheduleView({
 
   const today = new Date(now);
   let month = -1;
+  let week = -1;
+  /** Phones (Google's schedule): a quiet "12 to 18 Oct" row at the start of each week, empty weeks as just that row. */
+  const weekRows = (day: Date) => {
+    if (!kit.phone) return null;
+    const w = startOfWeek(day).getTime();
+    if (w <= week) return null;
+    const out: Date[] = [];
+    for (let s = week < 0 ? w : addDays(new Date(week), 7).getTime(); s <= w; s = addDays(new Date(s), 7).getTime()) out.push(new Date(s));
+    week = w;
+    return out.map((s) => {
+      const e = addDays(s, 6);
+      const first = s.getMonth() === e.getMonth() ? String(s.getDate()) : fmtDate(s, { day: 'numeric', month: 'short' });
+      return (
+        <div key={`w${s.getTime()}`} className="sch-week">
+          {t('{first} to {last}', { first, last: fmtDate(e, { day: 'numeric', month: 'short' }) })}
+        </div>
+      );
+    });
+  };
   return (
     <div className="sch" ref={scroll}>
       <button type="button" className="sch-earlier" onClick={earlier}>
@@ -133,6 +154,7 @@ export function ScheduleView({
         return (
           <Fragment key={day.toDateString()}>
             {mh && <div className="sch-month">{mh}</div>}
+            {weekRows(day)}
             <section className={`sch-day${isToday ? ' today' : ''}`} data-day={startOfDay(day).getTime()} aria-label={fmtWeekdayLong(day)}>
               <div className="sch-date" aria-hidden>
                 <span className="sch-dow">{fmtDate(day, { weekday: 'short' })}</span>
@@ -142,7 +164,7 @@ export function ScheduleView({
                 {tasks.map((task) => (
                   <div key={task.id} className={`sch-task${task.done ? ' done' : ''}`}>
                     <button type="button" className={`ev-check${task.done ? ' on' : ''}`} aria-label={task.done ? t('{title}: done', { title: task.title }) : t('Mark “{title}” done', { title: task.title })} aria-pressed={task.done} onClick={() => onToggleTask?.(task.id)}>
-                      {task.done && <Check size={13} strokeWidth={3} />}
+                      {kit.phone ? task.done ? <CircleCheck size={18} /> : <Circle size={18} /> : task.done && <Check size={13} strokeWidth={3} />}
                     </button>
                     <button type="button" className="sch-task-title" onClick={() => onOpenTask?.(task.id)}>
                       {task.title}

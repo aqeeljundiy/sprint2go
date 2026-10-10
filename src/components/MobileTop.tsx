@@ -6,7 +6,7 @@ import { WorkspaceLogo } from './WorkspaceLogo';
 import { Badge } from './ui/Person';
 import { isSandbox } from '../sandbox';
 import { Sheet } from './ui/Sheet';
-import { setTopTargets, type TitleMenu, type TopBarClaim } from '../mobile/chrome';
+import { setTopTargets, useCompanySheetOpener, type TitleMenu, type TopBarClaim } from '../mobile/chrome';
 import { t, tn } from '../i18n';
 
 export interface TopSettingsRow {
@@ -76,6 +76,8 @@ export function MobileTop({
   const [wsOpen, setWsOpen] = useState(false);
   const [titleOpen, setTitleOpen] = useState(false);
   useEffect(() => setWsOpen(false), [current.id]); // the demo company opened, or another company was picked
+  // An app that took the logo's place opens the same sheet from its own spot (Calendar's drawer header).
+  useCompanySheetOpener(() => canSwitch && setWsOpen(true));
   const elsewhere = workspaces.some((w) => w.id !== current.id && (unreadByWs[w.id] ?? 0) > 0);
   const canSwitch = workspaces.length > 0 || portals.length > 0 || !!onAddWorkspace || !!demo || !!me; // "View as guest" has nothing to switch to
   const switches = !!menu || settings.length > 0;

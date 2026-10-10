@@ -3,6 +3,7 @@ import { CalendarDays, CalendarRange, Repeat } from 'lucide-react';
 import type { CalEvent } from '../../types';
 import { repeatWords, type Scope } from '../../repeat';
 import { ActionSheet } from '../ui/ActionSheet';
+import { Sheet } from '../ui/Sheet';
 import { isPhone } from '../../mobile/media';
 import { t } from '../../i18n';
 import { fmtWeekday } from '../../i18n/format';
@@ -47,6 +48,8 @@ export function ScopeHost() {
       show = null;
     };
   }, []);
+  const [picked, setPicked] = useState<Scope | null>(null);
+  useEffect(() => setPicked(null), [ask]);
   const e = ask?.event;
   const day = e ? fmtWeekday(e.start) : '';
   const all = e ? repeatWords({ rrule: e.rrule, start: e.occurrence ?? e.start, timeZone: e.timeZone }) : null;
@@ -55,6 +58,44 @@ export function ScopeHost() {
     following: { label: t('This and following events'), hint: t('From {day} on', { day }), icon: CalendarRange },
     all: { label: t('All events'), hint: all ?? '', icon: Repeat },
   };
+  // Phones (Google's look): plain rows with the date under each and a radio at the right; a tap fills the radio and
+  // the change happens a moment later, so the tap is seen. Every change here can be undone from its toast.
+  if (isPhone())
+    return ask ? (
+      <Sheet
+        title={ask.title}
+        onClose={() => ask.done(null)}
+        className="scope-sheet"
+        head={
+          <button type="button" className="link-btn scope-cancel" onClick={() => ask.done(null)}>
+            {t('Cancel')}
+          </button>
+        }
+      >
+        <div className="scope-list" role="radiogroup" aria-label={ask.title}>
+          {ask.options.map((s) => (
+            <button
+              key={s}
+              type="button"
+              role="radio"
+              aria-checked={picked === s}
+              className={`scope-opt${picked === s ? ' on' : ''}`}
+              onClick={() => {
+                if (picked) return;
+                setPicked(s);
+                setTimeout(() => ask.done(s), 150);
+              }}
+            >
+              <span className="scope-text">
+                {label[s].label}
+                {label[s].hint && <small>{label[s].hint}</small>}
+              </span>
+              <span className="rp-radio" aria-hidden />
+            </button>
+          ))}
+        </div>
+      </Sheet>
+    ) : null;
   return (
     <ActionSheet
       open={!!ask}

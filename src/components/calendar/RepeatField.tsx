@@ -1,4 +1,7 @@
+import { useState } from 'react';
 import { ChevronDown, Minus, Plus, Repeat } from 'lucide-react';
+import { Sheet } from '../ui/Sheet';
+import { PushScreen } from '../ui/PushScreen';
 import { DatePicker } from '../ui/DatePicker';
 import { Select, type Option } from '../ui/Select';
 import { SmoothHeight } from '../ui/Smooth';
@@ -207,4 +210,131 @@ function addMonths(day: string, n: number) {
   const t = new Date(Date.UTC(y, m - 1 + n, 1));
   const last = new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth() + 1, 0)).getUTCDate();
   return `${t.getUTCFullYear()}-${String(t.getUTCMonth() + 1).padStart(2, '0')}-${String(Math.min(d, last)).padStart(2, '0')}`;
+}
+
+/**
+ * Phones (Google Calendar's): the Repeat row says the repeat in words; tapping it opens a sheet of radio rows (Does not
+ * repeat first, the presets named for the date, Custom…). A tap picks and closes. Custom opens its own screen: every so
+ * many days, weeks, months or years, which weekdays, and when it ends, with Done.
+ */
+export function RepeatRow({ value, startWall, startDay, onChange }: { value: RepeatDraft; startWall: number; startDay: string; onChange: (r: RepeatDraft) => void }) {
+  const [open, setOpen] = useState(false);
+  const [custom, setCustom] = useState<RepeatSpec | null>(null);
+  const { spec } = value;
+  const raw = !!value.raw && !spec;
+  const preset = raw ? 'raw' : presetOf(spec);
+  const words = raw ? (value.rawWords ?? t('Repeats')) : spec ? specWords(spec, startWall) : t('Does not repeat');
+  // Every 2 weeks lives in Custom on phones, as in Google's list.
+  const current = preset === 'biweekly' ? 'custom' : preset;
+  const options: Option<string>[] = [
+    ...(raw ? [{ value: 'raw', label: value.rawWords ?? t('Repeats'), hint: t('As the invite says') }] : []),
+    ...repeatOptions(startWall, spec)
+      .filter((o) => o.value !== 'biweekly')
+      .map((o) => (o.value === 'none' ? { ...o, label: t('Does not repeat') } : o.value === 'custom' ? { ...o, label: t('Custom…'), hint: current === 'custom' && spec ? specWords(spec, startWall) : undefined } : o)),
+  ];
+  const pick = (p: string) => {
+    setOpen(false);
+    if (p === 'raw') return;
+    if (p === 'custom') return setCustom(spec ?? { freq: 'WEEKLY', interval: 1, days: [dateFacts(startWall).wd] });
+    if (p === 'none') return onChange({ spec: null, raw: null, touched: true });
+    onChange({ spec: presetSpec(p as RepeatPreset, startWall, p === 'weekly' && spec?.freq === 'WEEKLY' ? spec.days : undefined), raw: null, touched: true });
+  };
+  return (
+    <>
+      <button type="button" className={`er-line er-value${spec || raw ? '' : ' er-empty'}`} onClick={() => setOpen(true)} aria-haspopup="dialog" aria-label={t('Repeat: {how}', { how: words })}>
+        <span>{words}</span>
+      </button>
+      {open && (
+        <Sheet title={t('Repeat')} onClose={() => setOpen(false)} className="rp-sheet">
+          <div className="rp-list" role="radiogroup" aria-label={t('Repeat')}>
+            {options.map((o) => (
+              <button key={o.value} type="button" role="radio" aria-checked={current === o.value} className={`rp-opt${current === o.value ? ' on' : ''}`} onClick={() => pick(o.value)}>
+                <span className="rp-radio" aria-hidden />
+                <span className="rp-opt-text">
+                  {o.label}
+                  {o.hint && <small>{o.hint}</small>}
+                </span>
+              </button>
+            ))}
+          </div>
+        </Sheet>
+      )}
+      {custom && (
+        <PushScreen
+          title={t('Custom repeat')}
+          onBack={() => setCustom(null)}
+          className="rp-custom-screen"
+          actions={
+            <button type="button" className="primary-btn sm rp-done" onClick={() => (onChange({ spec: custom, raw: null, touched: true }), setCustom(null))}>
+              {t('Done')}
+            </button>
+          }
+        >
+          <CustomRepeat spec={custom} startWall={startWall} startDay={startDay} onChange={setCustom} />
+        </PushScreen>
+      )}
+    </>
+  );
+}
+
+/** Custom repeat, as rows: every N units, on which weekdays, which day of the month, and when it ends. */
+function CustomRepeat({ spec, startWall, startDay, onChange }: { spec: RepeatSpec; startWall: number; startDay: string; onChange: (s: RepeatSpec) => void }) {
+  const f = dateFacts(startWall);
+  const ends = spec.count ? 'count' : spec.until ? 'until' : 'never';
+  const monthModes: Option<NonNullable<RepeatSpec['monthly']>>[] = [
+    { value: 'date', label: monthlyWords('date', startWall) },
+    { value: 'nth', label: monthlyWords('nth', startWall) },
+    ...(f.lastWeek ? [{ value: 'lastWeekday' as const, label: monthlyWords('lastWeekday', startWall) }] : []),
+    ...(f.lastDay ? [{ value: 'last' as const, label: monthlyWords('last', startWall) }] : []),
+  ];
+  const endRow = (v: 'never' | 'until' | 'count', label: string, extra?: React.ReactNode) => (
+    <div className={`rp-opt rp-end${ends === v ? ' on' : ''}`}>
+      <button type="button" role="radio" aria-checked={ends === v} className="rp-end-pick" onClick={() => onChange({ ...spec, until: v === 'until' ? (spec.until ?? addMonths(startDay, 3)) : undefined, count: v === 'count' ? (spec.count ?? 10) : undefined })}>
+        <span className="rp-radio" aria-hidden />
+        <span className="rp-opt-text">{label}</span>
+      </button>
+      {ends === v && extra}
+    </div>
+  );
+  return (
+    <div className="rp-custom-page">
+      <div className="rp-c-row">
+        <span className="rp-c-label">{t('Every')}</span>
+        <Stepper value={spec.interval} max={99} onChange={(interval) => onChange({ ...spec, interval })} label={t('How often')} />
+        <Select<Freq>
+          value={spec.freq}
+          options={(['DAILY', 'WEEKLY', 'MONTHLY', 'YEARLY'] as Freq[]).map((x) => ({ value: x, label: unit(x, spec.interval) }))}
+          onChange={(freq) => onChange({ freq, interval: spec.interval, until: spec.until, count: spec.count, ...(freq === 'WEEKLY' ? { days: [f.wd] } : freq === 'MONTHLY' ? { monthly: 'date' } : {}) })}
+          label={t('Days, weeks, months or years')}
+          title={t('Every')}
+          className="sel-flat rp-unit"
+          width={160}
+        />
+      </div>
+      {spec.freq === 'WEEKLY' && (
+        <div className="rp-c-block">
+          <div className="rp-c-head">{t('On')}</div>
+          <Days days={spec.days ?? [f.wd]} onChange={(days) => onChange({ ...spec, days })} />
+        </div>
+      )}
+      {spec.freq === 'MONTHLY' && (
+        <div className="rp-c-block">
+          <Select value={spec.monthly ?? 'date'} options={monthModes} onChange={(monthly) => onChange({ ...spec, monthly })} label={t('Which day of the month')} title={t('Which day')} className="sel-flat" width={240} />
+        </div>
+      )}
+      <div className="rp-c-block" role="radiogroup" aria-label={t('Ends')}>
+        <div className="rp-c-head">{t('Ends')}</div>
+        {endRow('never', t('Never'))}
+        {endRow('until', t('On a date'), <DatePicker value={spec.until} onChange={(v) => v && onChange({ ...spec, until: v < startDay ? startDay : v })} clearable={false} label={t('Last day')} />)}
+        {endRow(
+          'count',
+          t('After a number of times'),
+          <span className="rp-count">
+            <Stepper value={spec.count ?? 10} onChange={(count) => onChange({ ...spec, count })} label={t('How many times')} />
+            <span className="rp-label">{tn(spec.count ?? 10, 'time', 'times')}</span>
+          </span>,
+        )}
+      </div>
+    </div>
+  );
 }

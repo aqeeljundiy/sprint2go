@@ -154,6 +154,24 @@ export function useSidebarDrawer(on = true) {
   }, [on]);
 }
 
+/* ---------- The company sheet, opened from an app's own place (Calendar's drawer header) ---------- */
+
+const companyOpeners = new Set<() => void>();
+/** Opens the shell's company sheet (you, your status, your companies), the one behind the top bar's logo. */
+export function openCompanySheet() {
+  companyOpeners.forEach((f) => f());
+}
+/** Used by the shell's top bar: what opens its company sheet. */
+export function useCompanySheetOpener(open: () => void) {
+  const ref = useRef(open);
+  ref.current = open;
+  useEffect(() => {
+    const f = () => ref.current();
+    companyOpeners.add(f);
+    return () => void companyOpeners.delete(f);
+  }, []);
+}
+
 /* ---------- The top bar: which parts an app owns (filled by <TopBar>, src/mobile/TopBar.tsx) ---------- */
 
 export interface TopBarClaim {
