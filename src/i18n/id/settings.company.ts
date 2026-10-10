@@ -234,7 +234,7 @@ const id: Record<string, string> = {
   // The demo's sample log
   'changed the AI setup to Balanced': 'mengubah pengaturan AI ke Seimbang',
   'added an Anthropic key': 'menambahkan key Anthropic',
-  'invited Laras Anindita as a guest in #kopinara': 'mengundang Laras Anindita sebagai tamu di #kopinara',
+  'invited Laura Anderson as a guest in #kopinara': 'mengundang Laura Anderson sebagai tamu di #kopinara',
   'downloaded the September invoice': 'mengunduh invoice September',
   '2 hours ago': '2 jam lalu',
   '3 days ago': '3 hari lalu',

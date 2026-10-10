@@ -70,7 +70,7 @@ const id: Record<string, string> = {
   'What you haven’t opened on top': 'Yang belum Anda buka di atas',
   'Starred mail on top': 'Email berbintang di atas',
   'Multiple inboxes': 'Beberapa kotak masuk',
-  'Sections above your inbox, each one a search: is:starred, label:finance, from:laras.': 'Bagian di atas kotak masuk Anda, masing-masing sebuah pencarian: is:starred, label:finance, from:laras.',
+  'Sections above your inbox, each one a search: is:starred, label:finance, from:laura.': 'Bagian di atas kotak masuk Anda, masing-masing sebuah pencarian: is:starred, label:finance, from:laura.',
   'Name, e.g. Starred': 'Nama, mis. Berbintang',
   'Search, e.g. is:starred': 'Pencarian, mis. is:starred',
   'Section search': 'Pencarian bagian',

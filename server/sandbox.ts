@@ -129,7 +129,7 @@ export function make(owner: string, person: { name: string }, tz?: string): Prom
  * today's data, so nobody keeps seeing the old names. Returns how many were remade.
  */
 export function refreshStale(nameOf: (owner: string) => { name: string; tz?: string }): number {
-  const stale = db.db.prepare("SELECT DISTINCT owner FROM sandbox_docs WHERE coll = 'workspaces' AND (data LIKE '%Pixel & Profits%' OR data LIKE '%pixelandprofits%' OR data LIKE '%Elkiya%' OR data LIKE '%sprint2go Studio%')").all() as { owner: string }[];
+  const stale = db.db.prepare("SELECT DISTINCT owner FROM sandbox_docs WHERE (coll = 'workspaces' AND (data LIKE '%Pixel & Profits%' OR data LIKE '%pixelandprofits%' OR data LIKE '%Elkiya%' OR data LIKE '%sprint2go Studio%')) OR (coll IN ('users', 'clients') AND (data LIKE '%Hartono%' OR data LIKE '%Anindita%' OR data LIKE '%Kusnadi%'))").all() as { owner: string }[];
   for (const { owner } of stale) {
     const p = nameOf(owner);
     void make(owner, { name: p.name }, p.tz).catch((e) => console.error('[sandbox]', e instanceof Error ? e.message : e));

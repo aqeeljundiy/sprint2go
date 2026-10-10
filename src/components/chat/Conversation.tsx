@@ -116,8 +116,8 @@ export interface ViewProps {
 }
 
 const commands = () => [
-  { cmd: '/task', hint: t('Make a task: /task Send the deck @Bima friday') },
-  { cmd: '/remind', hint: t('Remind yourself: /remind call Laras tomorrow') },
+  { cmd: '/task', hint: t('Make a task: /task Send the deck @Owen friday') },
+  { cmd: '/remind', hint: t('Remind yourself: /remind call Laura tomorrow') },
 ];
 
 // The day words /task and /remind understand, in English and Indonesian ("minggu depan" before "minggu", Sunday).

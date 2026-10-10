@@ -1,6 +1,6 @@
 // Mail smoke test: starts the server (not production, demo data, throwaway data folder, free ports), then talks SMTP
 // to it like any other mail server would, and reads the database to see what really happened:
-//  1. mail to a seed mailbox (raka@demo.sprint2go.com) is stored in that mailbox
+//  1. mail to a seed mailbox (james@demo.sprint2go.com) is stored in that mailbox
 //  2. a "Some of each" routing test address is accepted and swallowed, and the company's lastCheck says it worked
 //  3. an unknown routing test address is refused
 //  4. a second company that adds demo.sprint2go.com gets none of its mail
@@ -114,9 +114,9 @@ try {
 
   // 1. Ordinary mail to a seed mailbox.
   const s1 = `smoke ${randomBytes(4).toString('hex')}`;
-  await send('raka@demo.sprint2go.com', s1);
+  await send('james@demo.sprint2go.com', s1);
   const t1 = await waitFor(() => threadWith(s1)[0]);
-  check(!!t1 && t1.accountId === 'pnp-raka' && t1.workspaceId === 'pnp', 'mail to raka@demo.sprint2go.com is stored in that mailbox');
+  check(!!t1 && t1.accountId === 'pnp-james' && t1.workspaceId === 'pnp', 'mail to james@demo.sprint2go.com is stored in that mailbox');
 
   // 2. A routing test the server sent (made here in its table): accepted, swallowed, and recorded on the company.
   const token = randomBytes(12).toString('hex');
@@ -134,18 +134,18 @@ try {
   check(refused, 'an unknown routing test address is refused (550)');
 
   // 4. A second company claims demo.sprint2go.com: the first one keeps its mail; the newcomer's addresses get nothing.
-  const other = { id: 'smoke-other', name: 'Not sprint2go demo', domains: ['demo.sprint2go.com'], members: [], emailSetup: 'hosted', accounts: [{ id: 'other-raka', email: 'raka@demo.sprint2go.com', name: 'Impostor', kind: 'personal', users: [] }, { id: 'other-only', email: 'only-other@demo.sprint2go.com', name: 'Impostor', kind: 'personal', users: [] }] };
+  const other = { id: 'smoke-other', name: 'Not sprint2go demo', domains: ['demo.sprint2go.com'], members: [], emailSetup: 'hosted', accounts: [{ id: 'other-james', email: 'james@demo.sprint2go.com', name: 'Impostor', kind: 'personal', users: [] }, { id: 'other-only', email: 'only-other@demo.sprint2go.com', name: 'Impostor', kind: 'personal', users: [] }] };
   db.prepare("INSERT INTO docs (coll, id, data, updated_at, updated_by) VALUES ('workspaces', ?, ?, ?, NULL)").run(other.id, JSON.stringify(other), new Date().toISOString());
   const s4 = `smoke-owner ${randomBytes(4).toString('hex')}`;
-  await send('raka@demo.sprint2go.com', s4);
+  await send('james@demo.sprint2go.com', s4);
   const t4 = await waitFor(() => threadWith(s4)[0]);
-  check(!!t4 && t4.accountId === 'pnp-raka', 'with a second company on the same domain, mail still goes to the company that holds it');
+  check(!!t4 && t4.accountId === 'pnp-james', 'with a second company on the same domain, mail still goes to the company that holds it');
   const refusedOther = await send('only-other@demo.sprint2go.com', 'not yours').then(() => false, (e) => e.responseCode === 550);
   check(refusedOther, 'the second company’s own address at that domain is refused');
 
   // 5. Read tracking, end to end.
   const base = `http://127.0.0.1:${httpPort}`;
-  const login = await fetch(`${base}/api/login`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: 'raka@demo.sprint2go.com', password: env.SEED_PASSWORD }) });
+  const login = await fetch(`${base}/api/login`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: 'james@demo.sprint2go.com', password: env.SEED_PASSWORD }) });
   const cookie = (login.headers.get('set-cookie') ?? '').split(';')[0];
   check(login.ok && cookie.startsWith('s2g='), 'signs in as the sender');
   const api = (path, body) => fetch(`${base}${path}`, { method: 'POST', headers: { 'content-type': 'application/json', cookie }, body: JSON.stringify(body) });
@@ -161,15 +161,15 @@ try {
   const to = [
     { name: 'Client One', email: 'client@outside-smoke.example' },
     { name: 'Client Two', email: 'second@outside-smoke.example' },
-    { name: 'Bima', email: 'bima@demo.sprint2go.com' },
+    { name: 'Owen', email: 'owen@demo.sprint2go.com' },
   ];
   const html = '<p>Hello, see <a href="https://shop.example/offer?id=7&amp;x=1">the offer</a>.</p>';
   // The app saves the sent copy (with the recipients it expects to track, and a made-up open), then asks to send it.
   const made = Object.fromEntries(to.slice(0, 2).map((p) => [p.email, { opens: [{ at: new Date().toISOString(), device: 'made up' }], clicks: [] }]));
-  const message = { id: mid, from: { name: 'Raka', email: 'raka@demo.sprint2go.com' }, to, date: new Date().toISOString(), body: 'Hello, see the offer.', html, tracking: made, trackOptions: { opens: true, clicks: true, notify: true, attachments: false, details: false, remindDays: 3 } };
-  const saved = await api('/api/sync', { coll: 'threads', upserts: [{ id: tid, accountId: 'pnp-raka', workspaceId: 'pnp', subject, location: 'archive', starred: false, unread: false, labels: [], messages: [message] }], deletes: [] });
+  const message = { id: mid, from: { name: 'James', email: 'james@demo.sprint2go.com' }, to, date: new Date().toISOString(), body: 'Hello, see the offer.', html, tracking: made, trackOptions: { opens: true, clicks: true, notify: true, attachments: false, details: false, remindDays: 3 } };
+  const saved = await api('/api/sync', { coll: 'threads', upserts: [{ id: tid, accountId: 'pnp-james', workspaceId: 'pnp', subject, location: 'archive', starred: false, unread: false, labels: [], messages: [message] }], deletes: [] });
   check(saved.ok, 'the app saves the sent copy');
-  const sendBody = { workspaceId: 'pnp', accountId: 'pnp-raka', threadId: tid, messageId: mid, to, cc: [], subject, text: 'Hello, see the offer.', html, files: [], track: true, trackOptions: { opens: true, clicks: true, notify: true } };
+  const sendBody = { workspaceId: 'pnp', accountId: 'pnp-james', threadId: tid, messageId: mid, to, cc: [], subject, text: 'Hello, see the offer.', html, files: [], track: true, trackOptions: { opens: true, clicks: true, notify: true } };
   canSend();
   let sent = await api('/api/mail/send', sendBody);
   if (sent.status === 409) (canSend(), (sent = await api('/api/mail/send', sendBody)));
@@ -196,7 +196,7 @@ try {
         .prepare("SELECT data FROM docs WHERE coll = 'threads' AND data LIKE ?")
         .all(`%${subject}%`)
         .map((r) => JSON.parse(r.data))
-        .find((t) => t.accountId === 'pnp-bima'),
+        .find((t) => t.accountId === 'pnp-owen'),
     );
     check(!!inside && !String(inside.messages[0].html ?? '').includes('/t/o/'), 'the teammate’s copy has no picture');
     const t0 = thread();
@@ -233,7 +233,7 @@ try {
       const list = db.prepare("SELECT data FROM docs WHERE coll = 'notices' AND data LIKE ?").all(`%${subject}%`).map((r) => JSON.parse(r.data));
       return list.length >= 2 ? list : null;
     });
-    check(notices?.length === 2 && notices.every((n) => n.userId === 'u-raka' && n.event === 'opened' && n.link?.id === tid), 'the sender hears about the first open by each person, not the automatic one');
+    check(notices?.length === 2 && notices.every((n) => n.userId === 'u-james' && n.event === 'opened' && n.link?.id === tid), 'the sender hears about the first open by each person, not the automatic one');
     // The app can't write opens: a copy with its own opens and delivery state keeps the server's.
     const before = thread();
     const forged = { ...before, unread: true, messages: [{ ...before.messages[0], delivery: { state: 'failed', at: new Date().toISOString() }, tracking: { 'client@outside-smoke.example': { opens: [], clicks: [] } } }] };
@@ -243,11 +243,11 @@ try {
     // The app's real order: it asks to send first and saves the thread a moment later. The server's marks still land.
     const tid2 = `t-smoke-${randomBytes(4).toString('hex')}`;
     const mid2 = `m-smoke-${randomBytes(4).toString('hex')}`;
-    const to2 = [{ name: 'Third', email: 'third@outside-smoke.example' }, { name: 'Bima', email: 'bima@demo.sprint2go.com' }];
+    const to2 = [{ name: 'Third', email: 'third@outside-smoke.example' }, { name: 'Owen', email: 'owen@demo.sprint2go.com' }];
     canSend();
     const sent2 = await api('/api/mail/send', { ...sendBody, threadId: tid2, messageId: mid2, to: to2, subject: `${subject} later` });
-    const both = Object.fromEntries(to2.map((p) => [p.email, { opens: [], clicks: [] }])); // the app's guess: Bima too
-    await api('/api/sync', { coll: 'threads', upserts: [{ id: tid2, accountId: 'pnp-raka', workspaceId: 'pnp', subject: `${subject} later`, location: 'archive', starred: false, unread: false, labels: [], messages: [{ ...message, id: mid2, to: to2, tracking: both }] }], deletes: [] });
+    const both = Object.fromEntries(to2.map((p) => [p.email, { opens: [], clicks: [] }])); // the app's guess: Owen too
+    await api('/api/sync', { coll: 'threads', upserts: [{ id: tid2, accountId: 'pnp-james', workspaceId: 'pnp', subject: `${subject} later`, location: 'archive', starred: false, unread: false, labels: [], messages: [{ ...message, id: mid2, to: to2, tracking: both }] }], deletes: [] });
     const t2 = await waitFor(() => {
       const t = JSON.parse(db.prepare("SELECT data FROM docs WHERE coll = 'threads' AND id = ?").get(tid2)?.data ?? 'null');
       return t?.messages?.[0]?.delivery?.state === 'sent' ? t : null;
@@ -258,7 +258,7 @@ try {
   // 6. Bcc: the hidden recipient gets the email; no copy names them, in its headers or in a teammate's mailbox.
   const s6 = `bcc ${randomBytes(4).toString('hex')}`;
   canSend();
-  const sent6 = await api('/api/mail/send', { workspaceId: 'pnp', accountId: 'pnp-raka', threadId: `t-smoke-${randomBytes(4).toString('hex')}`, messageId: `m-smoke-${randomBytes(4).toString('hex')}`, to: [{ name: 'Open', email: 'open@outside-smoke.example' }], cc: [{ name: 'Bima', email: 'bima@demo.sprint2go.com' }], bcc: [{ name: 'Hidden', email: 'hidden@outside-smoke.example' }], subject: s6, text: 'Bcc check', files: [] });
+  const sent6 = await api('/api/mail/send', { workspaceId: 'pnp', accountId: 'pnp-james', threadId: `t-smoke-${randomBytes(4).toString('hex')}`, messageId: `m-smoke-${randomBytes(4).toString('hex')}`, to: [{ name: 'Open', email: 'open@outside-smoke.example' }], cc: [{ name: 'Owen', email: 'owen@demo.sprint2go.com' }], bcc: [{ name: 'Hidden', email: 'hidden@outside-smoke.example' }], subject: s6, text: 'Bcc check', files: [] });
   check(sent6.ok, `the mail engine takes an email with Bcc (${sent6.status})`);
   const got6 = await waitFor(() => {
     const m = sunk.filter((x) => x.raw.includes(s6));
@@ -266,7 +266,7 @@ try {
   });
   check(!!got6 && got6.some((m) => m.to.includes('hidden@outside-smoke.example')), 'the Bcc recipient gets a copy');
   check(!!got6 && got6.every((m) => !/hidden@outside-smoke/i.test(m.raw.toString('utf8').split(/\r?\n\r?\n/)[0])), 'no copy names them in its headers');
-  const inside6 = await waitFor(() => threadWith(s6).find((t) => t.accountId === 'pnp-bima'));
+  const inside6 = await waitFor(() => threadWith(s6).find((t) => t.accountId === 'pnp-owen'));
   check(!!inside6 && !JSON.stringify(inside6.messages[0].to).includes('hidden@'), 'the teammate’s copy doesn’t list them either');
 
   db.close();

@@ -30,15 +30,15 @@ const check = (ok, what) => {
 
 /* ---------- 1. the matcher ---------- */
 {
-  const laras = { name: 'Laras Anindita', email: 'laras@kopinara.example' };
-  const f = (extra = {}) => ({ from: laras, to: [{ name: 'Raka', email: 'raka@pnp.test' }], subject: 'Invoice 42 for October', body: 'Please find the purchase order attached. Thanks!', size: 120_000, attachments: [{ name: 'PO-42.pdf' }], ...extra });
-  check(matches({ from: 'laras@kopinara.example' }, f()) && !matches({ from: 'yusuf@kopinara.example' }, f()), 'from: an exact address');
-  check(matches({ from: '@kopinara.example' }, f()) && matches({ from: 'kopinara.example' }, f()) && matches({ from: 'co.example' }, f({ from: { email: 'laras@kopinara.co.example' } })), 'from: a domain, with or without @, and its parent domain');
+  const laura = { name: 'Laura Anderson', email: 'laura@kopinara.example' };
+  const f = (extra = {}) => ({ from: laura, to: [{ name: 'James', email: 'james@pnp.test' }], subject: 'Invoice 42 for October', body: 'Please find the purchase order attached. Thanks!', size: 120_000, attachments: [{ name: 'PO-42.pdf' }], ...extra });
+  check(matches({ from: 'laura@kopinara.example' }, f()) && !matches({ from: 'ethan@kopinara.example' }, f()), 'from: an exact address');
+  check(matches({ from: '@kopinara.example' }, f()) && matches({ from: 'kopinara.example' }, f()) && matches({ from: 'co.example' }, f({ from: { email: 'laura@kopinara.co.example' } })), 'from: a domain, with or without @, and its parent domain');
   check(matches({ from: '@mail.kopinara.example' }, f()) === false && matches({ from: '@kopinara.example' }, f({ from: { email: 'a@mail.kopinara.example' } })), 'from: a domain matches its subdomains, not the other way round');
   check(matches({ from: '*@kopi*.example' }, f()) && !matches({ from: '*@bank.co.id' }, f()), 'from: wildcards');
-  check(matches({ from: 'laras' }, f()) && matches({ from: 'Anindita' }, f()), 'from: part of the name or address');
-  check(matches({ from: 'yusuf@x.test, @kopinara.example' }, f()) && matches({ from: 'yusuf@x.test OR laras@kopinara.example' }, f()), 'from: a list (commas or OR)');
-  check(matches({ to: 'raka@pnp.test' }, f()) && matches({ to: '@pnp.test' }, f({ to: [{ email: 'x@else.test' }, { email: 'cc@pnp.test' }] })) && !matches({ to: '@else.test' }, f()), 'to: To and Cc');
+  check(matches({ from: 'laura' }, f()) && matches({ from: 'Anderson' }, f()), 'from: part of the name or address');
+  check(matches({ from: 'ethan@x.test, @kopinara.example' }, f()) && matches({ from: 'ethan@x.test OR laura@kopinara.example' }, f()), 'from: a list (commas or OR)');
+  check(matches({ to: 'james@pnp.test' }, f()) && matches({ to: '@pnp.test' }, f({ to: [{ email: 'x@else.test' }, { email: 'cc@pnp.test' }] })) && !matches({ to: '@else.test' }, f()), 'to: To and Cc');
   check(matches({ subject: 'invoice' }, f()) && !matches({ subject: 'receipt' }, f()) && matches({ subject: 'invoice october' }, f()), 'subject: every word');
   check(matches({ hasWords: '"purchase order"' }, f()) && !matches({ hasWords: '"order purchase"' }, f()), 'has the words: a phrase in quotes');
   check(matches({ hasWords: 'receipt OR invoice' }, f()) && !matches({ hasWords: 'receipt OR refund' }, f()), 'has the words: OR');
@@ -50,7 +50,7 @@ const check = (ok, what) => {
   check(matches({ hasAttachment: true }, f()) && !matches({ hasAttachment: true }, f({ attachments: [] })) && !matches({ hasAttachment: true }, f({ attachments: [{ name: 'invite.ics' }] })), 'has attachment (a calendar invite isn’t one)');
   check(matches({ attachment: 'pdf' }, f()) && matches({ attachment: 'document' }, f()) && !matches({ attachment: 'spreadsheet' }, f()) && matches({ attachment: 'PO-*' }, f()) && matches({ attachment: 'po-42' }, f()), 'attachment: a type, a wildcard or part of the name');
   check(matches({ list: 'news.acme.test' }, f({ listId: 'Acme News <news.acme.test>' })) && matches({ list: '*' }, f({ listId: '<x.test>' })) && !matches({ list: '*' }, f()), 'mailing list: by its List-Id, or any list');
-  check(matches({ deliveredTo: 'sales@pnp.test' }, f({ deliveredTo: ['sales@pnp.test'] })) && !matches({ deliveredTo: 'sales@pnp.test' }, f({ deliveredTo: ['raka@pnp.test'] })), 'sent to: the address it came in through');
+  check(matches({ deliveredTo: 'sales@pnp.test' }, f({ deliveredTo: ['sales@pnp.test'] })) && !matches({ deliveredTo: 'sales@pnp.test' }, f({ deliveredTo: ['james@pnp.test'] })), 'sent to: the address it came in through');
   check(!matches({}, f()) && !matches({ from: '  ' }, f()), 'an empty filter matches nothing');
   check(matches({ from: '@kopinara.example', subject: 'invoice', hasAttachment: true }, f()) && !matches({ from: '@kopinara.example', subject: 'receipt' }, f()), 'every criterion must hold');
   const facts = factsOf('Weekly news', { from: { email: 'n@news.test' }, to: [{ email: 'a@b.test' }], cc: [{ email: 'c@b.test' }], body: 'hi', listUnsubscribe: { url: 'https://news.acme.test/u?x=1' }, attachments: [{ name: 'a.pdf', size: '1.5 MB' }] });
@@ -244,7 +244,7 @@ try {
   check(r.saved === 12, 'Alice makes filters for her mailbox');
   check(doc('mailFilters', 'f-kopi').createdBy === 'u-alice' && doc('mailFilters', 'f-kopi').hits === 0, 'who made it and how often it ran are the server’s');
 
-  let t = await arrive({ from: 'Laras <laras@kopinara.test>', to: 'alice@acme.test', subject: 'Q4 concepts', text: 'Here they are.' });
+  let t = await arrive({ from: 'Laura <laura@kopinara.test>', to: 'alice@acme.test', subject: 'Q4 concepts', text: 'Here they are.' });
   check(t.labels.includes('lb-kopi') && t.location === 'archive' && t.starred === true && t.filed?.at(-1)?.name === 'Kopinara' && t.filed.at(-1).scope === 'mine', 'label, skip the inbox and star, with “Filed by your filter” on it');
   check((await waitFor(() => doc('mailFilters', 'f-kopi').hits === 1, 3000)) === true, 'the filter counts what it did');
   t = await arrive({ from: 'news@else.test', to: 'alice@acme.test', subject: 'Weekly newsletter', text: 'news' });
@@ -427,7 +427,7 @@ try {
   const refused2 = await imap.mailboxDelete('Sent').then(() => 'deleted', () => 'refused');
   check(refused === 'refused' && refused2 === 'refused', 'the places themselves (INBOX, Sent) can’t be made or deleted');
   // Mail moved in from elsewhere runs through the filters (marks only).
-  await imap.append('INBOX', Buffer.from(`From: Laras <laras@kopinara.test>\r\nTo: alice@acme.test\r\nSubject: Imported concepts\r\nMessage-ID: <imp1@kopinara.test>\r\nDate: ${new Date().toUTCString()}\r\n\r\nOld mail\r\n`));
+  await imap.append('INBOX', Buffer.from(`From: Laura <laura@kopinara.test>\r\nTo: alice@acme.test\r\nSubject: Imported concepts\r\nMessage-ID: <imp1@kopinara.test>\r\nDate: ${new Date().toUTCString()}\r\n\r\nOld mail\r\n`));
   const imported = await waitFor(() => all('threads').find((x) => x.subject === 'Imported concepts'), 4000);
   check(!!imported && imported.labels.includes('lb-kopi') && imported.location === 'archive', 'mail imported into INBOX by a mail app is filtered too');
 

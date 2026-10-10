@@ -1,5 +1,5 @@
 // Security and billing, end to end: starts the server (not production, demo data, throwaway data folder, free ports,
-// a local SMTP sink as "the world"), signs in as the demo's owner (Raka), a member (Intan) and a guest (Laras at
+// a local SMTP sink as "the world"), signs in as the demo's owner (James), a member (Isabel) and a guest (Laura at
 // Kopinara), and checks on the server what each may see and change:
 //  1. projects: a member sees only the projects she's on, and nothing inside the others, until the company lets her
 //  2. guests, notices and chat: who may add guests, whom a notice reaches, and someone else's message
@@ -145,22 +145,22 @@ try {
     w.mailReady = { at: now(), receive: true, send: true, why: {}, mailboxes: Object.fromEntries((w.accounts ?? []).map((a) => [a.id, { receive: true, send: true }])) };
     put('workspaces', w);
   };
-  const raka = await signIn('raka@demo.sprint2go.com');
-  const intan = await signIn('intan@demo.sprint2go.com');
-  const laras = await signIn('laras@kopinara.example');
-  check(raka.ok && intan.ok && laras.ok, 'the owner, a member and a guest sign in');
+  const james = await signIn('james@demo.sprint2go.com');
+  const isabel = await signIn('isabel@demo.sprint2go.com');
+  const laura = await signIn('laura@kopinara.example');
+  check(james.ok && isabel.ok && laura.ok, 'the owner, a member and a guest sign in');
 
   /* ---------- 1. projects ---------- */
-  const secret = { id: 'c-secret', workspaceId: 'pnp', name: 'Secret launch', color: '#111', status: 'active', ownerId: 'u-raka', people: [{ email: 'cfo@secret.example', name: 'The CFO', role: 'approver', status: 'joined', invitedBy: 'u-raka', at: now() }] };
+  const secret = { id: 'c-secret', workspaceId: 'pnp', name: 'Secret launch', color: '#111', status: 'active', ownerId: 'u-james', people: [{ email: 'cfo@secret.example', name: 'The CFO', role: 'approver', status: 'joined', invitedBy: 'u-james', at: now() }] };
   put('clients', secret);
-  put('channels', { id: 'ch-secret', workspaceId: 'pnp', kind: 'channel', name: 'secret-launch', members: ['u-raka'], clientId: 'c-secret', category: 'client' });
-  put('messages', { id: 'msg-secret', channelId: 'ch-secret', userId: 'u-raka', text: 'the numbers', at: now() });
-  put('meetings', { id: 'mt-secret', workspaceId: 'pnp', title: 'Secret pricing', at: now(), minutes: 30, clientId: 'c-secret', attendees: ['Raka'], summary: 'prices', actions: [] });
+  put('channels', { id: 'ch-secret', workspaceId: 'pnp', kind: 'channel', name: 'secret-launch', members: ['u-james'], clientId: 'c-secret', category: 'client' });
+  put('messages', { id: 'msg-secret', channelId: 'ch-secret', userId: 'u-james', text: 'the numbers', at: now() });
+  put('meetings', { id: 'mt-secret', workspaceId: 'pnp', title: 'Secret pricing', at: now(), minutes: 30, clientId: 'c-secret', attendees: ['James'], summary: 'prices', actions: [] });
   put('drive', { id: 'dr-secret-folder', name: 'Secret', kind: 'folder', parentId: null, size: 0, modified: now(), workspaceId: 'pnp', clientId: 'c-secret' });
   put('drive', { id: 'dr-secret-file', name: 'deck.pdf', kind: 'pdf', parentId: 'dr-secret-folder', size: 10, modified: now(), workspaceId: 'pnp' });
-  put('notes', { id: 'nt-secret', workspaceId: 'pnp', title: 'Plan', html: 'x', ownerId: 'u-raka', visibility: 'team', clientId: 'c-secret', createdAt: now(), updatedAt: now(), updatedBy: 'u-raka' });
-  put('quotes', { id: 'q-secret', workspaceId: 'pnp', clientId: 'c-secret', status: 'draft', createdBy: 'u-raka' });
-  put('tables', { id: 'tb-secret', workspaceId: 'pnp', name: 'Leads', color: '#111', clientId: 'c-secret', fields: [{ id: 'f1', name: 'Name', type: 'text' }], views: [], createdBy: 'u-raka' });
+  put('notes', { id: 'nt-secret', workspaceId: 'pnp', title: 'Plan', html: 'x', ownerId: 'u-james', visibility: 'team', clientId: 'c-secret', createdAt: now(), updatedAt: now(), updatedBy: 'u-james' });
+  put('quotes', { id: 'q-secret', workspaceId: 'pnp', clientId: 'c-secret', status: 'draft', createdBy: 'u-james' });
+  put('tables', { id: 'tb-secret', workspaceId: 'pnp', name: 'Leads', color: '#111', clientId: 'c-secret', fields: [{ id: 'f1', name: 'Name', type: 'text' }], views: [], createdBy: 'u-james' });
   put('rows', { id: 'rw-secret', workspaceId: 'pnp', tableId: 'tb-secret', values: { f1: 'Big client' }, order: 1 });
   const ids = (s) => ({
     clients: s.clients.some((c) => c.id === 'c-secret'),
@@ -173,88 +173,88 @@ try {
     tables: s.tables.some((t) => t.id === 'tb-secret'),
     rows: s.rows.some((r) => r.id === 'rw-secret'),
   });
-  const owner1 = ids(await raka.state());
+  const owner1 = ids(await james.state());
   check(Object.values(owner1).every(Boolean), `the owner sees the project and everything in it (${JSON.stringify(owner1)})`);
-  const member1 = ids(await intan.state());
+  const member1 = ids(await isabel.state());
   check(Object.values(member1).every((v) => !v), `a member who isn't on it sees none of it (${JSON.stringify(member1)})`);
-  check(!(await intan.state()).users.some((u) => u.email === 'cfo@secret.example'), 'nor its guests’ names');
-  const poke = await intan.sync('clients', [{ ...secret, name: 'Mine now' }]);
+  check(!(await isabel.state()).users.some((u) => u.email === 'cfo@secret.example'), 'nor its guests’ names');
+  const poke = await isabel.sync('clients', [{ ...secret, name: 'Mine now' }]);
   check(poke.saved === 0 && doc('clients', 'c-secret').name === 'Secret launch', 'she can’t change it either');
   const pnp = doc('workspaces', 'pnp');
-  await raka.sync('workspaces', [{ ...pnp, permissions: { ...(pnp.permissions ?? {}), seeAllProjects: true } }]);
-  const member2 = ids(await intan.state());
+  await james.sync('workspaces', [{ ...pnp, permissions: { ...(pnp.permissions ?? {}), seeAllProjects: true } }]);
+  const member2 = ids(await isabel.state());
   check(member2.clients && member2.channels && member2.meetings && member2.drive && member2.tables, 'with “See every project” on, she sees it');
   const pnp2 = doc('workspaces', 'pnp');
-  await raka.sync('workspaces', [{ ...pnp2, permissions: { ...(pnp2.permissions ?? {}), seeAllProjects: false, inviteGuests: false } }]);
+  await james.sync('workspaces', [{ ...pnp2, permissions: { ...(pnp2.permissions ?? {}), seeAllProjects: false, inviteGuests: false } }]);
 
   /* ---------- 2. guests, notices, chat ---------- */
-  put('clients', { id: 'c-team', workspaceId: 'pnp', name: 'Team project', color: '#222', status: 'active', ownerId: 'u-raka', members: [{ userId: 'u-intan', role: 'member', addedBy: 'u-raka', at: now() }], people: [] });
-  const added = await intan.sync('clients', [{ ...doc('clients', 'c-team'), people: [{ email: 'friend@outside.example', name: 'Friend', role: 'approver', status: 'joined', invitedBy: 'u-intan', at: now() }] }]);
+  put('clients', { id: 'c-team', workspaceId: 'pnp', name: 'Team project', color: '#222', status: 'active', ownerId: 'u-james', members: [{ userId: 'u-isabel', role: 'member', addedBy: 'u-james', at: now() }], people: [] });
+  const added = await isabel.sync('clients', [{ ...doc('clients', 'c-team'), people: [{ email: 'friend@outside.example', name: 'Friend', role: 'approver', status: 'joined', invitedBy: 'u-isabel', at: now() }] }]);
   check(doc('clients', 'c-team').people.length === 0 && /Lead/.test(added.why ?? ''), 'without “Invite guests”, a member can’t make someone a guest (and is told why)');
-  const outsider = await intan.sync('notices', [{ id: 'n-x', userId: 'u-yusuf', workspaceId: 'pnp', kind: 'team', text: 'click this', at: now(), read: false, url: 'https://evil.example' }]);
+  const outsider = await isabel.sync('notices', [{ id: 'n-x', userId: 'u-ethan', workspaceId: 'pnp', kind: 'team', text: 'click this', at: now(), read: false, url: 'https://evil.example' }]);
   check(outsider.saved === 0 && !doc('notices', 'n-x'), 'a notice can’t go to someone outside the company');
-  await intan.sync('notices', [{ id: 'n-y', userId: 'u-bima', workspaceId: 'pnp', kind: 'team', text: 'hi', at: now(), read: false, url: 'https://evil.example' }]);
+  await isabel.sync('notices', [{ id: 'n-y', userId: 'u-owen', workspaceId: 'pnp', kind: 'team', text: 'hi', at: now(), read: false, url: 'https://evil.example' }]);
   check(doc('notices', 'n-y') && !doc('notices', 'n-y').url, 'a notice links only inside the app');
-  put('channels', { id: 'ch-both', workspaceId: 'pnp', kind: 'channel', name: 'both', members: ['u-raka', 'u-intan'] });
-  put('messages', { id: 'msg-raka', channelId: 'ch-both', userId: 'u-raka', text: 'I said this', at: now() });
-  await intan.sync('messages', [{ ...doc('messages', 'msg-raka'), text: 'I said something else', reactions: { '👍': ['u-intan'] } }]);
-  const m = doc('messages', 'msg-raka');
-  check(m.text === 'I said this' && m.reactions?.['👍']?.[0] === 'u-intan', 'someone else’s message: a reaction yes, its words no');
-  await intan.sync('messages', [], ['msg-raka']);
-  check(!!doc('messages', 'msg-raka'), 'and she can’t delete it');
+  put('channels', { id: 'ch-both', workspaceId: 'pnp', kind: 'channel', name: 'both', members: ['u-james', 'u-isabel'] });
+  put('messages', { id: 'msg-james', channelId: 'ch-both', userId: 'u-james', text: 'I said this', at: now() });
+  await isabel.sync('messages', [{ ...doc('messages', 'msg-james'), text: 'I said something else', reactions: { '👍': ['u-isabel'] } }]);
+  const m = doc('messages', 'msg-james');
+  check(m.text === 'I said this' && m.reactions?.['👍']?.[0] === 'u-isabel', 'someone else’s message: a reaction yes, its words no');
+  await isabel.sync('messages', [], ['msg-james']);
+  check(!!doc('messages', 'msg-james'), 'and she can’t delete it');
 
   /* ---------- 3. files ---------- */
-  const up = await raka.post('/api/upload', 'internal numbers', { 'content-type': 'text/plain', 'x-file-name': 'numbers.txt', 'x-workspace': 'pnp' }).then((r) => r.json());
-  const guestGet = () => laras.get(up.url).then((r) => r.status);
+  const up = await james.post('/api/upload', 'internal numbers', { 'content-type': 'text/plain', 'x-file-name': 'numbers.txt', 'x-workspace': 'pnp' }).then((r) => r.json());
+  const guestGet = () => laura.get(up.url).then((r) => r.status);
   check((await guestGet()) === 404, 'a guest can’t open the company’s other files, even with the address');
   put('drive', { id: 'dr-shared', name: 'numbers.txt', kind: 'doc', parentId: null, size: 16, modified: now(), workspaceId: 'pnp', clientId: 'c-kopinara', sharedWithClient: true, url: up.url });
   check((await guestGet()) === 200, 'once it’s shared with her project, she can');
 
   /* ---------- 4. pausing ---------- */
-  const paused = await raka.sync('workspaces', [{ ...doc('workspaces', 'pnp'), plan: { ...doc('workspaces', 'pnp').plan, paused: true } }]);
+  const paused = await james.sync('workspaces', [{ ...doc('workspaces', 'pnp'), plan: { ...doc('workspaces', 'pnp').plan, paused: true } }]);
   check(doc('workspaces', 'pnp').plan.paused === true && doc('workspaces', 'pnp').plan.pauses?.length === 1 && !paused.why, 'an owner pauses the plan, and the server notes when');
-  const todo = await intan.sync('todos', [{ id: 'td-paused', title: 'new work', userId: 'u-intan', workspaceId: 'pnp', done: false, createdAt: now() }]);
+  const todo = await isabel.sync('todos', [{ id: 'td-paused', title: 'new work', userId: 'u-isabel', workspaceId: 'pnp', done: false, createdAt: now() }]);
   check(todo.saved === 0 && /paused/.test(todo.why ?? ''), 'a paused company is read-only for its members, with the reason');
-  const guestMsg = await laras.sync('messages', [{ id: 'msg-guest-paused', channelId: 'ch-kopinara-shared', userId: 'guest', guestEmail: 'laras@kopinara.example', text: 'hello', at: now() }]);
+  const guestMsg = await laura.sync('messages', [{ id: 'msg-guest-paused', channelId: 'ch-kopinara-shared', userId: 'guest', guestEmail: 'laura@kopinara.example', text: 'hello', at: now() }]);
   check(guestMsg.saved === 0, 'and for its guests');
-  const ai = await intan.post('/api/ai/summarize', { workspaceId: 'pnp', thread: { subject: 'x', messages: [] } });
+  const ai = await isabel.post('/api/ai/summarize', { workspaceId: 'pnp', thread: { subject: 'x', messages: [] } });
   check(ai.status === 403, 'no AI while paused');
-  const upl = await intan.post('/api/upload', 'x', { 'content-type': 'text/plain', 'x-file-name': 'x.txt', 'x-workspace': 'pnp' });
+  const upl = await isabel.post('/api/upload', 'x', { 'content-type': 'text/plain', 'x-file-name': 'x.txt', 'x-workspace': 'pnp' });
   check(upl.status === 403, 'no uploads while paused');
   canSend();
-  const mail = await raka.post('/api/mail/send', { workspaceId: 'pnp', accountId: 'pnp-raka', threadId: '', messageId: 'm-p', to: [{ name: 'X', email: 'x@outside.example' }], cc: [], subject: 'paused', text: 'x', files: [] });
+  const mail = await james.post('/api/mail/send', { workspaceId: 'pnp', accountId: 'pnp-james', threadId: '', messageId: 'm-p', to: [{ name: 'X', email: 'x@outside.example' }], cc: [], subject: 'paused', text: 'x', files: [] });
   check(mail.status === 403 && /paused/.test((await mail.json()).error ?? ''), `no mail goes out while paused (${mail.status})`);
-  const st = await intan.state();
+  const st = await isabel.state();
   check(st.todos.length > 0 && st.clients.length > 0, 'everyone still reads everything');
-  await raka.sync('workspaces', [{ ...doc('workspaces', 'pnp'), plan: { ...doc('workspaces', 'pnp').plan, paused: false } }]);
+  await james.sync('workspaces', [{ ...doc('workspaces', 'pnp'), plan: { ...doc('workspaces', 'pnp').plan, paused: false } }]);
   const resumed = doc('workspaces', 'pnp').plan;
   check(!resumed.paused && !!resumed.pauses?.[0]?.to, 'the owner resumes it');
   // 90 days already used this year: no more pausing.
   put('workspaces', { ...doc('workspaces', 'pnp'), plan: { ...resumed, pauses: [{ from: new Date(Date.now() - 200 * 86_400_000).toISOString(), to: new Date(Date.now() - 105 * 86_400_000).toISOString() }] } });
-  const again = await raka.sync('workspaces', [{ ...doc('workspaces', 'pnp'), plan: { ...doc('workspaces', 'pnp').plan, paused: true } }]);
+  const again = await james.sync('workspaces', [{ ...doc('workspaces', 'pnp'), plan: { ...doc('workspaces', 'pnp').plan, paused: true } }]);
   check(!doc('workspaces', 'pnp').plan.paused && /3 months a year/.test(again.why ?? ''), 'after 3 months of pauses in a year, the plan can’t be paused again');
-  const adminTry = await signIn('sofia@demo.sprint2go.com');
+  const adminTry = await signIn('sophie@demo.sprint2go.com');
   const byAdmin = await adminTry.sync('workspaces', [{ ...doc('workspaces', 'pnp'), plan: { ...doc('workspaces', 'pnp').plan, addons: { ...doc('workspaces', 'pnp').plan.addons, branding: true } } }]);
   check(!doc('workspaces', 'pnp').plan.addons.branding && /owners/.test(byAdmin.why ?? ''), 'an admin who isn’t an owner can’t change the plan');
 
   /* ---------- 5. plan limits ---------- */
   const ws = doc('workspaces', 'pnp');
   const extra = Array.from({ length: 10 }, (_, i) => ({ id: `extra-${i}`, email: `extra${i}@demo.sprint2go.com`, name: `Extra ${i}`, kind: 'personal', connected: false, users: [] }));
-  const boxes = await raka.sync('workspaces', [{ ...ws, accounts: [...ws.accounts, ...extra] }]);
+  const boxes = await james.sync('workspaces', [{ ...ws, accounts: [...ws.accounts, ...extra] }]);
   check(!doc('workspaces', 'pnp').accounts.some((a) => a.id === 'extra-0') && /room for/.test(boxes.why ?? ''), 'more hosted mailboxes than the plan has room for are refused, with the reason');
-  const status = await raka.get('/api/meet/status?ws=pnp').then((r) => r.json());
+  const status = await james.get('/api/meet/status?ws=pnp').then((r) => r.json());
   check(status.minutes?.total === (4 * 7 + 10) * 60, `the notetaker’s hours this month come from the plan and add-ons (${status.minutes?.total} minutes)`);
-  const credits = await raka.post('/api/mail/credits', { workspaceId: 'pnp', pack: 1000 });
+  const credits = await james.post('/api/mail/credits', { workspaceId: 'pnp', pack: 1000 });
   const before = doc('workspaces', 'pnp').mailCredits ?? 0;
   check(credits.status === 409 && (doc('workspaces', 'pnp').mailCredits ?? 0) === before, 'without Boosted sending on this server there are no credits to buy, and none appear');
-  const setup = await raka.get('/api/mail/setup?ws=pnp').then((r) => r.json());
+  const setup = await james.get('/api/mail/setup?ws=pnp').then((r) => r.json());
   check(setup.boostedAvailable === false && !!setup.creditOrders?.blocked, 'Email delivery says why');
-  const route = await raka.post('/api/mail/route', { workspaceId: 'pnp', route: 'boosted' });
+  const route = await james.post('/api/mail/route', { workspaceId: 'pnp', route: 'boosted' });
   check(route.status === 409, 'and Boosted can’t be switched on');
 
   /* ---------- 6. WhatsApp ---------- */
   const appSecret = randomBytes(16).toString('hex');
-  const connect = await raka.post('/api/whatsapp/connect', { workspaceId: 'pnp', phoneNumberId: '1039000001', token: 'EAAG' + 'x'.repeat(40), appSecret });
+  const connect = await james.post('/api/whatsapp/connect', { workspaceId: 'pnp', phoneNumberId: '1039000001', token: 'EAAG' + 'x'.repeat(40), appSecret });
   check(connect.ok && doc('workspaces', 'pnp').whatsapp?.secured === true, 'WhatsApp connects with the app’s secret');
   const verifyToken = doc('workspaces', 'pnp').whatsapp.verifyToken;
   const hook = `${base}/api/whatsapp/webhook`;
@@ -274,7 +274,7 @@ try {
   put('workspaces', { ...doc('workspaces', 'elk'), whatsapp: { phoneNumberId: '1039000002', connected: true, verifyToken: 'elk-token-123' } });
   const off = await fetch(`${hook}?hub.mode=subscribe&hub.verify_token=elk-token-123&hub.challenge=1`);
   check(off.status === 403, 'a company without an app secret: the webhook stays off');
-  const hijack = await raka.sync('workspaces', [{ ...doc('workspaces', 'pnp'), whatsapp: { phoneNumberId: '1039000002', connected: true, verifyToken: 'mine' } }]);
+  const hijack = await james.sync('workspaces', [{ ...doc('workspaces', 'pnp'), whatsapp: { phoneNumberId: '1039000002', connected: true, verifyToken: 'mine' } }]);
   check(doc('workspaces', 'pnp').whatsapp.phoneNumberId === '1039000001' && hijack.status === 200, 'the connection only changes through the server');
 
   /* ---------- 7. DKIM on everything our engine sends ---------- */
@@ -288,131 +288,131 @@ try {
   const smtp = nodemailer.createTransport({ host: '127.0.0.1', port: smtpPort, secure: false, tls: { rejectUnauthorized: false } });
   // An invite from outside, answered Yes: the iCalendar REPLY goes to the organiser.
   const inviteSubject = `invite ${randomBytes(3).toString('hex')}`;
-  const ics = ['BEGIN:VCALENDAR', 'METHOD:REQUEST', 'BEGIN:VEVENT', `UID:${randomBytes(6).toString('hex')}@outside.example`, 'DTSTART:20261120T030000Z', 'DTEND:20261120T040000Z', `SUMMARY:${inviteSubject}`, 'ORGANIZER;CN=Olga:mailto:olga@organiser.example', 'ATTENDEE;PARTSTAT=NEEDS-ACTION;RSVP=TRUE:mailto:raka@demo.sprint2go.com', 'END:VEVENT', 'END:VCALENDAR'].join('\r\n');
+  const ics = ['BEGIN:VCALENDAR', 'METHOD:REQUEST', 'BEGIN:VEVENT', `UID:${randomBytes(6).toString('hex')}@outside.example`, 'DTSTART:20261120T030000Z', 'DTEND:20261120T040000Z', `SUMMARY:${inviteSubject}`, 'ORGANIZER;CN=Olga:mailto:olga@organiser.example', 'ATTENDEE;PARTSTAT=NEEDS-ACTION;RSVP=TRUE:mailto:james@demo.sprint2go.com', 'END:VEVENT', 'END:VCALENDAR'].join('\r\n');
   canSend();
-  await smtp.sendMail({ from: 'Olga <olga@organiser.example>', to: 'raka@demo.sprint2go.com', subject: inviteSubject, text: 'Join us', icalEvent: { method: 'REQUEST', content: ics } });
-  const inviteThread = await waitFor(() => db.prepare("SELECT data FROM docs WHERE coll = 'threads' AND data LIKE ?").all(`%${inviteSubject}%`).map((r) => JSON.parse(r.data)).find((t) => t.accountId === 'pnp-raka' && t.messages.some((x) => x.invite)));
+  await smtp.sendMail({ from: 'Olga <olga@organiser.example>', to: 'james@demo.sprint2go.com', subject: inviteSubject, text: 'Join us', icalEvent: { method: 'REQUEST', content: ics } });
+  const inviteThread = await waitFor(() => db.prepare("SELECT data FROM docs WHERE coll = 'threads' AND data LIKE ?").all(`%${inviteSubject}%`).map((r) => JSON.parse(r.data)).find((t) => t.accountId === 'pnp-james' && t.messages.some((x) => x.invite)));
   canSend();
-  const rsvp = inviteThread ? await raka.post('/api/mail/invite', { threadId: inviteThread.id, messageId: inviteThread.messages.find((x) => x.invite).id, answer: 'accepted' }) : null;
+  const rsvp = inviteThread ? await james.post('/api/mail/invite', { threadId: inviteThread.id, messageId: inviteThread.messages.find((x) => x.invite).id, answer: 'accepted' }) : null;
   const reply = await waitFor(() => sunk.find((x) => x.to.includes('olga@organiser.example') && x.raw.includes('METHOD:REPLY')));
   check(rsvp?.ok && !!reply && (await signedBy(reply.raw)).includes('demo.sprint2go.com'), 'an invite answer leaves DKIM-signed for demo.sprint2go.com (and verifies)');
   // Out of office: the automatic answer.
   canSend();
-  const away = await raka.post('/api/mail/away', { workspaceId: 'pnp', accountId: 'pnp-raka', away: { on: true, subject: 'Away', message: 'Back on Monday.' } });
+  const away = await james.post('/api/mail/away', { workspaceId: 'pnp', accountId: 'pnp-james', away: { on: true, subject: 'Away', message: 'Back on Monday.' } });
   canSend();
-  await smtp.sendMail({ from: 'Ben <ben@writer.example>', to: 'raka@demo.sprint2go.com', subject: `question ${randomBytes(3).toString('hex')}`, text: 'Are you there?' });
+  await smtp.sendMail({ from: 'Ben <ben@writer.example>', to: 'james@demo.sprint2go.com', subject: `question ${randomBytes(3).toString('hex')}`, text: 'Are you there?' });
   const auto = await waitFor(() => sunk.find((x) => x.to.includes('ben@writer.example')));
   check(away.ok && !!auto && /Auto-Submitted: auto-replied/i.test(auto.raw.toString()) && (await signedBy(auto.raw)).includes('demo.sprint2go.com'), 'an out-of-office answer leaves DKIM-signed too');
   // A routing test ("Some of each"): our own mail, signed with the platform's key for the support domain.
-  const probe = await raka.post('/api/mail/routing-test', { workspaceId: 'pnp' });
+  const probe = await james.post('/api/mail/routing-test', { workspaceId: 'pnp' });
   const probeMail = await waitFor(() => sunk.find((x) => x.to.some((t) => t.startsWith('s2g-check-'))));
   check(probe.ok && !!probeMail && (await signedBy(probeMail.raw)).includes(SUPPORT_DOMAIN), `a routing test leaves DKIM-signed for ${SUPPORT_DOMAIN}`);
 
   /* ---------- 8. files in projects a member can't see ---------- */
   const upload = (who, text, ws = 'pnp', name = 'notes.txt') => who.post('/api/upload', text, { 'content-type': 'text/plain', 'x-file-name': name, 'x-workspace': ws }).then((r) => r.json());
-  const secretFile = await upload(raka, 'the secret numbers', 'pnp', 'secret.txt');
+  const secretFile = await upload(james, 'the secret numbers', 'pnp', 'secret.txt');
   put('drive', { id: 'dr-secret-numbers', name: 'secret.txt', kind: 'doc', parentId: 'dr-secret-folder', size: 18, modified: now(), workspaceId: 'pnp', url: secretFile.url });
   const opensWith = (who, u) => who.get(u).then((r) => r.status);
-  check((await opensWith(intan, secretFile.url)) === 404, 'a member can’t download a file in a project she can’t see, even with the address');
-  check((await opensWith(raka, secretFile.url)) === 200, 'the owner can');
-  const inChat = await upload(raka, 'said in the project channel', 'pnp', 'chat.txt');
-  put('messages', { id: 'msg-secret-file', channelId: 'ch-secret', userId: 'u-raka', text: 'here', at: now(), files: [{ name: 'chat.txt', size: 27, type: 'text/plain', url: inChat.url }] });
-  check((await opensWith(intan, inChat.url)) === 404, 'nor one sent in its channel');
-  const loose = await upload(raka, 'on nothing yet');
-  check((await opensWith(intan, loose.url)) === 200, 'a file that isn’t on anything yet opens for the team');
-  const hers = await upload(intan, 'mine');
+  check((await opensWith(isabel, secretFile.url)) === 404, 'a member can’t download a file in a project she can’t see, even with the address');
+  check((await opensWith(james, secretFile.url)) === 200, 'the owner can');
+  const inChat = await upload(james, 'said in the project channel', 'pnp', 'chat.txt');
+  put('messages', { id: 'msg-secret-file', channelId: 'ch-secret', userId: 'u-james', text: 'here', at: now(), files: [{ name: 'chat.txt', size: 27, type: 'text/plain', url: inChat.url }] });
+  check((await opensWith(isabel, inChat.url)) === 404, 'nor one sent in its channel');
+  const loose = await upload(james, 'on nothing yet');
+  check((await opensWith(isabel, loose.url)) === 200, 'a file that isn’t on anything yet opens for the team');
+  const hers = await upload(isabel, 'mine');
   put('drive', { id: 'dr-secret-hers', name: 'hers.txt', kind: 'doc', parentId: 'dr-secret-folder', size: 4, modified: now(), workspaceId: 'pnp', url: hers.url });
-  check((await opensWith(intan, hers.url)) === 200, 'her own upload always opens');
+  check((await opensWith(isabel, hers.url)) === 200, 'her own upload always opens');
   const pnpSee = doc('workspaces', 'pnp');
-  await raka.sync('workspaces', [{ ...pnpSee, permissions: { ...(pnpSee.permissions ?? {}), seeAllProjects: true } }]);
-  check((await opensWith(intan, secretFile.url)) === 200, 'with “See every project” on, she can');
-  await raka.sync('workspaces', [{ ...doc('workspaces', 'pnp'), permissions: { ...(doc('workspaces', 'pnp').permissions ?? {}), seeAllProjects: false } }]);
-  check((await opensWith(laras, secretFile.url)) === 404, 'and a guest never can');
+  await james.sync('workspaces', [{ ...pnpSee, permissions: { ...(pnpSee.permissions ?? {}), seeAllProjects: true } }]);
+  check((await opensWith(isabel, secretFile.url)) === 200, 'with “See every project” on, she can');
+  await james.sync('workspaces', [{ ...doc('workspaces', 'pnp'), permissions: { ...(doc('workspaces', 'pnp').permissions ?? {}), seeAllProjects: false } }]);
+  check((await opensWith(laura, secretFile.url)) === 404, 'and a guest never can');
 
   /* ---------- 9. support tickets: operators open what customers attach ---------- */
-  const yusuf = await signIn('yusuf@rimbagroup.example');
-  const shot = await upload(yusuf, 'a screenshot', 'elk', 'shot.txt');
-  const other = await upload(yusuf, 'not attached', 'elk', 'other.txt');
-  const ticket = await yusuf.post('/api/support', { subject: 'Something broke', body: 'See the screenshot', workspaceId: 'elk', attachments: [{ name: 'shot.txt', url: shot.url }, { name: 'someone else’s', url: secretFile.url }] }).then((r) => r.json());
+  const ethan = await signIn('ethan@rimbagroup.example');
+  const shot = await upload(ethan, 'a screenshot', 'elk', 'shot.txt');
+  const other = await upload(ethan, 'not attached', 'elk', 'other.txt');
+  const ticket = await ethan.post('/api/support', { subject: 'Something broke', body: 'See the screenshot', workspaceId: 'elk', attachments: [{ name: 'shot.txt', url: shot.url }, { name: 'someone else’s', url: secretFile.url }] }).then((r) => r.json());
   const attached = JSON.parse(db.prepare('SELECT attachments FROM ticket_messages WHERE ticket_id = ?').get(ticket.id)?.attachments ?? '[]');
   check(attached.length === 1 && attached[0].url === shot.url, 'a ticket keeps only files the customer uploaded, not another address');
-  db.prepare("INSERT INTO operators (email, role, added_by, added_at, totp_on) VALUES (?, 'support', 'test', ?, 1)").run('bima@demo.sprint2go.com', now());
-  const bima = await signIn('bima@demo.sprint2go.com');
-  check((await opensWith(bima, shot.url)) === 404, 'an operator who hasn’t passed the console’s two-step sign-in can’t open it');
-  db.prepare('UPDATE sessions SET op_ok = ? WHERE token = ?').run(now(), createHash('sha256').update(bima.token).digest('hex'));
-  const opens = () => db.prepare("SELECT COUNT(*) AS n FROM audit WHERE action = 'ticket.file-open' AND target = ? AND operator = ?").get(ticket.id, 'bima@demo.sprint2go.com').n;
-  check((await opensWith(bima, shot.url)) === 200 && opens() === 1, 'past it, a support operator opens what the customer attached, and it’s in the audit log');
-  await opensWith(bima, shot.url);
+  db.prepare("INSERT INTO operators (email, role, added_by, added_at, totp_on) VALUES (?, 'support', 'test', ?, 1)").run('owen@demo.sprint2go.com', now());
+  const owen = await signIn('owen@demo.sprint2go.com');
+  check((await opensWith(owen, shot.url)) === 404, 'an operator who hasn’t passed the console’s two-step sign-in can’t open it');
+  db.prepare('UPDATE sessions SET op_ok = ? WHERE token = ?').run(now(), createHash('sha256').update(owen.token).digest('hex'));
+  const opens = () => db.prepare("SELECT COUNT(*) AS n FROM audit WHERE action = 'ticket.file-open' AND target = ? AND operator = ?").get(ticket.id, 'owen@demo.sprint2go.com').n;
+  check((await opensWith(owen, shot.url)) === 200 && opens() === 1, 'past it, a support operator opens what the customer attached, and it’s in the audit log');
+  await opensWith(owen, shot.url);
   check(opens() === 1, 'opening it again a moment later is the same entry');
-  check((await opensWith(bima, other.url)) === 404, 'the customer’s other files stay closed');
-  db.prepare("UPDATE operators SET role = 'finance' WHERE email = ?").run('bima@demo.sprint2go.com');
-  check((await opensWith(bima, shot.url)) === 404, 'an operator without the support permission can’t');
-  check((await opensWith(yusuf, shot.url)) === 200, 'the customer still opens their own');
+  check((await opensWith(owen, other.url)) === 404, 'the customer’s other files stay closed');
+  db.prepare("UPDATE operators SET role = 'finance' WHERE email = ?").run('owen@demo.sprint2go.com');
+  check((await opensWith(owen, shot.url)) === 404, 'an operator without the support permission can’t');
+  check((await opensWith(ethan, shot.url)) === 200, 'the customer still opens their own');
   // A ticket from before 9 Oct, when a ticket could point at any file: its attachment is someone else's file.
-  db.prepare("UPDATE operators SET role = 'support' WHERE email = ?").run('bima@demo.sprint2go.com');
+  db.prepare("UPDATE operators SET role = 'support' WHERE email = ?").run('owen@demo.sprint2go.com');
   const oldAt = '2026-10-08T09:00:00.000Z';
-  db.prepare("INSERT INTO tickets (id, number, subject, status, priority, channel, requester_email, requester_name, requester_user, workspace_id, tags, created_at, updated_at) VALUES ('t-old-files', 990001, 'Old one', 'open', 'normal', 'app', 'yusuf@rimbagroup.example', 'Yusuf', ?, 'elk', '[]', ?, ?)").run(db.prepare('SELECT user_id FROM logins WHERE email = ?').get('yusuf@rimbagroup.example')?.user_id ?? null, oldAt, oldAt);
-  db.prepare("INSERT INTO ticket_messages (id, ticket_id, at, kind, author, author_name, body, internal, attachments) VALUES ('tm-old-files', 't-old-files', ?, 'customer', 'yusuf@rimbagroup.example', 'Yusuf', 'see attached', 0, ?)").run(oldAt, JSON.stringify([{ name: 'numbers.txt', url: secretFile.url }]));
-  check((await opensWith(bima, secretFile.url)) === 404, 'an old ticket pointing at another company’s file doesn’t open it for support');
-  const oldView = await bima.get('/api/admin/ticket?id=t-old-files').then((r) => r.json());
+  db.prepare("INSERT INTO tickets (id, number, subject, status, priority, channel, requester_email, requester_name, requester_user, workspace_id, tags, created_at, updated_at) VALUES ('t-old-files', 990001, 'Old one', 'open', 'normal', 'app', 'ethan@rimbagroup.example', 'Ethan', ?, 'elk', '[]', ?, ?)").run(db.prepare('SELECT user_id FROM logins WHERE email = ?').get('ethan@rimbagroup.example')?.user_id ?? null, oldAt, oldAt);
+  db.prepare("INSERT INTO ticket_messages (id, ticket_id, at, kind, author, author_name, body, internal, attachments) VALUES ('tm-old-files', 't-old-files', ?, 'customer', 'ethan@rimbagroup.example', 'Ethan', 'see attached', 0, ?)").run(oldAt, JSON.stringify([{ name: 'numbers.txt', url: secretFile.url }]));
+  check((await opensWith(owen, secretFile.url)) === 404, 'an old ticket pointing at another company’s file doesn’t open it for support');
+  const oldView = await owen.get('/api/admin/ticket?id=t-old-files').then((r) => r.json());
   const shown = oldView.messages?.[0]?.attachments?.[0];
   check(!!shown && shown.url === '' && shown.blocked === 'Attachment from before 9 Oct, ask the person to send it again', 'the operator sees “Attachment from before 9 Oct, ask the person to send it again” instead of a link');
-  const newView = await bima.get(`/api/admin/ticket?id=${ticket.id}`).then((r) => r.json());
+  const newView = await owen.get(`/api/admin/ticket?id=${ticket.id}`).then((r) => r.json());
   check(newView.messages?.[0]?.attachments?.[0]?.url === shot.url && !newView.messages[0].attachments[0].blocked, 'a file sent with its ticket still links');
 
   /* ---------- 10. invoices bill active people ---------- */
-  db.prepare("UPDATE operators SET role = 'owner' WHERE email = ?").run('bima@demo.sprint2go.com');
+  db.prepare("UPDATE operators SET role = 'owner' WHERE email = ?").run('owen@demo.sprint2go.com');
   const month = now().slice(0, 7);
   const pnpMembers = doc('workspaces', 'pnp').members.map((x) => x.userId);
   const activeIds = new Set(db.prepare('SELECT DISTINCT user_id FROM activity_days WHERE day >= ?').all(`${month}-01`).map((r) => r.user_id));
   const activeHere = pnpMembers.filter((id) => activeIds.has(id)).length;
-  const made = await bima.post('/api/admin/invoice/create', { workspaceId: 'pnp' }).then((r) => r.json());
+  const made = await owen.post('/api/admin/invoice/create', { workspaceId: 'pnp' }).then((r) => r.json());
   const inv = made.id ? db.prepare('SELECT lines, note FROM invoices WHERE id = ?').get(made.id) : null;
   const planLine = inv ? JSON.parse(inv.lines)[0]?.text ?? '' : '';
   check(activeHere > 0 && activeHere < pnpMembers.length && planLine.includes(`${activeHere} active ${activeHere === 1 ? 'person' : 'people'} of ${pnpMembers.length} on the team`), `the invoice bills the ${activeHere} people active this month, not all ${pnpMembers.length} (“${planLine}”)`);
   check(/signed in or used sprint2go/.test(inv?.note ?? ''), 'and says what active means');
-  const billingPage = await raka.get('/api/billing/invoices?ws=pnp').then((r) => r.json());
+  const billingPage = await james.get('/api/billing/invoices?ws=pnp').then((r) => r.json());
   check(billingPage.active?.people === activeHere && billingPage.active?.team === pnpMembers.length, 'the billing page shows the same count');
 
   /* ---------- 11. the company's time zone ---------- */
-  await raka.sync('workspaces', [{ ...doc('workspaces', 'pnp'), timeZone: 'Europe/Amsterdam' }]);
+  await james.sync('workspaces', [{ ...doc('workspaces', 'pnp'), timeZone: 'Europe/Amsterdam' }]);
   check(doc('workspaces', 'pnp').timeZone === 'Europe/Amsterdam', 'an owner sets the company’s time zone');
-  await raka.sync('workspaces', [{ ...doc('workspaces', 'pnp'), timeZone: 'Mars/Olympus' }]);
+  await james.sync('workspaces', [{ ...doc('workspaces', 'pnp'), timeZone: 'Mars/Olympus' }]);
   check(doc('workspaces', 'pnp').timeZone === 'Europe/Amsterdam', 'a zone the clock doesn’t know isn’t saved');
-  await intan.sync('workspaces', [{ ...doc('workspaces', 'pnp'), timeZone: 'Asia/Tokyo' }]);
+  await isabel.sync('workspaces', [{ ...doc('workspaces', 'pnp'), timeZone: 'Asia/Tokyo' }]);
   check(doc('workspaces', 'pnp').timeZone === 'Europe/Amsterdam', 'a member can’t change it');
 
   /* ---------- 12. mail: refused sends and reply reminders ---------- */
   const reminders = (threadId) => db.prepare('SELECT * FROM mail_remind WHERE thread_id = ?').all(threadId);
   const w12 = doc('workspaces', 'pnp');
   put('workspaces', { ...w12, mailReady: { at: now(), receive: true, send: false, why: {}, mailboxes: {} } });
-  const tracked = (threadId) => ({ workspaceId: 'pnp', accountId: 'pnp-raka', threadId, messageId: 'm-1', to: [{ name: 'Budi', email: 'budi@client-check.example' }], cc: [], subject: 'Proposal', text: 'Here it is', html: '<p>Here it is</p>', files: [], track: true, trackOptions: { opens: true, clicks: true, notify: true, remindDays: 3 } });
-  const refused = await raka.post('/api/mail/send', tracked('t-refused'));
+  const tracked = (threadId) => ({ workspaceId: 'pnp', accountId: 'pnp-james', threadId, messageId: 'm-1', to: [{ name: 'Budi', email: 'budi@client-check.example' }], cc: [], subject: 'Proposal', text: 'Here it is', html: '<p>Here it is</p>', files: [], track: true, trackOptions: { opens: true, clicks: true, notify: true, remindDays: 3 } });
+  const refused = await james.post('/api/mail/send', tracked('t-refused'));
   check(refused.status === 409 && !!(await refused.json()).error && reminders('t-refused').length === 0, `a send the mailbox can’t do is refused with the reason, and nothing is planned (${refused.status})`);
   canSend();
-  const sent = await raka.post('/api/mail/send', tracked('t-remind'));
+  const sent = await james.post('/api/mail/send', tracked('t-remind'));
   const rem = reminders('t-remind')[0];
   const days = rem ? (Date.parse(rem.due_at) - Date.now()) / 86_400_000 : 0;
-  check(sent.ok && rem?.by_user === 'u-raka' && rem.state === 'waiting' && days > 2.9 && days <= 3, 'a tracked email with “Remind me if no reply” is noted on the server, three days out');
+  check(sent.ok && rem?.by_user === 'u-james' && rem.state === 'waiting' && days > 2.9 && days <= 3, 'a tracked email with “Remind me if no reply” is noted on the server, three days out');
 
   /* ---------- 13. chat: Send later and Remind me ---------- */
   const inAnHour = new Date(Date.now() + 3600_000).toISOString();
-  await raka.sync('messages', [{ id: 'msg-later', channelId: 'ch-both', userId: 'u-raka', text: '@Intan this goes out later', at: now(), sendAt: inAnHour }]);
+  await james.sync('messages', [{ id: 'msg-later', channelId: 'ch-both', userId: 'u-james', text: '@Isabel this goes out later', at: now(), sendAt: inAnHour }]);
   check(doc('messages', 'msg-later')?.sendAt === inAnHour, 'a message can wait for its time');
-  check(!(await intan.state()).messages.some((x) => x.id === 'msg-later') && (await raka.state()).messages.some((x) => x.id === 'msg-later'), 'until then only its author sees it');
-  await intan.sync('messages', [{ ...doc('messages', 'msg-later'), reactions: { '👍': ['u-intan'] } }]);
-  await intan.sync('messages', [], ['msg-later']);
+  check(!(await isabel.state()).messages.some((x) => x.id === 'msg-later') && (await james.state()).messages.some((x) => x.id === 'msg-later'), 'until then only its author sees it');
+  await isabel.sync('messages', [{ ...doc('messages', 'msg-later'), reactions: { '👍': ['u-isabel'] } }]);
+  await isabel.sync('messages', [], ['msg-later']);
   check(!!doc('messages', 'msg-later') && !doc('messages', 'msg-later').reactions, 'nobody else can touch it or delete it');
-  await raka.sync('messages', [{ ...doc('messages', 'msg-raka'), sendAt: inAnHour }]);
-  check(!doc('messages', 'msg-raka').sendAt, 'a message that went out can’t be made to wait again');
-  await raka.sync('messages', [{ ...doc('messages', 'msg-later'), sendAt: new Date(Date.now() - 1000).toISOString() }]);
-  const intanPrefs = doc('prefs', 'u-intan')?.value ?? {};
-  await intan.sync('prefs', [{ id: 'u-intan', value: { ...intanPrefs, 's2g-chat-saved:u-intan': [{ id: 'msg-raka', channelId: 'ch-both', at: now(), remindAt: new Date(Date.now() - 1000).toISOString() }] } }]);
-  const chatNotices = () => db.prepare("SELECT data FROM docs WHERE coll = 'notices' AND json_extract(data, '$.userId') = 'u-intan' AND json_extract(data, '$.link.app') = 'chat'").all().map((r) => JSON.parse(r.data).text);
+  await james.sync('messages', [{ ...doc('messages', 'msg-james'), sendAt: inAnHour }]);
+  check(!doc('messages', 'msg-james').sendAt, 'a message that went out can’t be made to wait again');
+  await james.sync('messages', [{ ...doc('messages', 'msg-later'), sendAt: new Date(Date.now() - 1000).toISOString() }]);
+  const intanPrefs = doc('prefs', 'u-isabel')?.value ?? {};
+  await isabel.sync('prefs', [{ id: 'u-isabel', value: { ...intanPrefs, 's2g-chat-saved:u-isabel': [{ id: 'msg-james', channelId: 'ch-both', at: now(), remindAt: new Date(Date.now() - 1000).toISOString() }] } }]);
+  const chatNotices = () => db.prepare("SELECT data FROM docs WHERE coll = 'notices' AND json_extract(data, '$.userId') = 'u-isabel' AND json_extract(data, '$.link.app') = 'chat'").all().map((r) => JSON.parse(r.data).text);
   const went = await waitFor(() => !doc('messages', 'msg-later').sendAt && chatNotices().some((t) => t.startsWith('Reminder:')), 400);
-  check(!!went && (await intan.state()).messages.some((x) => x.id === 'msg-later'), 'when its time comes the server sends it, and now she sees it');
-  check(chatNotices().some((t) => t === 'Raka mentioned you in #both: “@Intan this goes out later”'), 'the person it mentions hears about it');
-  check(chatNotices().filter((t) => t === 'Reminder: Raka in #both: “I said this”').length === 1 && doc('prefs', 'u-intan').value['s2g-chat-saved:u-intan'][0].reminded === true, 'a saved message’s reminder comes once, and is marked done in her settings');
+  check(!!went && (await isabel.state()).messages.some((x) => x.id === 'msg-later'), 'when its time comes the server sends it, and now she sees it');
+  check(chatNotices().some((t) => t === 'James mentioned you in #both: “@Isabel this goes out later”'), 'the person it mentions hears about it');
+  check(chatNotices().filter((t) => t === 'Reminder: James in #both: “I said this”').length === 1 && doc('prefs', 'u-isabel').value['s2g-chat-saved:u-isabel'][0].reminded === true, 'a saved message’s reminder comes once, and is marked done in her settings');
 
   /* ---------- 14. two-step sign-in: "Remember this device" ---------- */
   {
@@ -435,9 +435,9 @@ try {
       return { status: r.status, body: await r.json(), session: jar.s2g, device: jar.s2g_dev };
     };
     const as = (session, device) => (method, path, b) => fetch(`${base}${path}`, { method, headers: { 'content-type': 'application/json', cookie: [`s2g=${session}`, ...(device ? [`s2g_dev=${device}`] : [])].join('; ') }, body: b === undefined ? undefined : JSON.stringify(b) });
-    const intanMail = 'intan@demo.sprint2go.com';
+    const intanMail = 'isabel@demo.sprint2go.com';
     const intanId = db.prepare('SELECT user_id FROM logins WHERE email = ?').get(intanMail).user_id;
-    // Intan turns two-step sign-in on.
+    // Isabel turns two-step sign-in on.
     const first = await login(intanMail);
     const d1 = as(first.session);
     const setup = await d1('POST', '/api/2fa/setup', {}).then((r) => r.json());
@@ -455,7 +455,7 @@ try {
     check(third.status === 200 && !third.body.twoStep && !meThird.twoStep && meThird.me === intanId, 'that device signs in with just the password');
     const listed = await as(third.session, deviceCookie)('GET', '/api/2fa').then((r) => r.json());
     check(listed.devices?.length === 1 && listed.devices[0].current === true && /until|\d/.test(listed.devices[0].expiresAt) && Date.parse(listed.devices[0].expiresAt) - Date.now() > 29.9 * 86_400_000, 'it’s in her remembered devices, marked as this device, for 30 days');
-    // The token is signed and bound to its person: changed, someone else's, or expired, it asks for the code. (Sofia,
+    // The token is signed and bound to its person: changed, someone else's, or expired, it asks for the code. (Sophie,
     // so neither of them meets the 10 sign-ins a quarter hour the server allows per address.)
     const [devId, devExp] = deviceCookie.split('.');
     const master = Buffer.from(readFileSync(join(dir, 'secret.key'), 'utf8').trim(), 'base64');
@@ -466,7 +466,7 @@ try {
       db.prepare('INSERT INTO trusted_devices (id, user_id, name, created_at, used_at, expires_at) VALUES (?, ?, ?, ?, ?, ?)').run(id, userId, 'Test browser', now(), now(), new Date(Number(exp) * 1000).toISOString());
       return { id, token: `${id}.${exp}.${sign(id, userId, exp)}` };
     };
-    const adiMail = 'sofia@demo.sprint2go.com';
+    const adiMail = 'sophie@demo.sprint2go.com';
     const adiId = db.prepare('SELECT user_id FROM logins WHERE email = ?').get(adiMail).user_id;
     const adi = as((await login(adiMail)).session);
     const adiSetup = await adi('POST', '/api/2fa/setup', {}).then((r) => r.json());
@@ -500,23 +500,23 @@ try {
   /* ---------- 15. free trials: one per person and per company domain ---------- */
   {
     const trialWs = (id, name) => ({ workspace: { id, name, color: '#5b5bf6', domains: [], accounts: [], members: [], plan: { track: 'ai', tier: 'studio', cycle: 'monthly', trialEnds: new Date(Date.now() + 14 * 86_400_000).toISOString(), addons: { mailboxes: 0, storage50: 0, meetHours10: 0, branding: false }, billing: { company: name, emails: [] }, since: now() } }, users: [] });
-    // Raka's demo companies already had trials (they count from before the rule), and Intan's address is at the same
+    // James's demo companies already had trials (they count from before the rule), and Isabel's address is at the same
     // company domain: her new company starts on Free, and says why.
-    const asked = await raka.get('/api/trial').then((r) => r.json());
+    const asked = await james.get('/api/trial').then((r) => r.json());
     check(asked.available === false && /^You’ve already had a free trial, with /.test(asked.why ?? ''), `the onboarding hears a second trial isn’t available (“${asked.why}”)`);
-    const made = await raka.post('/api/workspace', trialWs('ws-trial-1', 'Second Co')).then((r) => r.json());
+    const made = await james.post('/api/workspace', trialWs('ws-trial-1', 'Second Co')).then((r) => r.json());
     const second = doc('workspaces', 'ws-trial-1');
     check(second?.plan?.tier === 'free' && !second.plan.trialEnds && /already had a free trial/.test(second.plan.trialRefused ?? '') && /already had a free trial/.test(made.trialRefused ?? ''), 'a second company of the same person starts on Free, with the reason on its plan');
     // The app can't give itself the trial back.
-    await raka.sync('workspaces', [{ ...second, plan: { ...second.plan, tier: 'studio', track: 'ai', trialEnds: new Date(Date.now() + 14 * 86_400_000).toISOString() } }]);
+    await james.sync('workspaces', [{ ...second, plan: { ...second.plan, tier: 'studio', track: 'ai', trialEnds: new Date(Date.now() + 14 * 86_400_000).toISOString() } }]);
     check(!doc('workspaces', 'ws-trial-1').plan.trialEnds, 'saving a trial from the app doesn’t start one');
     const notice = db.prepare("SELECT data FROM docs WHERE coll = 'notices' AND json_extract(data, '$.workspaceId') = 'ws-trial-1'").get();
     check(!!notice && /starts on Free/.test(JSON.parse(notice.data).text), 'the owner is told in the app');
     // An operator allows one more: the next company gets it.
-    const granted = await bima.post('/api/admin/person/trial-grant', { userId: 'u-raka' });
-    const third = granted.ok ? await raka.post('/api/workspace', trialWs('ws-trial-2', 'Third Co')).then((r) => r.json()) : null;
+    const granted = await owen.post('/api/admin/person/trial-grant', { userId: 'u-james' });
+    const third = granted.ok ? await james.post('/api/workspace', trialWs('ws-trial-2', 'Third Co')).then((r) => r.json()) : null;
     check(granted.ok && !third?.trialRefused && !!doc('workspaces', 'ws-trial-2')?.plan?.trialEnds, 'after an operator allows another, the next company starts on its trial');
-    const fourth = await raka.post('/api/workspace', trialWs('ws-trial-3', 'Fourth Co')).then((r) => r.json());
+    const fourth = await james.post('/api/workspace', trialWs('ws-trial-3', 'Fourth Co')).then((r) => r.json());
     check(!!fourth.trialRefused && doc('workspaces', 'ws-trial-3')?.plan?.tier === 'free', 'and only that one');
   }
 
@@ -524,40 +524,40 @@ try {
   {
     const good = '<svg xmlns="http://www.w3.org/2000/svg" version="1.2" baseProfile="tiny-ps" viewBox="0 0 64 64"><title>sprint2go demo</title><rect width="64" height="64" fill="#5b5bf6"/></svg>';
     const bad = good.replace('<rect', '<script>alert(document.cookie)</script><rect');
-    const refused = await raka.post('/api/mail/bimi', { workspaceId: 'pnp', name: 'logo.svg', svg: bad });
+    const refused = await james.post('/api/mail/bimi', { workspaceId: 'pnp', name: 'logo.svg', svg: bad });
     const refusedBody = await refused.json();
     check(refused.status === 400 && refusedBody.problems?.some((p) => /script/.test(p)) && !doc('workspaces', 'pnp').bimi, 'a logo with a script is refused, with the reason, and nothing is kept');
-    const member = await (await signIn('joko@demo.sprint2go.com')).post('/api/mail/bimi', { workspaceId: 'pnp', name: 'logo.svg', svg: good });
+    const member = await (await signIn('jack@demo.sprint2go.com')).post('/api/mail/bimi', { workspaceId: 'pnp', name: 'logo.svg', svg: good });
     check(member.status === 403, 'a member can’t set the company’s logo');
-    const saved = await raka.post('/api/mail/bimi', { workspaceId: 'pnp', name: 'logo.svg', svg: good }).then((r) => r.json());
+    const saved = await james.post('/api/mail/bimi', { workspaceId: 'pnp', name: 'logo.svg', svg: good }).then((r) => r.json());
     check(saved.record?.host === 'default._bimi' && saved.record.value === `v=BIMI1; l=${saved.url}; a=;` && saved.url.endsWith('/bimi/pnp.svg') && !!doc('workspaces', 'pnp').bimi?.fileId, 'an admin’s logo is kept, with the exact default._bimi record');
     const served = await fetch(`${base}/bimi/pnp.svg`);
     const servedBody = await served.text();
     check(served.ok && served.headers.get('content-type') === 'image/svg+xml' && /sandbox/.test(served.headers.get('content-security-policy') ?? '') && servedBody === good, 'it’s served without signing in, as an SVG in a sandbox');
     check((await fetch(`${base}/bimi/elk.svg`)).status === 404, 'a company without a logo has nothing there');
-    await raka.sync('workspaces', [{ ...doc('workspaces', 'pnp'), bimi: { fileId: secretFile.url.split('/').pop(), name: 'x', at: now(), by: 'u-raka' } }]);
+    await james.sync('workspaces', [{ ...doc('workspaces', 'pnp'), bimi: { fileId: secretFile.url.split('/').pop(), name: 'x', at: now(), by: 'u-james' } }]);
     check(!!doc('workspaces', 'pnp').bimi?.fileId && doc('workspaces', 'pnp').bimi.fileId !== secretFile.url.split('/').pop(), 'the app can’t point the logo at another file');
   }
 
   /* ---------- 17. a project's or team's own task stages: who sets them, only lists that work, approvals use them ---------- */
   {
     const own = [{ id: 'todo', kind: 'open' }, { id: 'st-design', kind: 'active', name: 'Design' }, { id: 'st-check', kind: 'review', name: 'Check' }, { id: 'done', kind: 'done' }];
-    const joko = await signIn('joko@demo.sprint2go.com'); // a member, not on this project's lead list
+    const jack = await signIn('jack@demo.sprint2go.com'); // a member, not on this project's lead list
     const proj = doc('clients', 'c-selara');
-    await joko.sync('clients', [{ ...proj, taskStages: own }]);
+    await jack.sync('clients', [{ ...proj, taskStages: own }]);
     check(!doc('clients', 'c-selara').taskStages, 'a member can’t give a project its own stages');
-    await raka.sync('clients', [{ ...doc('clients', 'c-selara'), taskStages: own }]);
+    await james.sync('clients', [{ ...doc('clients', 'c-selara'), taskStages: own }]);
     check(JSON.stringify(doc('clients', 'c-selara').taskStages) === JSON.stringify(own), 'an admin can');
-    await raka.sync('clients', [{ ...doc('clients', 'c-selara'), taskStages: [{ id: 'st-x', kind: 'active' }] }]);
+    await james.sync('clients', [{ ...doc('clients', 'c-selara'), taskStages: [{ id: 'st-x', kind: 'active' }] }]);
     check(doc('clients', 'c-selara').taskStages?.length === 4, 'a list without a start and a done stage isn’t kept');
-    await raka.sync('teams', [{ ...doc('teams', 't-perf'), taskStages: [{ id: 'q', kind: 'open', name: 'Queue' }, { id: 'cut', kind: 'active', name: 'Cutting' }, { id: 'done', kind: 'done' }] }]);
+    await james.sync('teams', [{ ...doc('teams', 't-perf'), taskStages: [{ id: 'q', kind: 'open', name: 'Queue' }, { id: 'cut', kind: 'active', name: 'Cutting' }, { id: 'done', kind: 'done' }] }]);
     check(doc('teams', 't-perf').taskStages?.length === 3, 'a team gets its own stages from an admin');
-    await joko.sync('teams', [{ ...doc('teams', 't-perf'), taskStages: undefined }]);
+    await jack.sync('teams', [{ ...doc('teams', 't-perf'), taskStages: undefined }]);
     check(doc('teams', 't-perf').taskStages?.length === 3, 'not from a member who doesn’t lead it');
-    await joko.sync('teams', [{ ...doc('teams', 't-video'), taskStages: [{ id: 'q', kind: 'open', name: 'Queue' }, { id: 'done', kind: 'done' }] }]);
+    await jack.sync('teams', [{ ...doc('teams', 't-video'), taskStages: [{ id: 'q', kind: 'open', name: 'Queue' }, { id: 'done', kind: 'done' }] }]);
     check(doc('teams', 't-video').taskStages?.length === 2, 'its lead can');
     // A guest asks for changes on finished work in that project: it goes back to the project's own first "in progress".
-    const hannahTask = { id: 'td-own-stage', workspaceId: 'pnp', clientId: 'c-selara', title: 'Hero banner', userId: 'u-raka', assignees: ['u-raka'], done: true, status: 'done', visibleToClient: true, approval: { status: 'waiting', at: now() }, source: 'manual', createdBy: 'u-raka', createdAt: now(), priority: 'normal' };
+    const hannahTask = { id: 'td-own-stage', workspaceId: 'pnp', clientId: 'c-selara', title: 'Hero banner', userId: 'u-james', assignees: ['u-james'], done: true, status: 'done', visibleToClient: true, approval: { status: 'waiting', at: now() }, source: 'manual', createdBy: 'u-james', createdAt: now(), priority: 'normal' };
     put('todos', hannahTask);
     // Hannah approves work for Selara (the approver role), so she can ask for changes.
     const selara = doc('clients', 'c-selara');
@@ -569,7 +569,7 @@ try {
       check(after.done === false && after.status === 'st-design', `changes asked: back to the project’s own first in-progress stage (${after.status})`);
     } else check(true, 'the guest can’t sign in here (no seed password for guests): approvals checked in unit tests');
     // Guests see a project's own stages as ids and kinds only.
-    const larasState = await laras.state();
+    const larasState = await laura.state();
     check(!JSON.stringify(larasState.clients ?? []).includes('"name":"Design"'), 'guests never see the names of a project’s own stages');
   }
 
@@ -577,18 +577,18 @@ try {
   /* ---------- 18. files on a task's comments: whose files, and who opens them ---------- */
   {
     const up = (who, text, name) => who.post('/api/upload', text, { 'content-type': 'text/plain', 'x-file-name': name, 'x-workspace': 'pnp' }).then((r) => r.json());
-    const inside = await up(raka, 'for the team only', 'internal.txt');
-    const shared = await up(raka, 'for the guest too', 'shared.txt');
-    const intans = await up(intan, 'intan’s own', 'intan.txt');
+    const inside = await up(james, 'for the team only', 'internal.txt');
+    const shared = await up(james, 'for the guest too', 'shared.txt');
+    const intans = await up(isabel, 'isabel’s own', 'isabel.txt');
     const card = (f, name = f.name) => ({ name, size: 1, type: 'text/html', url: f.url });
-    const base = { id: 'td-files', workspaceId: 'pnp', clientId: 'c-kopinara', title: 'Launch photos', userId: 'u-raka', assignees: ['u-raka', 'u-intan'], done: false, status: 'todo', visibleToClient: true, source: 'manual', createdBy: 'u-raka', createdAt: now(), priority: 'normal', history: [] };
+    const base = { id: 'td-files', workspaceId: 'pnp', clientId: 'c-kopinara', title: 'Launch photos', userId: 'u-james', assignees: ['u-james', 'u-isabel'], done: false, status: 'todo', visibleToClient: true, source: 'manual', createdBy: 'u-james', createdAt: now(), priority: 'normal', history: [] };
     put('todos', base);
-    await raka.sync('todos', [
+    await james.sync('todos', [
       {
         ...base,
         history: [
-          { id: 'tf-in', at: now(), by: 'u-raka', kind: 'comment', text: 'internal', files: [card(inside, 'evil.html'), card(intans)] },
-          { id: 'tf-out', at: now(), by: 'u-raka', kind: 'comment', text: 'have a look', toClient: true, files: [card(shared)] },
+          { id: 'tf-in', at: now(), by: 'u-james', kind: 'comment', text: 'internal', files: [card(inside, 'evil.html'), card(intans)] },
+          { id: 'tf-out', at: now(), by: 'u-james', kind: 'comment', text: 'have a look', toClient: true, files: [card(shared)] },
         ],
       },
     ]);
@@ -597,26 +597,26 @@ try {
     check(JSON.stringify(filesOf('tf-in')) === JSON.stringify([`internal.txt text/plain ${inside.url}`]), `a comment keeps only its writer’s own uploads, named as uploaded (${JSON.stringify(filesOf('tf-in'))})`);
     check(filesOf('tf-out').length === 1 && saved.history.length === 2, 'the shared comment keeps its file');
     // Saving the task again with other files under a saved comment (sessions from earlier sections are signed out by now).
-    const sofia1 = await raka.sync('todos', [{ ...saved, title: 'Launch photos, final', history: saved.history.map((h) => (h.id === 'tf-in' ? { ...h, files: [card(intans)] } : h)) }]);
+    const sofia1 = await james.sync('todos', [{ ...saved, title: 'Launch photos, final', history: saved.history.map((h) => (h.id === 'tf-in' ? { ...h, files: [card(intans)] } : h)) }]);
     check(sofia1.saved === 1 && doc('todos', 'td-files').title === 'Launch photos, final', `the task is saved again (${JSON.stringify(sofia1)})`);
     check(JSON.stringify(filesOf('tf-in')) === JSON.stringify([`internal.txt text/plain ${inside.url}`]), 'nobody swaps the files under someone else’s comment');
-    const seen = (await laras.state()).todos.find((x) => x.id === 'td-files');
+    const seen = (await laura.state()).todos.find((x) => x.id === 'td-files');
     const seenFiles = JSON.stringify(seen?.history ?? []);
     check(!!seen && seenFiles.includes(shared.url) && !seenFiles.includes(inside.url), 'a guest sees the files on comments shared with her, not on internal ones');
-    check((await laras.get(shared.url)).status === 200, 'she opens the shared one');
-    check((await laras.get(inside.url)).status === 404, 'not the internal one, though the task is shared with her');
-    check((await raka.get(inside.url)).status === 200 && (await raka.get(shared.url)).status === 200, 'the team opens both');
+    check((await laura.get(shared.url)).status === 200, 'she opens the shared one');
+    check((await laura.get(inside.url)).status === 404, 'not the internal one, though the task is shared with her');
+    check((await james.get(inside.url)).status === 200 && (await james.get(shared.url)).status === 200, 'the team opens both');
     // The guest attaches her own upload; not a file of the company's.
-    const hers = await laras.post('/api/upload', 'from the client', { 'content-type': 'text/plain', 'x-file-name': 'brief.txt', 'x-workspace': 'pnp' }).then((r) => r.json());
-    await laras.sync('todos', [{ ...seen, history: [...seen.history, { id: 'tf-guest', at: now(), by: 'laras@kopinara.example', kind: 'comment', text: 'ours', files: [card(hers), card(inside)] }] }]);
+    const hers = await laura.post('/api/upload', 'from the client', { 'content-type': 'text/plain', 'x-file-name': 'brief.txt', 'x-workspace': 'pnp' }).then((r) => r.json());
+    await laura.sync('todos', [{ ...seen, history: [...seen.history, { id: 'tf-guest', at: now(), by: 'laura@kopinara.example', kind: 'comment', text: 'ours', files: [card(hers), card(inside)] }] }]);
     const guestFiles = filesOf('tf-guest');
     check(guestFiles.length === 1 && guestFiles[0].includes(hers.url) && doc('todos', 'td-files').history.find((h) => h.id === 'tf-guest')?.toClient === true, `a guest’s comment carries her own upload only (${JSON.stringify(guestFiles)})`);
-    check((await raka.get(hers.url)).status === 200, 'and the team opens it');
+    check((await james.get(hers.url)).status === 200, 'and the team opens it');
     // A project that doesn't let guests add files: her comment goes in without them.
     const kopi = doc('clients', 'c-kopinara');
     put('clients', { ...kopi, access: { ...(kopi.access ?? {}), uploads: false } });
-    const again = (await laras.state()).todos.find((x) => x.id === 'td-files');
-    await laras.sync('todos', [{ ...again, history: [...again.history, { id: 'tf-guest2', at: now(), by: 'laras@kopinara.example', kind: 'comment', text: 'one more', files: [card(hers)] }] }]);
+    const again = (await laura.state()).todos.find((x) => x.id === 'td-files');
+    await laura.sync('todos', [{ ...again, history: [...again.history, { id: 'tf-guest2', at: now(), by: 'laura@kopinara.example', kind: 'comment', text: 'one more', files: [card(hers)] }] }]);
     const second = doc('todos', 'td-files').history.find((h) => h.id === 'tf-guest2');
     check(!!second && !second.files, 'with guest uploads off, her comment is kept without files');
     put('clients', kopi);

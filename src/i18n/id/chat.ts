@@ -221,8 +221,8 @@ const id: Record<string, string> = {
   See: 'Lihat',
 
   // A conversation (chat/Conversation.tsx)
-  'Make a task: /task Send the deck @Bima friday': 'Buat tugas: /task Kirim deck @Bima jumat',
-  'Remind yourself: /remind call Laras tomorrow': 'Ingatkan diri sendiri: /remind telepon Laras besok',
+  'Make a task: /task Send the deck @Owen friday': 'Buat tugas: /task Kirim deck @Owen jumat',
+  'Remind yourself: /remind call Laura tomorrow': 'Ingatkan diri sendiri: /remind telepon Laura besok',
   'Offline. What you write is sent when you’re back.': 'Offline. Yang Anda tulis terkirim saat koneksi kembali.',
   'Connecting…': 'Menghubungkan…',
   'Pick a channel or person': 'Pilih channel atau orang',

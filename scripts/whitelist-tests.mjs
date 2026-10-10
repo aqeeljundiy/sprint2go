@@ -117,7 +117,7 @@ const env = {
   MAIL_PORT: String(smtpPort),
   MAIL_HOST: 'localhost',
   SEED_PASSWORD: randomBytes(12).toString('hex'),
-  S2G_OPERATORS: 'tomas@rimbagroup.example',
+  S2G_OPERATORS: 'thomas@rimbagroup.example',
   S2G_FAKE_DISK: `${100 * GB},${DISK_FREE}`,
   SUPPORT_EMAIL: 'support@s2g-check.test',
   PUBLIC_URL: '',
@@ -171,26 +171,26 @@ try {
     db.prepare('UPDATE sessions SET op_ok = ? WHERE token = ?').run(now(), createHash('sha256').update(s.token).digest('hex'));
     return s;
   };
-  const op = await operator('tomas@rimbagroup.example'); // owner operator (S2G_OPERATORS)
-  const support = await operator('yusuf@rimbagroup.example', 'support');
-  const raka = await signIn('raka@demo.sprint2go.com'); // owner of sprint2go demo
-  const sofia = await signIn('sofia@demo.sprint2go.com'); // admin
-  const bima = await signIn('bima@demo.sprint2go.com'); // member
-  const intan = await signIn('intan@demo.sprint2go.com'); // member
-  check(op.ok && support.ok && raka.ok && sofia.ok && bima.ok && intan.ok, 'operators, owner, admin and members sign in');
+  const op = await operator('thomas@rimbagroup.example'); // owner operator (S2G_OPERATORS)
+  const support = await operator('ethan@rimbagroup.example', 'support');
+  const james = await signIn('james@demo.sprint2go.com'); // owner of sprint2go demo
+  const sophie = await signIn('sophie@demo.sprint2go.com'); // admin
+  const owen = await signIn('owen@demo.sprint2go.com'); // member
+  const isabel = await signIn('isabel@demo.sprint2go.com'); // member
+  check(op.ok && support.ok && james.ok && sophie.ok && owen.ok && isabel.ok, 'operators, owner, admin and members sign in');
   const audit = async () => (await op.get('/api/admin/audit')).body.entries ?? [];
   const notices = (userId) => db.prepare("SELECT data FROM docs WHERE coll = 'notices'").all().map((r) => JSON.parse(r.data)).filter((n) => n.userId === userId);
 
   /* operator-only */
-  check((await intan.get('/api/admin/whitelist')).status >= 401, 'someone who isn’t an operator can’t see the Whitelist');
-  check((await raka.post('/api/admin/whitelist/add', { workspaceId: 'pnp', aiLimit: 1, sesLimit: 1 })).status >= 401 && !doc('workspaces', 'pnp').plan.unlimited, 'nor put their own company on it');
-  check((await raka.sync('workspaces', [{ ...doc('workspaces', 'elk'), plan: { ...doc('workspaces', 'elk').plan, unlimited: true } }])) && !doc('workspaces', 'elk').plan.unlimited, 'the app can’t make a plan Unlimited');
+  check((await isabel.get('/api/admin/whitelist')).status >= 401, 'someone who isn’t an operator can’t see the Whitelist');
+  check((await james.post('/api/admin/whitelist/add', { workspaceId: 'pnp', aiLimit: 1, sesLimit: 1 })).status >= 401 && !doc('workspaces', 'pnp').plan.unlimited, 'nor put their own company on it');
+  check((await james.sync('workspaces', [{ ...doc('workspaces', 'elk'), plan: { ...doc('workspaces', 'elk').plan, unlimited: true } }])) && !doc('workspaces', 'elk').plan.unlimited, 'the app can’t make a plan Unlimited');
   const supView = await support.get('/api/admin/whitelist');
   check(supView.status === 200 && supView.body.can === false, 'a support operator sees the list but can’t change it');
   check((await support.post('/api/admin/whitelist/add', { workspaceId: 'pnp', aiLimit: 1, sesLimit: 1 })).status === 403, 'and adding is refused');
 
   /* finding a company */
-  for (const q of ['sprint2go demo', 'demo.sprint2go.com', 'raka@demo.sprint2go.com']) {
+  for (const q of ['sprint2go demo', 'demo.sprint2go.com', 'james@demo.sprint2go.com']) {
     const f = await op.get(`/api/admin/whitelist/find?q=${encodeURIComponent(q)}`);
     check(f.body.results?.some((x) => x.id === 'pnp'), `found by ${q.includes('@') ? 'owner email' : q.includes('.') ? 'domain' : 'name'}`);
   }
@@ -209,27 +209,27 @@ try {
   check((await op.post('/api/admin/company/plan', { id: 'pnp', tier: 'studio' })).status === 409, 'its plan is the Whitelist’s: the company page can’t change it');
 
   /* every limit lifted */
-  const many = Array.from({ length: 25 }, (_, i) => ({ id: `wl-box-${i}`, email: `box${i}@demo.sprint2go.com`, name: `Box ${i}`, kind: 'personal', connected: true, users: ['u-raka'] }));
-  await raka.sync('workspaces', [{ ...doc('workspaces', 'pnp'), accounts: [...doc('workspaces', 'pnp').accounts, ...many] }]);
+  const many = Array.from({ length: 25 }, (_, i) => ({ id: `wl-box-${i}`, email: `box${i}@demo.sprint2go.com`, name: `Box ${i}`, kind: 'personal', connected: true, users: ['u-james'] }));
+  await james.sync('workspaces', [{ ...doc('workspaces', 'pnp'), accounts: [...doc('workspaces', 'pnp').accounts, ...many] }]);
   check(doc('workspaces', 'pnp').accounts.filter((a) => a.id.startsWith('wl-box-')).length === 25, '25 more hosted mailboxes are kept');
-  const meet = await raka.get('/api/meet/status?ws=pnp');
+  const meet = await james.get('/api/meet/status?ws=pnp');
   check(meet.body.minutes && meet.body.minutes.total === null && meet.body.minutes.left === null, 'the notetaker has no hour limit');
-  const room = await raka.get('/api/storage?workspaceId=pnp');
+  const room = await james.get('/api/storage?workspaceId=pnp');
   check(room.status === 200 && room.body.left === 40 * MB && room.body.total === room.body.used + 40 * MB, 'storage: what the disk has above its safety reserve');
   const upload = (who, bytes, name = 'file.bin') => who.post('/api/upload', new Uint8Array(bytes), { 'content-type': 'application/octet-stream', 'x-file-name': name, 'x-workspace': 'pnp' });
-  check((await upload(sofia, 5 * MB)).status === 200, 'a 5 MB upload goes in');
-  const tooBig = await upload(sofia, 45 * MB);
+  check((await upload(sophie, 5 * MB)).status === 200, 'a 5 MB upload goes in');
+  const tooBig = await upload(sophie, 45 * MB);
   check(tooBig.status === 413 && /nearly full, so uploads are stopped/.test(tooBig.body.error), 'one that would eat into the reserve stops with a plain message');
   check(!!db.prepare("SELECT 1 FROM alerts_sent WHERE kind = 'unlimited:disk'").get(), 'and the operators are told');
-  await raka.sync('workspaces', [{ ...doc('workspaces', 'pnp'), plan: { ...doc('workspaces', 'pnp').plan, tier: 'free', paused: true, unlimited: false } }]);
+  await james.sync('workspaces', [{ ...doc('workspaces', 'pnp'), plan: { ...doc('workspaces', 'pnp').plan, tier: 'free', paused: true, unlimited: false } }]);
   check(doc('workspaces', 'pnp').plan.unlimited && !doc('workspaces', 'pnp').plan.paused && doc('workspaces', 'pnp').plan.tier === 'business', 'the app can’t pause it, change it or take it off Unlimited');
 
   /* no bills */
   check((await op.post('/api/admin/invoice/create', { workspaceId: 'pnp' })).status === 409, 'no invoice can be made for it');
   await op.post('/api/admin/invoice/generate', {});
   check(!db.prepare("SELECT 1 FROM invoices WHERE workspace_id = 'pnp'").get(), 'the month’s invoice run leaves it out');
-  check((await raka.post('/api/billing/coupon', { workspaceId: 'pnp', code: 'ANY' })).status === 409, 'no code to apply');
-  check((await raka.post('/api/mail/credits', { workspaceId: 'pnp', pack: 1000 })).status >= 400 && !db.prepare("SELECT 1 FROM credit_orders WHERE workspace_id = 'pnp'").get(), 'no Boosted credits to buy');
+  check((await james.post('/api/billing/coupon', { workspaceId: 'pnp', code: 'ANY' })).status === 409, 'no code to apply');
+  check((await james.post('/api/mail/credits', { workspaceId: 'pnp', pack: 1000 })).status >= 400 && !db.prepare("SELECT 1 FROM credit_orders WHERE workspace_id = 'pnp'").get(), 'no Boosted credits to buy');
 
   /* not counted as revenue */
   const companies = (await op.get('/api/admin/companies')).body.companies;
@@ -243,51 +243,51 @@ try {
   /* AI: the monthly limit, 80% and 100% */
   const useAI = (userId, outTokens) =>
     db.prepare("INSERT INTO ai_usage (workspace_id, user_id, job, provider, model, in_tokens, out_tokens, at, via) VALUES ('pnp', ?, 'summary', 'included', 'gpt-5', 0, ?, ?, 'openai')").run(userId, outTokens, now());
-  useAI('u-hendra', 1_000_000);
-  const used = (await raka.get('/api/unlimited?ws=pnp')).body.ai.used;
+  useAI('u-henry', 1_000_000);
+  const used = (await james.get('/api/unlimited?ws=pnp')).body.ai.used;
   check(used > 0, `AI on our keys is counted (${Math.round(used)} rupiah)`);
   await op.post('/api/admin/whitelist/update', { workspaceId: 'pnp', aiLimit: Math.ceil(used / 0.85) });
   check((await audit()).some((a) => a.action === 'whitelist.update' && a.target === 'pnp' && /AI Rp/.test(a.detail)), 'a changed limit is in the audit log');
   const ask = (who) => who.post('/api/ai/summarize', { workspaceId: 'pnp', thread: { subject: 'Hi', messages: [{ from: 'a', body: 'b' }] } });
-  const r85 = await ask(intan);
+  const r85 = await ask(isabel);
   check(r85.status !== 429, 'at 85% AI still runs');
   check(!!db.prepare("SELECT 1 FROM whitelist_alerts WHERE workspace_id = 'pnp' AND meter = 'ai' AND level = 80").get(), '80% is noted');
-  check(notices('u-raka').some((n) => /80% of this month’s AI/.test(n.text)) && notices('u-hendra').some((n) => /80% of this month’s AI/.test(n.text)) && !notices('u-intan').some((n) => /80% of this month’s AI/.test(n.text)), 'the owners hear it (members don’t)');
-  check(!!db.prepare("SELECT 1 FROM alerts_sent WHERE kind LIKE 'unlimited:pnp:ai:80:%'").get() && notices('u-tomas').some((n) => /used 80% of this month’s AI/.test(n.text)), 'and the operators, through their alerts');
+  check(notices('u-james').some((n) => /80% of this month’s AI/.test(n.text)) && notices('u-henry').some((n) => /80% of this month’s AI/.test(n.text)) && !notices('u-isabel').some((n) => /80% of this month’s AI/.test(n.text)), 'the owners hear it (members don’t)');
+  check(!!db.prepare("SELECT 1 FROM alerts_sent WHERE kind LIKE 'unlimited:pnp:ai:80:%'").get() && notices('u-thomas').some((n) => /used 80% of this month’s AI/.test(n.text)), 'and the operators, through their alerts');
   await op.post('/api/admin/whitelist/update', { workspaceId: 'pnp', aiLimit: Math.floor(used * 0.9) });
-  const r100 = await ask(intan);
+  const r100 = await ask(isabel);
   check(r100.status === 429 && r100.body.error === 'This month’s AI is used up. Ask your admin.', 'at 100% AI pauses with a plain message');
-  check(notices('u-raka').some((n) => /AI is paused until the 1st/.test(n.text)), 'the owners hear that it’s paused');
-  check((await raka.get('/api/meet/status?ws=pnp')).body.minutes?.total === null && (await upload(sofia, 1 * MB)).status === 200, 'everything else keeps working');
+  check(notices('u-james').some((n) => /AI is paused until the 1st/.test(n.text)), 'the owners hear that it’s paused');
+  check((await james.get('/api/meet/status?ws=pnp')).body.minutes?.total === null && (await upload(sophie, 1 * MB)).status === 200, 'everything else keeps working');
   await op.post('/api/admin/whitelist/update', { workspaceId: 'pnp', aiLimit: Math.ceil(used * 3) });
-  check((await ask(intan)).status !== 429, 'a raised limit applies at once');
+  check((await ask(isabel)).status !== 429, 'a raised limit applies at once');
 
   /* each person's rules */
-  const view = await raka.get('/api/unlimited?ws=pnp');
+  const view = await james.get('/api/unlimited?ws=pnp');
   check(view.status === 200 && view.body.canManage && view.body.people.length === doc('workspaces', 'pnp').members.length, 'owners see everyone’s use');
-  check((await bima.post('/api/unlimited/rules', { workspaceId: 'pnp', rules: [{ userId: 'u-bima', aiOn: true, ai: 1 }] })).status === 403, 'a member can’t set rules');
+  check((await owen.post('/api/unlimited/rules', { workspaceId: 'pnp', rules: [{ userId: 'u-owen', aiOn: true, ai: 1 }] })).status === 403, 'a member can’t set rules');
   const share = Math.round(used * 0.5);
-  check((await sofia.post('/api/unlimited/rules', { workspaceId: 'pnp', rules: [{ userId: 'u-bima', ai: Math.ceil(used * 4) }] })).status === 400, 'a share can’t be more than the company’s limit');
-  check((await sofia.post('/api/unlimited/rules', { workspaceId: 'pnp', rules: [{ userId: 'u-bima', storageGB: 50 }] })).status === 400, 'a storage cap can’t be more than there is');
-  const set = await sofia.post('/api/unlimited/rules', { workspaceId: 'pnp', rules: [{ userId: 'u-bima', ai: share, storageGB: 0.01 }, { userId: 'u-intan', aiOn: false, notetaker: false }] });
+  check((await sophie.post('/api/unlimited/rules', { workspaceId: 'pnp', rules: [{ userId: 'u-owen', ai: Math.ceil(used * 4) }] })).status === 400, 'a share can’t be more than the company’s limit');
+  check((await sophie.post('/api/unlimited/rules', { workspaceId: 'pnp', rules: [{ userId: 'u-owen', storageGB: 50 }] })).status === 400, 'a storage cap can’t be more than there is');
+  const set = await sophie.post('/api/unlimited/rules', { workspaceId: 'pnp', rules: [{ userId: 'u-owen', ai: share, storageGB: 0.01 }, { userId: 'u-isabel', aiOn: false, notetaker: false }] });
   check(set.status === 200, 'an admin sets a share of AI and a storage cap for one person, and switches AI and the notetaker off for another');
-  check((await ask(bima)).status !== 429, 'within his share Bima’s AI runs');
-  useAI('u-bima', Math.ceil(1_000_000 * 0.45));
-  await ask(bima);
-  check(notices('u-bima').some((n) => /80% of your AI for this month/.test(n.text)) && notices('u-sofia').some((n) => /Bima Anggara used 80% of their AI/.test(n.text)), 'at 80% of his share he and the admins hear it');
-  useAI('u-bima', 1_000_000);
-  const rz = await ask(bima);
+  check((await ask(owen)).status !== 429, 'within his share Owen’s AI runs');
+  useAI('u-owen', Math.ceil(1_000_000 * 0.45));
+  await ask(owen);
+  check(notices('u-owen').some((n) => /80% of your AI for this month/.test(n.text)) && notices('u-sophie').some((n) => /Owen Mitchell used 80% of their AI/.test(n.text)), 'at 80% of his share he and the admins hear it');
+  useAI('u-owen', 1_000_000);
+  const rz = await ask(owen);
   check(rz.status === 429 && rz.body.error === 'Your AI for this month is used up. Ask your admin.', 'at 100% of his share his AI pauses, with a plain message');
-  check(notices('u-bima').some((n) => /Your AI for this month .* is used up/.test(n.text)), 'and he hears it');
-  check((await ask(raka)).status !== 429, 'others keep theirs');
-  const d1 = await ask(intan);
+  check(notices('u-owen').some((n) => /Your AI for this month .* is used up/.test(n.text)), 'and he hears it');
+  check((await ask(james)).status !== 429, 'others keep theirs');
+  const d1 = await ask(isabel);
   check(d1.status === 403 && /AI is switched off for you/.test(d1.body.error), 'AI switched off: a plain message');
-  const bot = await intan.post('/api/meet/bot', { meeting: { id: 'm-wl-test', workspaceId: 'pnp', title: 'Call', url: 'https://meet.google.com/abc-defg-hij' } });
+  const bot = await isabel.post('/api/meet/bot', { meeting: { id: 'm-wl-test', workspaceId: 'pnp', title: 'Call', url: 'https://meet.google.com/abc-defg-hij' } });
   check(bot.status === 403 && /notetaker is switched off for you/.test(bot.body.error), 'the notetaker switched off: a plain message');
-  check((await upload(bima, 8 * MB)).status === 200, 'Bima uploads within his cap');
-  const capped = await upload(bima, 4 * MB);
+  check((await upload(owen, 8 * MB)).status === 200, 'Owen uploads within his cap');
+  const capped = await upload(owen, 4 * MB);
   check(capped.status === 413 && /more than your storage allows/.test(capped.body.error), 'past his cap: a plain message');
-  check((await upload(raka, 4 * MB)).status === 200, 'people without a cap share what’s left');
+  check((await upload(james, 4 * MB)).status === 200, 'people without a cap share what’s left');
 
   /* the AI page: never in the verdict */
   const ai = (await op.get('/api/admin/ai')).body;
@@ -298,7 +298,7 @@ try {
   const after = doc('workspaces', 'pnp').plan;
   check(off.status === 200 && JSON.stringify(after) === JSON.stringify(prevPlan), 'taken off: the plan it had comes back');
   check((await audit()).some((a) => a.action === 'whitelist.remove' && a.target === 'pnp'), 'in the audit log');
-  check(!db.prepare("SELECT 1 FROM whitelist_rules WHERE workspace_id = 'pnp'").get() && (await raka.get('/api/unlimited?ws=pnp')).status === 404, 'its rules are gone');
+  check(!db.prepare("SELECT 1 FROM whitelist_rules WHERE workspace_id = 'pnp'").get() && (await james.get('/api/unlimited?ws=pnp')).status === 404, 'its rules are gone');
   check((await op.get('/api/admin/companies')).body.companies.find((x) => x.id === 'pnp').state === 'paying', 'and it counts as paying again');
   check((await support.post('/api/admin/whitelist/remove', { workspaceId: 'elk' })).status === 403, 'a support operator can’t take anyone off either');
   db.close();

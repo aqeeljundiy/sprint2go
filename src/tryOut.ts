@@ -14,7 +14,7 @@ export function startTryOut() {
   if (!trying) return;
   setStoragePrefix(PREFIX);
   // A visit saved from older demo data starts over, so nobody keeps seeing the old sample names.
-  const DATA = '2026-10-10b';
+  const DATA = '2026-10-10c';
   try {
     if (localStorage.getItem(PREFIX + 'data') !== DATA) {
       clearPrefixed();

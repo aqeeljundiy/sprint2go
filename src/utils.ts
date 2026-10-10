@@ -45,7 +45,7 @@ export const lastMessage = (t: Thread) => t.messages[t.messages.length - 1];
 
 export const snippet = (body: string) => body.replace(/\s+/g, ' ').trim().slice(0, 140);
 
-/** Names shown in the list row, e.g. "Laras Anindita, me (3)". */
+/** Names shown in the list row, e.g. "Laura Anderson, me (3)". */
 const ME = '\u0000me'; // you, among the names (written "me" in the person's language)
 export function participants(th: Thread, me: Person) {
   const seen: string[] = [];

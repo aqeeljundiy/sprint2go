@@ -37,8 +37,8 @@ interface Props {
 type Row = DumpTask & { key: number; resolved?: 'person' | 'contact' };
 
 const EXAMPLES = [
-  'Kopinara wants the Q4 concepts by Thursday. Bima, do the ad structure. Intan handle the invoice for Laras by Tuesday. Also someone follow up with Yusuf at Teduh about the retainer next week. Hendra can you prepare the 12.12 budget for Selara by Friday.',
-  'Brightleaf launch campaign. Goal is 500 pre-orders before 11.11, the founder Nina wants it to feel clean and science-y. Emma design the key visual and 4 statics by Friday. Joko edit three 15s hooks for TikTok next week. Bim set up the Meta campaign structure by Thursday. Andi send the moodboard to Nina tomorrow.',
+  'Kopinara wants the Q4 concepts by Thursday. Owen, do the ad structure. Isabel handle the invoice for Laura by Tuesday. Also someone follow up with Ethan at Teduh about the retainer next week. Henry can you prepare the 12.12 budget for Selara by Friday.',
+  'Brightleaf launch campaign. Goal is 500 pre-orders before 11.11, the founder Nina wants it to feel clean and science-y. Emma design the key visual and 4 statics by Friday. Jack edit three 15s hooks for TikTok next week. Bim set up the Meta campaign structure by Thursday. Andi send the moodboard to Nina tomorrow.',
 ];
 
 /** Speech-to-text where the browser supports it (Chrome, Edge, Safari). */
@@ -192,7 +192,7 @@ export function BrainDump({ users, clients, teams, me, aliases, initialText, lan
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) plan();
                 }}
-                placeholder={t('Kopinara wants the Q4 concepts by Thursday. Bima, do the ad structure…')}
+                placeholder={t('Kopinara wants the Q4 concepts by Thursday. Owen, do the ad structure…')}
               />
               {dict.supported && (
                 <button className={`mic ${dict.on ? 'on' : ''}`} onClick={dict.on ? dict.stop : dict.start} title={dict.on ? t('Stop dictation') : t('Dictate')} aria-label={dict.on ? t('Stop dictation') : t('Dictate')}>
