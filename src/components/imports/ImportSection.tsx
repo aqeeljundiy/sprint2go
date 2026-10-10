@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react';
+import { usePhone } from '../../mobile/media';
+import { GRow, Group } from '../ui/Grouped';
 import type { ImportJob, ImportSource } from '../../importTypes';
 import { SOURCE_NAME } from '../../importTypes';
 import type { User, Workspace } from '../../types';
@@ -76,6 +78,59 @@ export function ImportSection({ ws, members, projects, toast }: { ws: Workspace;
   const busy = jobs?.find(live);
   const waiting = (s: ImportSource) => jobs?.find((j) => j.source === s && (live(j) || j.status === 'ready'));
 
+  const phone = usePhone();
+  const dialog = open && (
+    <Layer>
+      <ImportDialog
+        source={open.source}
+        workspaceId={ws.id}
+        job={open.job}
+        members={members}
+        stages={stagesFor(ws.id)}
+        projects={projects}
+        maxUpload={caps ? (open.source === 'trello' ? Math.min(caps.upload, caps.json) : caps.upload) : null}
+        onChanged={changed}
+        onClose={() => (setOpen(null), void load())}
+        toast={toast}
+      />
+    </Layer>
+  );
+  // Phones (iOS Settings): a row per source and per recent import; tapping one opens its import.
+  if (phone)
+    return (
+      <>
+        <h2>{t('Import')}</h2>
+        <div className="set-rows">
+          <Group footer={busy ? t('One import at a time: the others can start once this one is done.') : t('Bring your team’s history over from Slack, Trello or Google Drive. You check what comes in before anything is made, and you can undo an import for a day after.')}>
+            {SOURCES.map((s) => {
+              const Icon = SOURCE_ICON[s];
+              const mine = waiting(s);
+              const held = !!busy && busy.source !== s;
+              return <GRow key={s} pic={<span className="acct-icon"><Icon size={20} /></span>} label={SOURCE_NAME[s]} sub={HOW[s].line()} value={mine ? t('Open') : undefined} className={held ? 'is-off' : ''} onClick={held ? undefined : () => setOpen(mine ? { source: s, job: mine } : { source: s })} />;
+            })}
+          </Group>
+          {error && <p className="g-foot g-err">{t(error)}</p>}
+          {!!jobs?.length && (
+            <Group title={t('Recent imports')}>
+              {jobs.map((j) => {
+                const Icon = SOURCE_ICON[j.source];
+                return (
+                  <GRow
+                    key={j.id}
+                    pic={<span className="acct-icon"><Icon size={20} /></span>}
+                    label={`${SOURCE_NAME[j.source]} · ${j.preview?.board?.name ?? j.fileName}`}
+                    sub={j.undoUntil ? `${statusLine(j)}. ${t('Can be undone until {when}', { when: untilWords(j.undoUntil) })}` : statusLine(j)}
+                    value={j.status === 'failed' ? t('Stopped') : j.status === 'ready' ? t('Continue') : undefined}
+                    onClick={j.status !== 'cancelled' ? () => setOpen({ source: j.source, job: j }) : undefined}
+                  />
+                );
+              })}
+            </Group>
+          )}
+        </div>
+        {dialog}
+      </>
+    );
   return (
     <>
       <h2>{t('Import')}</h2>
@@ -141,22 +196,7 @@ export function ImportSection({ ws, members, projects, toast }: { ws: Workspace;
         </>
       )}
 
-      {open && (
-        <Layer>
-          <ImportDialog
-            source={open.source}
-            workspaceId={ws.id}
-            job={open.job}
-            members={members}
-            stages={stagesFor(ws.id)}
-            projects={projects}
-            maxUpload={caps ? (open.source === 'trello' ? Math.min(caps.upload, caps.json) : caps.upload) : null}
-            onChanged={changed}
-            onClose={() => (setOpen(null), void load())}
-            toast={toast}
-          />
-        </Layer>
-      )}
+      {dialog}
     </>
   );
 }

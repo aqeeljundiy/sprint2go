@@ -1,5 +1,5 @@
 import { ProjectBadge } from './ProjectBadge';
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { SmoothHeight } from './ui/Smooth';
 import { term } from '../terms';
 import { AlertTriangle, ArrowDown, ArrowRight, ArrowUp, CalendarDays, Check, ChevronRight, FileText, FlaskConical, GripVertical, Hash, Inbox, LayoutGrid, ListChecks, Maximize2, Menu, Mic, Minimize2, PartyPopper, Plus, Settings2, Sparkles, Users, Video, X, Search, Megaphone } from 'lucide-react';
@@ -7,6 +7,7 @@ import type { CalEvent, Client, HomeTemplateId, Meeting, Notice, Team, Thread, T
 import { fmtDay, fmtTime, fmtWeekday, fmtWeekdayLong } from '../i18n/format';
 import { mark, t, textOf, tn, tx } from '../i18n';
 import { useLang } from '../i18n/useLang';
+import { tj } from '../i18n/tj';
 import { isMine } from '../identity';
 import { usePersisted } from '../settings';
 import { relative, localDay } from '../utils';
@@ -203,6 +204,8 @@ export function HomeView(p: Props) {
           : hour < 19
             ? tx('after 6 pm', 'Good evening, {name}.', { name })
             : t('Working late, {name}.', { name });
+  // Phones: the bar says "Good afternoon, Aqeel" when it fits; otherwise "Good afternoon", with the name in the line under.
+  const [nameBelow, setNameBelow] = useState(false);
 
   const d = useMemo(() => {
     const work = p.tasks.filter((t) => !isBrief(t));
@@ -800,15 +803,12 @@ export function HomeView(p: Props) {
           <TopBar
             app="home"
             title={
-              <h1 className="mt-title plain">
-                {/* "Good afternoon": the name would be cut off at 24 px beside the logo on a 375 px phone. */}
-                <span className="mt-title-text">{greeting.replace(/\.$/, '').split(',')[0]}</span>
-              </h1>
+              <GreetingTitle full={greeting.replace(/\.$/, '')} short={greeting.split(',')[0]} onFit={(fits) => setNameBelow(!fits)} />
             }
           />
           <div className="home-greet">
             <p className="hg-sum">
-              <span className="hg-date">{fmtWeekdayLong(new Date())}.</span> {summary}
+              <span className="hg-date">{nameBelow && name ? tj('{name}, {date}.', { name: <strong className="hg-name">{name}</strong>, date: fmtWeekdayLong(new Date()) }) : `${fmtWeekdayLong(new Date())}.`}</span> {summary}
             </p>
             {quiet && nextTask && <p className="hg-sum">{t('Next on your list: “{title}”, {when}.', { title: nextTask.title, when: dueWord(nextTask.due!) })}</p>}
           </div>
@@ -1079,3 +1079,57 @@ const dueWord = (day: string) => {
   if (day === addDays(today, 1)) return t('tomorrow');
   return fmtWeekday(day);
 };
+
+/**
+ * Home's greeting in the phone's top bar (24/700): the whole "Good afternoon, Aqeel" when it fits beside the logo and
+ * search, else just "Good afternoon" (the name then leads the line under it). Checked against the full text on every
+ * resize, so turning the phone or a shorter greeting brings the name back.
+ */
+function GreetingTitle({ full, short, onFit }: { full: string; short: string; onFit: (fits: boolean) => void }) {
+  const ref = useRef<HTMLHeadingElement>(null);
+  const [fits, setFits] = useState(true);
+  const report = useRef(onFit);
+  report.current = onFit;
+  useLayoutEffect(() => {
+    const h = ref.current;
+    if (!h) return;
+    const check = () => {
+      // Show the full text for a moment (before paint), see whether it's cut off, then put back what was there.
+      const was = h.dataset.show;
+      h.dataset.show = 'full';
+      const text = h.querySelector<HTMLElement>('.gt-full');
+      let ok = true;
+      if (text) {
+        // The text's own width against the room up to the bar's next button (search), less the title's padding.
+        const range = document.createRange();
+        range.selectNodeContents(text);
+        const need = range.getBoundingClientRect().width;
+        const box = h.getBoundingClientRect();
+        const bar = h.closest('.mobile-top') ?? h.parentElement!;
+        const lefts = [...bar.querySelectorAll('button, a')].map((e) => e.getBoundingClientRect()).filter((r) => r.width > 0 && r.left > box.left + 8).map((r) => r.left);
+        const end = Math.min(bar.getBoundingClientRect().right - 16, ...lefts);
+        const cs = getComputedStyle(h);
+        ok = need <= end - box.left - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight) - 4;
+      }
+      if (was) h.dataset.show = was;
+      else delete h.dataset.show;
+      setFits(ok);
+      report.current(ok);
+    };
+    check();
+    void document.fonts?.ready.then(check); // the brand font is wider than the fallback it was measured in
+    const ro = new ResizeObserver(check);
+    ro.observe(h.closest('.mobile-top') ?? h.parentElement ?? h);
+    return () => ro.disconnect();
+  }, [full]);
+  return (
+    <h1 ref={ref} className={`mt-title plain gt ${fits ? 'gt-fits' : 'gt-short'}`} aria-label={full}>
+      <span className="mt-title-text gt-full" aria-hidden>
+        {full}
+      </span>
+      <span className="mt-title-text gt-part" aria-hidden>
+        {short}
+      </span>
+    </h1>
+  );
+}

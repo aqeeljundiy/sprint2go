@@ -6,6 +6,8 @@ import type { Plan, PlanAdjustment, Tier, Track, Workspace } from '../../types';
 import { ADDONS, ALLOWANCE, PAUSE_DAYS_A_YEAR, PLAN_FEATURES, PRICES, TIER_NAME, TOP_UP, TRACK_NAME, addAdjustment, billingPeriod, countedMailboxes, mailboxRoom, meetHours, monthlyTotal, options, pauseDaysLeft, planName, priceFor, prorate, rp, seatsFor, storageGB } from '../../data/pricing';
 import { trialPlan } from '../../data/workspaces';
 import { Select } from '../ui/Select';
+import { ChoiceRow, Group, TextRow } from '../ui/Grouped';
+import { usePhone } from '../../mobile/media';
 import { brand as product } from '../../terms';
 import { getLang, mark, t, tn, tx } from '../../i18n';
 import { tj } from '../../i18n/tj';
@@ -102,16 +104,23 @@ export function BillingSection({ ws, people, isOwner, onPlan, onExport, toast }:
   const shownAdjustments = plan.adjustments?.length ? plan.adjustments : lastAdjustments.current;
   const pauseLeft = Math.ceil(pauseDaysLeft(plan.pauses));
   const trialOn = !!plan.trialEnds && plan.trialEnds > new Date().toISOString();
-  const applyCode = async () => {
+  /** Sends a discount code; the error to show when it didn't work (phones show it on the code's screen). */
+  const sendCode = async (c: string): Promise<string | null> => {
     setCodeBusy(true);
-    const r = await fetch('/api/billing/coupon', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ workspaceId: ws.id, code }) }).catch(() => null);
+    const r = await fetch('/api/billing/coupon', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ workspaceId: ws.id, code: c }) }).catch(() => null);
     const d = r ? await r.json().catch(() => ({})) : {};
     setCodeBusy(false);
     const error = (d as { error?: string }).error;
-    if (!r?.ok) return toast(error ? t(error) : t('That code didn’t work.'));
+    if (!r?.ok) return error ?? mark('That code didn’t work.');
     setCode('');
     toast(t('Code applied. You’ll see it on your next invoice.'));
+    return null;
   };
+  const applyCode = async () => {
+    const err = await sendCode(code);
+    if (err) toast(t(err));
+  };
+  const phone = usePhone();
   const sample = server.on ? [] : plan.tier === 'free' || plan.trialEnds
     ? []
     : [0, 1, 2].map((i) => {
@@ -332,14 +341,17 @@ export function BillingSection({ ws, people, isOwner, onPlan, onExport, toast }:
                 <span />
               </button>
             </label>
-            {plan.autoTopUp?.on && (
+            {plan.autoTopUp?.on &&
+              (phone ? (
+                <ChoiceRow label={t('Monthly limit')} value={String(plan.autoTopUp.limit)} onChange={(v) => set({ autoTopUp: { on: true, limit: Number(v) } })} options={[1, 3, 5, 10].map((k) => ({ value: String(k * TOP_UP.price), label: `${rp(k * TOP_UP.price)} (${tn(k, '{n} top-up', '{n} top-ups')})` }))} />
+              ) : (
               <div className="set-row">
                 <span>
                   <strong>{t('Monthly limit')}</strong>
                 </span>
                 <Select value={String(plan.autoTopUp.limit)} onChange={(v) => set({ autoTopUp: { on: true, limit: Number(v) } })} label={t('Monthly limit')} options={[1, 3, 5, 10].map((k) => ({ value: String(k * TOP_UP.price), label: `${rp(k * TOP_UP.price)} (${tn(k, '{n} top-up', '{n} top-ups')})` }))} />
               </div>
-            )}
+              ))}
           </div>
         )}
 
@@ -440,6 +452,23 @@ export function BillingSection({ ws, people, isOwner, onPlan, onExport, toast }:
           )
         )}
 
+        {phone ? (
+          <div className="set-rows">
+            <Group title={t('Invoice details')} footer={t('PPN is shown on every invoice.')}>
+              <TextRow label={t('Company name')} value={plan.billing.company} allowEmpty={false} autoComplete="organization" onSave={(v) => set({ billing: { ...plan.billing, company: v } })} />
+              <TextRow label="NPWP" value={plan.billing.npwp ?? ''} placeholder="00.000.000.0-000.000" inputMode="numeric" onSave={(v) => set({ billing: { ...plan.billing, npwp: v } })} />
+              <TextRow label={t('Address')} value={plan.billing.address ?? ''} multiline autoComplete="street-address" onSave={(v) => set({ billing: { ...plan.billing, address: v.trim() } })} />
+              <TextRow
+                label={t('Send invoices to')}
+                value={plan.billing.emails.join(', ')}
+                placeholder={t('finance@company.com')}
+                inputMode="email"
+                footer={t('Separate them with commas.')}
+                onSave={(v) => set({ billing: { ...plan.billing, emails: v.split(',').map((x) => x.trim()).filter(Boolean) } })}
+              />
+            </Group>
+          </div>
+        ) : (
         <div className="set-block">
           <h3>{t('Invoice details')}</h3>
           <div className="field-grid">
@@ -462,6 +491,7 @@ export function BillingSection({ ws, people, isOwner, onPlan, onExport, toast }:
           </div>
           <p className="muted small">{t('PPN is shown on every invoice.')}</p>
         </div>
+        )}
       </fieldset>
 
       <div className="set-block">
@@ -487,6 +517,12 @@ export function BillingSection({ ws, people, isOwner, onPlan, onExport, toast }:
                 {t('Free until {date}', { date: fullDay(plan.comp.until) })}
                 {plan.comp.note ? ` (${plan.comp.note})` : ''}
               </span>
+            ) : phone ? (
+              <div className="set-rows bill-code-row">
+                <Group>
+                  <TextRow label={t('Discount code')} value="" empty={t('Add')} disabled={!server.on || codeBusy} placeholder={t('Have a code?')} mono saveLabel={t('Apply')} allowEmpty={false} onSave={(v) => sendCode(v.toUpperCase())} />
+                </Group>
+              </div>
             ) : (
               <>
                 <input value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} placeholder={t('Have a code?')} aria-label={t('Discount code')} onKeyDown={(e) => e.key === 'Enter' && code.trim() && void applyCode()} />

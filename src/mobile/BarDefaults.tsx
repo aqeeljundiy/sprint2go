@@ -4,6 +4,8 @@ import { APPS } from '../components/AppRail';
 import { Sheet } from '../components/ui/Sheet';
 import { EditBar } from './EditBar';
 import { t } from '../i18n';
+import { usePhone } from './media';
+import { GRow, Group } from '../components/ui/Grouped';
 
 /** The bar everyone starts with on phones, unless their company or team set another. */
 export const DEFAULT_BAR: AppId[] = ['home', 'mail', 'chat', 'tasks'];
@@ -39,6 +41,53 @@ export function BarDefaults({ ws, teams, canManage, onWorkspace }: { ws: Workspa
   const rows = [{ id: '', name: t('Everyone'), hint: t('Unless their team has its own') }, ...teams.filter((tm) => tm.workspaceId === ws.id).map((tm) => ({ id: tm.id, name: tm.name, hint: barOf(tm.id) ? t('Its own bar') : t('Same as everyone') }))];
   const icons = (bar: string[]) => bar.map((id) => APPS.find((a) => a.id === id)).filter((a): a is (typeof APPS)[number] => !!a);
   const editingTeam = editing === null ? undefined : editing || undefined;
+  const phone = usePhone();
+  const sheet = editing !== null && (
+    <Sheet
+      onClose={() => setEditing(null)}
+      title={editing ? t('Phone bar for {team}', { team: rows.find((r) => r.id === editing)?.name ?? t('the team') }) : t('Phone bar for everyone')}
+      head={
+        <button type="button" className="primary-btn sm" onClick={() => setEditing(null)}>
+          {t('Done')}
+        </button>
+      }
+    >
+      <EditBar apps={apps} bar={barOf(editingTeam) ?? (editingTeam ? (barOf() ?? DEFAULT_BAR) : DEFAULT_BAR)} onChange={(bar) => save(editingTeam, bar)} />
+      {barOf(editingTeam) && (
+        <button type="button" className="link-btn small more-reset" onClick={() => (save(editingTeam, null), setEditing(null))}>
+          {editingTeam ? t('Use the same bar as everyone') : t('Back to Home, Mail, Chat and Tasks')}
+        </button>
+      )}
+    </Sheet>
+  );
+  // Phones (iOS Settings): a row per bar with its four icons on the right; tapping one opens the bar to arrange.
+  if (phone)
+    return (
+      <div className="set-rows">
+        <Group title={t('Phone bar')} footer={t('The four apps at the bottom of everyone’s phone. People can still change their own.')}>
+          {rows.map((r) => {
+            const bar = barOf(r.id || undefined) ?? (r.id ? (barOf() ?? DEFAULT_BAR) : DEFAULT_BAR);
+            return (
+              <GRow
+                key={r.id || 'all'}
+                label={r.name}
+                sub={r.hint}
+                accessory={
+                  <span className="bar-defaults-icons" aria-label={icons(bar).map((a) => a.name).join(', ')}>
+                    {icons(bar).map((a) => (
+                      <a.icon key={a.id} size={16} />
+                    ))}
+                  </span>
+                }
+                chevron={canManage}
+                onClick={canManage ? () => setEditing(r.id) : undefined}
+              />
+            );
+          })}
+        </Group>
+        {sheet}
+      </div>
+    );
   return (
     <div className="set-block bar-defaults">
       <h3>{t('Phone bar')}</h3>
@@ -62,24 +111,7 @@ export function BarDefaults({ ws, teams, canManage, onWorkspace }: { ws: Workspa
           </div>
         );
       })}
-      {editing !== null && (
-        <Sheet
-          onClose={() => setEditing(null)}
-          title={editing ? t('Phone bar for {team}', { team: rows.find((r) => r.id === editing)?.name ?? t('the team') }) : t('Phone bar for everyone')}
-          head={
-            <button type="button" className="primary-btn sm" onClick={() => setEditing(null)}>
-              {t('Done')}
-            </button>
-          }
-        >
-          <EditBar apps={apps} bar={barOf(editingTeam) ?? (editingTeam ? (barOf() ?? DEFAULT_BAR) : DEFAULT_BAR)} onChange={(bar) => save(editingTeam, bar)} />
-          {barOf(editingTeam) && (
-            <button type="button" className="link-btn small more-reset" onClick={() => (save(editingTeam, null), setEditing(null))}>
-              {editingTeam ? t('Use the same bar as everyone') : t('Back to Home, Mail, Chat and Tasks')}
-            </button>
-          )}
-        </Sheet>
-      )}
+      {sheet}
     </div>
   );
 }

@@ -170,3 +170,189 @@ button.g-row:active {
 .g-btn + .g-btn {
   margin-left: -8px;
 }
+
+/* ---------- Editing on phones (EditScreen, TextRow, ChoiceRow, SwitchRow in Grouped.tsx) ---------- */
+
+/* iOS's switch in a row: 51 x 32 with a 28 knob. */
+.g-row .switch {
+  flex: none;
+  width: 52px; /* system: iOS's switch, 51 wide */
+  height: 32px;
+}
+.g-row .switch span {
+  top: 2px;
+  left: 2px;
+  width: 28px; /* system: the switch's knob, iOS size */
+  height: 28px; /* system: the switch's knob, iOS size */
+}
+.g-row .switch.on span {
+  transform: translateX(20px);
+}
+.g-row .switch:disabled {
+  opacity: 0.5;
+}
+/* The edit screen: Cancel in words on the left, Save on the right, the fields on the grouped grey. */
+.g-edit .push-head,
+.g-edit .push-body {
+  background: var(--bg);
+}
+.g-edit .push-head {
+  border-bottom-color: transparent;
+}
+.g-edit .push-actions {
+  margin-left: auto;
+}
+.push-back.is-cancel {
+  width: auto;
+  padding: 0 12px;
+  font: var(--t-body);
+  color: var(--accent-text);
+}
+.push-back.is-cancel span {
+  display: inline;
+}
+.g-save {
+  min-height: var(--tap);
+  padding: 0 12px;
+  border-radius: var(--r-tile);
+  font: var(--t-label);
+  color: var(--accent-text);
+  transition: opacity 0.15s, background 0.15s;
+}
+.g-save:active:not(:disabled) {
+  background: var(--hover);
+}
+.g-save:disabled {
+  opacity: 0.4;
+}
+.g-save.danger {
+  color: var(--danger);
+}
+.g-edit-body {
+  padding: 16px 0 32px;
+}
+.g-field-row {
+  padding-block: 4px;
+}
+.g-input {
+  flex: 1;
+  min-width: 0;
+  min-height: var(--tap);
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  font: var(--t-field);
+  color: var(--text);
+  outline: none;
+}
+.g-input.mono {
+  font-family: var(--mono, ui-monospace, monospace);
+}
+.g-field-row.multi {
+  align-items: stretch;
+  padding-block: 12px;
+}
+textarea.g-input {
+  min-height: 96px; /* system: four lines of a 16 px field */
+  resize: vertical;
+}
+.g-err {
+  color: var(--danger);
+}
+/* A label over its field, when an edit screen has several (Password: current and new). */
+.g-field-label {
+  margin: 0 32px 8px;
+  font: var(--t-secondary);
+  color: var(--text-3);
+}
+/* Rows that list things (members, mailboxes, stages): a picture or dot, two lines, a value on the right. */
+.g-row .g-pic {
+  flex: none;
+  display: grid;
+  place-items: center;
+}
+.g-row.has-pic {
+  gap: 12px;
+}
+/* The line starts at the text: 16 + a 40 picture + 12, or 16 + a 12 dot + 12. */
+.g-row.has-pic + .g-row.has-pic::before {
+  left: 68px;
+}
+.g-row.has-pic.has-dot + .g-row.has-pic.has-dot::before {
+  left: 40px;
+}
+.g-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: var(--r-round);
+}
+/* The page under a pushed screen's own content: a header line and a big picture (a member, a mailbox). */
+.g-hero {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  padding: 8px 32px 24px;
+  text-align: center;
+}
+.g-hero strong {
+  margin-top: 8px;
+  font: var(--t-title);
+  overflow-wrap: anywhere;
+}
+.g-hero small {
+  font: var(--t-secondary);
+  color: var(--text-3);
+  overflow-wrap: anywhere;
+}
+.g-body {
+  padding: 16px 0 48px;
+}
+
+/* A picker inside a row (a date, a time): plain grey text on the right, the row's chevron after it. */
+.g-inline {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 60%;
+}
+.g-inline .sel {
+  max-width: 100%;
+  min-height: var(--tap);
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  font: var(--t-body);
+  color: var(--text-3);
+  justify-content: flex-end;
+}
+.g-inline .sel-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.g-inline .sel-chev,
+.g-inline .sel-icon,
+.g-inline .sel > svg {
+  display: none;
+}
+
+/* A paragraph on an edit screen that explains what Save will do. */
+.g-note {
+  margin: 0 32px 12px;
+  font: var(--t-para);
+  color: var(--text-2);
+}
+/* A pushed screen with a step-by-step flow inside (two-step sign-in): the flow on the grey, 16 from the edges. */
+.ts-push .push-head,
+.ts-push .push-body {
+  background: var(--bg);
+}
+.ts-push .push-head {
+  border-bottom-color: transparent;
+}
+.ts-push-body {
+  padding: 16px 16px 48px;
+}

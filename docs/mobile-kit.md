@@ -257,6 +257,25 @@ The tab bar steps aside while it's open.
 ```
 
 `iconBack` makes Back Gmail's arrow alone (the mail reader, Notifications); `backLabel` is then only read out.
+`cancel` puts "Cancel" in words where Back was (an edit screen).
+
+**Settings rows (iOS Settings)**: `src/components/ui/Grouped.tsx`. On phones a setting is a row with its value on the
+right; text opens a screen of its own with Cancel and Save, a choice opens a sheet with a tick, a thing in a list (a
+member, a mailbox, a stage) opens its own `PushScreen` with what can be done to it, and a setup with steps is a pushed
+screen too. Desktop keeps its forms (branch on `usePhone()`).
+
+```tsx
+<Group title={t('Invoice details')} footer={t('PPN is shown on every invoice.')}>
+  <TextRow label={t('Company name')} value={b.company} allowEmpty={false} onSave={(v) => save({ company: v })} />
+  <ChoiceRow label={t('Who can record')} value={m.who} options={[…]} onChange={(v) => set({ who: v })} />
+  <SwitchRow label={t('Announce recording')} on={m.announce} onChange={(v) => set({ announce: v })} />
+  <GRow label={t('Remove account')} danger onClick={remove} />
+</Group>
+```
+
+`TextRow` takes `validate`, `multiline`, `inputMode`, `shown` (what the row shows when it isn't the value) and
+`footer`; `EditScreen` with `GField`s is the same screen for several fields (a password, a key); `onSave` returns an
+error to keep the screen open with it. `ChoiceSheet` is the sheet alone (one model for every job, a project to add).
 
 **SideDrawer**: a modal drawer from the left (Gmail's folders, Google Calendar's views and calendars): over a dimmed page
 and the bar, closed by a tap on the page, Escape or a swipe to the left that follows the finger; it slides out on close.

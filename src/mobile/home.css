@@ -42,6 +42,23 @@
   .hg-date {
     color: var(--text-3);
   }
+  /* The greeting's name, when it doesn't fit in the bar: it leads the line under it, 13/600 in the text colour. */
+  .hg-name {
+    font: var(--t-segment);
+    color: var(--text);
+  }
+  /* GreetingTitle: the whole greeting or just its first part; data-show="full" is its measuring pass. */
+  .mt-title.gt {
+    max-width: none; /* the bar's own room decides (logo and search are fixed), not the 66% cap other titles keep */
+  }
+  .gt.gt-fits .gt-part,
+  .gt.gt-short .gt-full,
+  .gt[data-show='full'] .gt-part {
+    display: none;
+  }
+  .gt[data-show='full'] .gt-full {
+    display: block;
+  }
   .home-phone .news-card {
     margin: 0 16px 12px;
   }

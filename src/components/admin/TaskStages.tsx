@@ -11,6 +11,9 @@ import { SmoothHeight } from '../ui/Smooth';
 import { msg, phrase, t, tn, type Msg } from '../../i18n';
 import { fmtList } from '../../i18n/format';
 import { useLang } from '../../i18n/useLang';
+import { usePhone } from '../../mobile/media';
+import { ChoiceRow, ChoiceSheet, GRow, Group, TextRow } from '../ui/Grouped';
+import { PushScreen } from '../ui/PushScreen';
 
 export type Move = { id: string; patch: Partial<Todo> };
 
@@ -31,6 +34,7 @@ export function TaskStagesSection({ ws, canManage, tasks, teams, me, onWorkspace
   const stages = ws.taskStages?.length ? cleanStages(ws.taskStages) : DEFAULT_STAGES;
   // Tasks that follow a project's or team's own stages aren't in the company's columns.
   const companyTasks = tasks.filter((t) => !projectStages(t.clientId) && !teamStages(t.teamId));
+  const phone = usePhone();
   return (
     <>
       <h2>{t('Task stages')}</h2>
@@ -59,6 +63,15 @@ export function TaskStagesSection({ ws, canManage, tasks, teams, me, onWorkspace
             : undefined
         }
       />
+      {phone ? (
+        <div className="set-rows">
+          <Group title={t('What each kind does')}>
+            {STAGE_KINDS.map((k) => (
+              <GRow key={k} label={t(KIND_INFO[k].name)} sub={KIND_LONG[k]()} />
+            ))}
+          </Group>
+        </div>
+      ) : (
       <div className="set-block">
         <h3>{t('What each kind does')}</h3>
         <ul className="stage-kinds">
@@ -70,6 +83,7 @@ export function TaskStagesSection({ ws, canManage, tasks, teams, me, onWorkspace
           ))}
         </ul>
       </div>
+      )}
     </>
   );
 }
@@ -109,6 +123,8 @@ export function StageEditor({ stages, save, canManage, tasks, teams, me, wordsKe
   const [focusId, setFocusId] = useState<string | null>(null);
   const [freshId, setFreshId] = useState<string | null>(null); // the stage just added: it slides in
   const [clash, setClash] = useState<string | null>(null); // a name another stage already has
+  const phone = usePhone();
+  const [openId, setOpenId] = useState<string | null>(null); // phones: the stage on its own screen
   const lastClash = useRef('');
   if (clash) lastClash.current = clash; // the note keeps its words while it folds away
   useEffect(() => {
@@ -173,6 +189,132 @@ export function StageEditor({ stages, save, canManage, tasks, teams, me, wordsKe
   };
 
   const reviewTeams = teams.filter((t) => t.review);
+  const askRemove = (s: TaskStage) => (inStage(s.id).length || (s.kind === 'review' && count('review') === 1 && reviewTeams.length) ? setRemoving(s) : remove(s));
+  const dialogs = (
+    <>
+      {removing && (
+        <RemoveStage
+          stage={removing}
+          stages={stages}
+          tasks={inStage(removing.id).length}
+          reviewTeams={removing.kind === 'review' && count('review') === 1 ? reviewTeams : []}
+          onRemove={(to) => remove(removing, inStage(removing.id).length ? to : undefined)}
+          onClose={() => setRemoving(null)}
+        />
+      )}
+      {resetting && reset && (
+        <Layer>
+          <div className="modal-scrim" onMouseDown={() => setResetting(false)}>
+            <div className="modal" role="dialog" aria-label={reset.title} onMouseDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.key === 'Escape' && setResetting(false)}>
+              <header className="modal-head">
+                <span>{reset.title}</span>
+                <button type="button" className="icon-btn sm" onClick={() => setResetting(false)} aria-label={t('Close')}>
+                  <X size={15} />
+                </button>
+              </header>
+              <div className="modal-body">
+                <p className="small">{reset.text}</p>
+              </div>
+              <footer className="modal-foot">
+                <button type="button" className="ghost-btn sm" onClick={() => setResetting(false)}>
+                  {t('Cancel')}
+                </button>
+                <button type="button" className="primary-btn sm" autoFocus onClick={doReset}>
+                  {reset.action}
+                </button>
+              </footer>
+            </div>
+          </div>
+        </Layer>
+      )}
+    </>
+  );
+
+  // Phones (iOS Settings): a row per stage (its colour, name and kind); tapping one opens it with its name, kind,
+  // colour, place on the board and Remove.
+  if (phone) {
+    const i = stages.findIndex((x) => x.id === openId);
+    const s = stages[i];
+    const onlyOne = !!s && (s.kind === 'open' || s.kind === 'done') && count(s.kind) === 1;
+    const busy = !!s && inStage(s.id).length > 0;
+    const fixedKind = onlyOne || (!!s && s.kind === 'done' && busy);
+    return (
+      <>
+        <div className="set-rows">
+          <Group>
+            {stages.map((x) => (
+              <GRow key={x.id} className={`has-dot ${leaving === x.id ? 'row-leaving' : ''}`} pic={<span className={`stage-dot k-${x.kind} tone-${toneOf(x)}`} />} label={stageName(x)} value={t(KIND_INFO[x.kind].name)} onClick={() => setOpenId(x.id)} />
+            ))}
+            {canManage && stages.length < 20 && (
+              <GRow
+                icon={Plus}
+                plainIcon
+                action
+                label={t('Add a stage')}
+                onClick={() => {
+                  const n: TaskStage = { id: `st-${uid()}`, kind: 'active', name: t('New stage') };
+                  const at = stages.findIndex((x) => x.kind === 'done');
+                  save(at < 0 ? [...stages, n] : [...stages.slice(0, at), n, ...stages.slice(at)]);
+                  setOpenId(n.id);
+                }}
+              />
+            )}
+            {canManage && reset && <GRow label={reset.label} action onClick={() => setResetting(true)} />}
+          </Group>
+        </div>
+        {s && (
+          <PushScreen title={stageName(s)} onBack={() => setOpenId(null)} className="g-page g-edit">
+            <div className="g-body">
+              <Group footer={fixedKind ? (onlyOne ? (s.kind === 'open' ? t('At least one stage is where new tasks start') : t('At least one stage is where finished tasks go')) : t('Finished tasks are in it. Move them before it means something else.')) : t(KIND_INFO[s.kind].hint)}>
+                <TextRow
+                  label={t('Name')}
+                  value={stageName(s)}
+                  disabled={!canManage}
+                  allowEmpty={!!builtInName(s.id)}
+                  maxLength={40}
+                  placeholder={builtInName(s.id) ?? t('Stage name')}
+                  validate={(v) => {
+                    const dup = stages.find((x) => x.id !== s.id && stageName(x).toLowerCase() === v.toLowerCase());
+                    return dup ? t('Another stage is already called “{name}”. Each stage needs its own name.', { name: stageName(dup) }) : null;
+                  }}
+                  onSave={(v) => {
+                    const usual = builtInName(s.id);
+                    const name = v.slice(0, 40);
+                    patch(s.id, { name: !name || (usual && name === usual) ? undefined : name });
+                  }}
+                />
+                {fixedKind ? (
+                  <GRow label={t('What this stage means')} value={t(KIND_INFO[s.kind].name)} />
+                ) : (
+                  <ChoiceRow<StageKind>
+                    label={t('What this stage means')}
+                    value={s.kind}
+                    disabled={!canManage}
+                    onChange={(kind) => patch(s.id, { kind, ...(fixedTone(kind) ? { color: undefined } : {}) })}
+                    options={STAGE_KINDS.filter((k) => k !== 'done' || !busy).map((k) => ({ value: k, label: t(KIND_INFO[k].name), hint: t(KIND_INFO[k].hint) }))}
+                  />
+                )}
+                <StageColourRow stage={s} disabled={!canManage} onColor={(color) => patch(s.id, { color })} />
+              </Group>
+              {canManage && (
+                <Group title={t('On the board')}>
+                  <GRow label={t('Earlier on the board')} action onClick={i > 0 ? () => move(i, -1) : undefined} className={i === 0 ? 'is-off' : ''} />
+                  <GRow label={t('Later on the board')} action onClick={i < stages.length - 1 ? () => move(i, 1) : undefined} className={i === stages.length - 1 ? 'is-off' : ''} />
+                </Group>
+              )}
+              {canManage && (
+                <Group footer={onlyOne ? (s.kind === 'open' ? t('New tasks need a stage to start in') : t('Finished tasks need a done stage')) : undefined}>
+                  <GRow label={t('Remove {stage}', { stage: stageName(s) })} danger className={onlyOne || stages.length <= 2 ? 'is-off' : ''} onClick={onlyOne || stages.length <= 2 ? undefined : () => (setOpenId(null), askRemove(s))} />
+                </Group>
+              )}
+            </div>
+          </PushScreen>
+        )}
+        {dialogs}
+      </>
+    );
+  }
+
   return (
     <>
       <fieldset className="plain" disabled={!canManage}>
@@ -264,42 +406,7 @@ export function StageEditor({ stages, save, canManage, tasks, teams, me, wordsKe
           )}
         </div>
       </fieldset>
-
-      {removing && (
-        <RemoveStage
-          stage={removing}
-          stages={stages}
-          tasks={inStage(removing.id).length}
-          reviewTeams={removing.kind === 'review' && count('review') === 1 ? reviewTeams : []}
-          onRemove={(to) => remove(removing, inStage(removing.id).length ? to : undefined)}
-          onClose={() => setRemoving(null)}
-        />
-      )}
-      {resetting && reset && (
-        <Layer>
-          <div className="modal-scrim" onMouseDown={() => setResetting(false)}>
-            <div className="modal" role="dialog" aria-label={reset.title} onMouseDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.key === 'Escape' && setResetting(false)}>
-              <header className="modal-head">
-                <span>{reset.title}</span>
-                <button type="button" className="icon-btn sm" onClick={() => setResetting(false)} aria-label={t('Close')}>
-                  <X size={15} />
-                </button>
-              </header>
-              <div className="modal-body">
-                <p className="small">{reset.text}</p>
-              </div>
-              <footer className="modal-foot">
-                <button type="button" className="ghost-btn sm" onClick={() => setResetting(false)}>
-                  {t('Cancel')}
-                </button>
-                <button type="button" className="primary-btn sm" autoFocus onClick={doReset}>
-                  {reset.action}
-                </button>
-              </footer>
-            </div>
-          </div>
-        </Layer>
-      )}
+      {dialogs}
     </>
   );
 }
@@ -311,6 +418,27 @@ const KIND_LONG: Record<StageKind, () => string> = {
   review: () => t('Finished, and waiting for the supervisor to approve it or send it back. In teams that check work, finished tasks go to the first one.'),
   done: () => t('Finished. Ticking a task moves it to the first one; it counts as done everywhere.'),
 };
+
+/** Phones: the stage's colour as a row; a sheet of colours with a tick. Waiting and done stages keep theirs. */
+function StageColourRow({ stage, disabled, onColor }: { stage: TaskStage; disabled: boolean; onColor: (c: StageColor) => void }) {
+  const [open, setOpen] = useState(false);
+  const fixed = fixedTone(stage.kind);
+  const tone = toneOf(stage);
+  return (
+    <>
+      <GRow label={t('Colour')} value={t(TONE_NAME[tone])} accessory={<span className={`stage-dot k-${stage.kind} tone-${tone}`} />} chevron={!fixed && !disabled} onClick={fixed || disabled ? undefined : () => setOpen(true)} />
+      {open && (
+        <ChoiceSheet<StageColor>
+          title={t('Colour of {stage}', { stage: stageName(stage) })}
+          value={tone as StageColor}
+          options={STAGE_COLORS.map((c) => ({ value: c, label: t(TONE_NAME[c]), icon: <span className={`stage-dot k-${stage.kind} tone-${c}`} /> }))}
+          onClose={() => setOpen(false)}
+          onPick={(c) => (setOpen(false), onColor(c))}
+        />
+      )}
+    </>
+  );
+}
 
 /** The stage's colour, and a small picker. Waiting and done stages keep their meaning's colour. */
 function StageSwatch({ stage, disabled, onColor }: { stage: TaskStage; disabled: boolean; onColor: (c: StageColor) => void }) {

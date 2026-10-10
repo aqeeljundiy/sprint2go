@@ -11,6 +11,10 @@
 .access-type-sel {
   display: none;
 }
+/* A fieldset sizes to its content by default: on a tablet the stage rows ran out of the pane. Every width. */
+.settings-content fieldset {
+  min-width: 0;
+}
 
 @media (max-width: 767px) {
   /* The top bar already says "Settings": no second title, and the list replaces the side list. */
@@ -469,6 +473,103 @@
   .settings-push .set-rows .g-foot {
     padding: 0 32px;
   }
+  /* Settings rows say a whole sentence: the label wraps rather than being cut off, and so does a second line. */
+  :is(.settings-push, .g-edit) .g-text {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  :is(.settings-push, .g-edit) .g-head {
+    white-space: normal;
+  }
+  /* The label keeps at least half the row; a long value gives way with an ellipsis. */
+  :is(.settings-push, .g-edit) .g-row .g-val {
+    max-width: 45%;
+  }
+  :is(.settings-push, .g-edit) .g-sub {
+    font: var(--t-secondary);
+    white-space: normal;
+  }
+  /* A closed fold at the end of a card (Delete old messages' details): the row above it is the card's last. */
+  .settings-push .set-block > :has(+ .fold:last-child:not(.open)) {
+    border-bottom-left-radius: var(--r-card);
+    border-bottom-right-radius: var(--r-card);
+  }
+  .settings-push .set-block > .fold:last-child:not(.open) {
+    background: none;
+  }
+  .settings-push :is(.set-block, fieldset) + .set-rows {
+    margin-top: 24px;
+  }
+  /* A fieldset sizes to its content by default, which pushed long rows out of the card. */
+  .settings-push fieldset {
+    min-width: 0;
+  }
+  /* Notes under a section's rows are its footer, on the grey, not a white strip. */
+  .settings-push .set-block > p.small,
+  .settings-push .set-block > p.muted {
+    background: none;
+  }
+  /* A choice or value with an explanation: the label and the value share the first line, the explanation runs the
+     whole width under them (rather than squeezing the label into a narrow column). */
+  :is(.settings-push, .g-edit) .g-row.two:not(.has-pic):not(.has-icon):has(> .g-val) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) fit-content(45%) auto;
+    column-gap: 12px;
+    row-gap: 0;
+    padding-block: 12px;
+  }
+  :is(.settings-push, .g-edit) .g-row.two:not(.has-pic):not(.has-icon):has(> .g-val) > .g-label {
+    display: contents;
+  }
+  :is(.settings-push, .g-edit) .g-row.two:not(.has-pic):not(.has-icon):has(> .g-val) .g-text {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  :is(.settings-push, .g-edit) .g-row.two:not(.has-pic):not(.has-icon):has(> .g-val) .g-val {
+    grid-column: 2;
+    grid-row: 1;
+    max-width: none;
+    text-align: right;
+  }
+  :is(.settings-push, .g-edit) .g-row.two:not(.has-pic):not(.has-icon):has(> .g-val) .g-chev {
+    grid-column: 3;
+    grid-row: 1;
+  }
+  :is(.settings-push, .g-edit) .g-row.two:not(.has-pic):not(.has-icon):has(> .g-val) .g-sub {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    margin-top: 4px;
+  }
+  /* Rows of the shared kind (a choice, a text, a link) mixed into a section's own rows: one card, one divider rule. */
+  .settings-push .ca-form > :is(.set-row, .g-row) + :is(.set-row, .g-row)::before,
+  .settings-push .set-block > :is(.set-row, .g-row) + :is(.set-row, .g-row)::before,
+  .settings-push .set-block > .fold + :is(.set-row, .g-row)::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 16px;
+    right: 0;
+    height: 1px;
+    background: var(--line);
+  }
+  .settings-push .set-block > .g-row {
+    min-height: var(--row-1);
+  }
+  .settings-push .g-pic .acct-icon {
+    display: grid;
+    place-items: center;
+    width: var(--av-m);
+    height: var(--av-m);
+    border-radius: var(--r-round);
+  }
+  /* A group's header lines up with its rows' text (32 from the edge), like its footer. */
+  .settings-push .set-rows .g-head {
+    margin: 0 0 8px;
+    padding: 0 32px;
+  }
+  .settings-push .set-rows .g-group:first-child {
+    margin-top: 8px;
+  }
   .settings-push .g-row:has(.set-choice) {
     min-height: var(--row-1);
     padding-block: 0;
@@ -692,3 +793,106 @@
   }
 }
 
+
+/* ---------- Settings on phones as iOS Settings: the pieces each section's rows and screens need ---------- */
+@media (max-width: 767px) {
+  /* A row that can't be used right now (the first stage can't move earlier): greyed, not hidden. */
+  .g-row.is-off {
+    opacity: 0.45;
+  }
+  /* Guest access: "Settings for" is the row's own label; no header over it. */
+  .settings-push .access-types > .small {
+    display: none;
+  }
+  .settings-push .access-types {
+    margin-bottom: 0;
+  }
+  .g-row.is-unread .g-text {
+    font-weight: 600;
+  }
+  /* Account: the avatar colours as one row of swatches. */
+  .set-swatches {
+    flex-wrap: wrap;
+    gap: 12px;
+    padding-block: 12px;
+  }
+  /* Mail & signature: the editor on its screen, a white card like the rows. */
+  .g-edit .set-sig {
+    margin: 0 16px;
+    border: 0;
+    border-radius: var(--r-card);
+    background: var(--surface);
+    overflow: hidden;
+  }
+  /* Meetings: the languages as chips on their screen. */
+  .set-langs .lang-chips {
+    padding: 0 16px;
+  }
+  /* Client portal & brand: the logo on its row; the colour picker opens from the row. */
+  .set-wl-logo img {
+    width: var(--av-s);
+    height: var(--av-s);
+    border-radius: var(--r-tile);
+    object-fit: contain;
+  }
+  .set-color-input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+    pointer-events: none;
+  }
+  /* AI: a key's mark in its row; the jobs as cards of rows. */
+  .settings-push .g-pic .prov-mark {
+    width: var(--av-m);
+    height: var(--av-m);
+    border-radius: var(--r-tile);
+  }
+  .settings-push .job-group > .g-card {
+    margin: 0;
+  }
+  .settings-push .ai-all-jobs {
+    margin: 8px 0;
+  }
+  /* AI: adding a key on its own screen: the form straight on the page, no dashed box. */
+  .ai-add-push .add-prov {
+    padding: 0;
+    border: 0;
+    background: none;
+  }
+  /* Email delivery: the records on their own screen (its title names the domain). */
+  .ed-push .ed-head h3 {
+    display: none;
+  }
+  .settings-push.ed-push .set-block > .ed-head {
+    background: none;
+  }
+  /* Phone mail apps: the new password, large enough to read and type. */
+  .pm-secret-code {
+    font-family: var(--mono, ui-monospace, monospace);
+    font-size: var(--fs-field);
+    overflow-wrap: anywhere;
+    white-space: normal;
+  }
+  /* Help & support: a conversation or a new question on its screen, on the grey with the gutter. */
+  .help-push .push-head,
+  .help-push .push-body {
+    background: var(--bg);
+  }
+  .help-push .push-head {
+    border-bottom-color: transparent;
+  }
+  .help-push-body {
+    padding: 16px 16px 48px;
+  }
+  .help-push .help-back,
+  .help-push .help-title {
+    display: none;
+  }
+  .help-phone-attach {
+    margin: 0 16px 24px;
+  }
+  .settings-push .help-extra {
+    margin-top: 24px;
+  }
+}

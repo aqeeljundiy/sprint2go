@@ -1,4 +1,7 @@
 import { useEffect, useState } from 'react';
+import { usePhone } from '../../mobile/media';
+import { ChoiceRow, ChoiceSheet, GRow, Group, SwitchRow, TextRow } from '../ui/Grouped';
+import { PushScreen } from '../ui/PushScreen';
 import { term, brand as product } from '../../terms';
 import { server } from '../../sync';
 import { AISpend } from './AISpend';
@@ -319,6 +322,150 @@ export function AISection({ ws, people, users, me, canManage, onAI, onBilling, t
   const leftOf = (k: string) => (allowance ? allowance.left[k] : Math.round(pool[k] * (1 - usedShare)));
   const usedUp = !!allowance && !allowance.unlimited && allowance.share >= 1;
 
+  // Adding a key: the form, then (for providers with a list) its model. In place on desktop, its own screen on phones.
+  const addFlow =
+    adding?.step === 'model' && adding.id && adding.list ? (
+                <div className="add-prov add-model">
+                  <p className="add-model-done">
+                    <CheckCircle2 size={14} className="ok" /> {t('{provider} is connected. The key is encrypted; only its last 4 characters are kept.', { provider: providerOf(adding.id)!.name })}
+                  </p>
+                  <p className="add-model-q" id="add-model-q">
+                    {t('Which model should {provider} use?', { provider: shortName(adding.id) })}
+                  </p>
+                  <ModelPicker list={adding.list} value={adding.model ?? null} typed={adding.typed} onPick={(model, typed) => setAdding((a) => a && { ...a, model, typed })} check={checkModel(adding.id)} label={t('Which model should {provider} use?', { provider: shortName(adding.id) })} width={380} />
+                  <p className="muted small">
+                    {!textModels(adding.list).length
+                      ? t('Open the list and choose Other model id: type the id exactly as your server names it. We try it with one tiny call.')
+                      : adding.list.source === 'live'
+                      ? t('From {provider}’s own list for this key. Recommended ones first; search by name or id.', { provider: shortName(adding.id) })
+                      : adding.list.note
+                        ? t(adding.list.note)
+                        : server.on
+                          ? t('{provider} doesn’t share a list, so these are the models we know.', { provider: shortName(adding.id) })
+                          : t('Demo: these are the models we know. With the server, the provider’s own list shows here.')}
+                  </p>
+                  <div className="model-scope" role="radiogroup" aria-label={t('Which jobs use this model')}>
+                    {(
+                      [
+                        ['all', t('Use it for every job'), t('Every text job runs on this model. Voice notes keep their speech service.')],
+                        ['fit', t('Only where it fits'), keepHint(ai.preset, shortName(adding.id))],
+                      ] as const
+                    ).map(([v, l, h]) => (
+                      <button key={v} type="button" role="radio" aria-checked={adding.scope === v} className={adding.scope === v ? 'on' : ''} onClick={() => setAdding((a) => a && { ...a, scope: v })}>
+                        <span className="model-scope-dot" aria-hidden />
+                        <span>
+                          <strong>{l}</strong>
+                          <small>{h}</small>
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                  <div className="add-prov-foot">
+                    <button
+                      type="button"
+                      className="ghost-btn sm"
+                      onClick={() => {
+                        const id = adding.id!;
+                        setAdding(null);
+                        toast(t('{provider} connected. Pick its model any time on its row', { provider: providerOf(id)!.name }));
+                      }}
+                    >
+                      {t('Later')}
+                    </button>
+                    <button type="button" className="primary-btn sm" disabled={!adding.model} onClick={applyModel}>
+                      <CheckCircle2 size={14} /> {t('Use this model')}
+                    </button>
+                  </div>
+                </div>
+              ) : adding ? (
+                <div className="add-prov">
+                  <Select<ProviderId>
+                    value={adding.id}
+                    onChange={(id) => setAdding({ ...adding, id, state: 'idle' })}
+                    placeholder={t('Choose a provider')}
+                    label={t('Provider')}
+                    width={340}
+                    searchable
+                    options={PROVIDERS.map((p) => ({ value: p.id, label: p.name, hint: p.note, group: t(KIND_NAME[p.kind]), icon: <span className="prov-mark sm">{p.name.charAt(0)}</span> }))}
+                  />
+                  {adding.id && providerOf(adding.id)?.warn && (
+                    <p className="warn-note">
+                      <AlertTriangle size={14} /> {providerOf(adding.id)!.warn}
+                    </p>
+                  )}
+                  {adding.id && CRED_FIELDS[adding.id] && (
+                    <>
+                      {CRED_FIELDS[adding.id]!.fields.map((f) =>
+                        f.multiline ? (
+                          <textarea
+                            key={f.key}
+                            rows={4}
+                            spellCheck={false}
+                            autoComplete="off"
+                            aria-label={f.label}
+                            value={adding.fields?.[f.key] ?? ''}
+                            onChange={(e) => setAdding({ ...adding, fields: { ...adding.fields, [f.key]: e.target.value }, state: 'idle' })}
+                            placeholder={`${f.label}: ${f.placeholder ?? ''}`}
+                          />
+                        ) : (
+                          <input
+                            key={f.key}
+                            type={f.secret ? 'password' : 'text'}
+                            autoComplete="off"
+                            spellCheck={false}
+                            aria-label={f.label}
+                            value={adding.fields?.[f.key] ?? ''}
+                            onChange={(e) => setAdding({ ...adding, fields: { ...adding.fields, [f.key]: e.target.value }, state: 'idle' })}
+                            placeholder={`${f.optional ? t('{label} (optional)', { label: f.label }) : f.label}${f.placeholder ? `: ${f.placeholder}` : ''}`}
+                          />
+                        ),
+                      )}
+                      <p className="muted small">{CRED_FIELDS[adding.id]!.help}</p>
+                      {adding.state === 'error' && <p className="err">{adding.message ? t(adding.message) : t('Fill in every field.')}</p>}
+                    </>
+                  )}
+                  {adding.id && !CRED_FIELDS[adding.id] && (
+                    <>
+                      {providerOf(adding.id)!.needsUrl && <input value={adding.url} onChange={(e) => setAdding({ ...adding, url: e.target.value })} placeholder={adding.id === 'custom' ? 'https://ai.your-server.com/v1' : t('Endpoint')} aria-label={t('Address')} />}
+                      <input type="password" autoComplete="off" value={adding.key} onChange={(e) => setAdding({ ...adding, key: e.target.value, state: 'idle' })} placeholder={providerOf(adding.id)!.keyHint} aria-label={t('Key')} />
+                      {adding.state === 'error' && <p className="err">{adding.message ? t(adding.message) : providerOf(adding.id)!.needsUrl ? t('That doesn’t look like a valid key and address.') : t('That doesn’t look like a valid key.')}</p>}
+                    </>
+                  )}
+                  {adding.id && (
+                    <p className="muted small">
+                      {server.on ? t('We test the key with one tiny request, then store it encrypted. Only the last 4 characters are shown again.') : t('Demo: the key is only checked for its shape. With the local server it’s tested with the provider and stored encrypted.')}
+                      {picksModel(adding.id) ? ` ${t('Then you pick its model.')}` : ''}
+                    </p>
+                  )}
+                  <div className="add-prov-foot">
+                    <button type="button" className="ghost-btn sm" onClick={() => setAdding(null)}>
+                      {t('Cancel')}
+                    </button>
+                    <button type="button" className="primary-btn sm" disabled={!adding.id || (!CRED_FIELDS[adding.id] && !adding.key) || adding.state === 'testing'} onClick={addProvider}>
+                      {adding.state === 'testing' ? <Loader2 size={14} className="spin" /> : <KeyRound size={14} />} {adding.state === 'testing' ? t('Testing…') : t('Test and save')}
+                    </button>
+                  </div>
+                </div>
+    ) : null;
+  /** Removes a key; jobs that used it move to the best match among the keys that are left. */
+  const removeKey = (c: (typeof ai.providers)[number]) => {
+    const info = providerOf(c.id)!;
+    if (server.on) void fetch('/api/ai/keys', { method: 'DELETE', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ workspaceId: ws.id, provider: c.id }) });
+    const providers = ai.providers.filter((x) => x.id !== c.id);
+    const moved = JOBS.filter((j) => ai.jobs[j.id]?.provider === c.id);
+    const refill = presetJobs(ai.preset === 'custom' ? 'balanced' : ai.preset, providers.filter((x) => x.status === 'ok').map((x) => x.id), allowIncluded, known());
+    const jobs = { ...ai.jobs };
+    for (const j of moved) {
+      if (refill[j.id]) jobs[j.id] = refill[j.id];
+      else delete jobs[j.id];
+    }
+    set({ providers, jobs });
+    toast(moved.length ? tn(moved.length, '{provider} key removed. {n} job moved to another model', '{provider} key removed. {n} jobs moved to another model', { provider: info.name }) : t('{provider} key removed', { provider: info.name }));
+  };
+  const phone = usePhone();
+  const [openKey, setOpenKey] = useState<ProviderId | null>(null);
+  const [blocking, setBlocking] = useState(false);
+  const [allJobs, setAllJobs] = useState(false);
   return (
     <>
       <h2>AI</h2>
@@ -469,8 +616,27 @@ export function AISection({ ws, people, users, me, canManage, onAI, onBilling, t
               {included && ai.payer !== 'own' ? t('No keys yet. {product}’s AI is used for everything.', { product: product.name }) : t('No keys yet. Add a key to switch the AI on, then pick which model does each job below.')}
             </p>
           )}
+          {phone && (
+            <>
+              {ai.providers.map((c) => {
+                const info = providerOf(c.id)!;
+                const spent = server.on ? view?.spendUsd?.[c.id] ?? 0 : c.spentUsd;
+                return (
+                  <GRow
+                    key={c.id}
+                    pic={<span className="prov-mark">{info.name.charAt(0)}</span>}
+                    label={info.name}
+                    sub={`•••• ${c.keyLast4} · ${c.capUsd ? t('about {spent} this month of {cap} cap', { spent: dollars(spent), cap: `US$${fmtNumber(c.capUsd)}` }) : t('about {spent} this month', { spent: dollars(spent) })}`}
+                    value={c.status === 'ok' ? (ai.blocked.includes(c.id) ? t('Blocked') : undefined) : t('Not working')}
+                    onClick={() => setOpenKey(c.id)}
+                  />
+                );
+              })}
+              <GRow icon={Plus} plainIcon action label={t('Add a provider')} onClick={canManage ? () => setAdding({ id: null, key: '', url: '', state: 'idle' }) : undefined} />
+            </>
+          )}
           <div className="prov-list">
-            {ai.providers.map((c) => {
+            {!phone && ai.providers.map((c) => {
               const info = providerOf(c.id)!;
               // This month's spend: the server's count of every call on this key (the demo keeps a sample).
               const spent = server.on ? view?.spendUsd?.[c.id] ?? 0 : c.spentUsd;
@@ -517,20 +683,7 @@ export function AISection({ ws, people, users, me, canManage, onAI, onBilling, t
                       type="button"
                       className="icon-btn sm"
                       title={t('Remove key')}
-                      onClick={() => {
-                        if (server.on) void fetch('/api/ai/keys', { method: 'DELETE', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ workspaceId: ws.id, provider: c.id }) });
-                        const providers = ai.providers.filter((x) => x.id !== c.id);
-                        // Jobs that used this key move to the best match among the keys that are left.
-                        const moved = JOBS.filter((j) => ai.jobs[j.id]?.provider === c.id);
-                        const refill = presetJobs(ai.preset === 'custom' ? 'balanced' : ai.preset, providers.filter((x) => x.status === 'ok').map((x) => x.id), allowIncluded, known());
-                        const jobs = { ...ai.jobs };
-                        for (const j of moved) {
-                          if (refill[j.id]) jobs[j.id] = refill[j.id];
-                          else delete jobs[j.id];
-                        }
-                        set({ providers, jobs });
-                        toast(moved.length ? tn(moved.length, '{provider} key removed. {n} job moved to another model', '{provider} key removed. {n} jobs moved to another model', { provider: info.name }) : t('{provider} key removed', { provider: info.name }));
-                      }}
+                      onClick={() => removeKey(c)}
                     >
                       <Trash2 size={15} />
                     </button>
@@ -539,137 +692,17 @@ export function AISection({ ws, people, users, me, canManage, onAI, onBilling, t
               );
             })}
           </div>
+          {!phone && (
           <SmoothHeight>
             <TabPane key={adding ? adding.step ?? 'form' : 'closed'}>
-              {adding?.step === 'model' && adding.id && adding.list ? (
-                <div className="add-prov add-model">
-                  <p className="add-model-done">
-                    <CheckCircle2 size={14} className="ok" /> {t('{provider} is connected. The key is encrypted; only its last 4 characters are kept.', { provider: providerOf(adding.id)!.name })}
-                  </p>
-                  <p className="add-model-q" id="add-model-q">
-                    {t('Which model should {provider} use?', { provider: shortName(adding.id) })}
-                  </p>
-                  <ModelPicker list={adding.list} value={adding.model ?? null} typed={adding.typed} onPick={(model, typed) => setAdding((a) => a && { ...a, model, typed })} check={checkModel(adding.id)} label={t('Which model should {provider} use?', { provider: shortName(adding.id) })} width={380} />
-                  <p className="muted small">
-                    {!textModels(adding.list).length
-                      ? t('Open the list and choose Other model id: type the id exactly as your server names it. We try it with one tiny call.')
-                      : adding.list.source === 'live'
-                      ? t('From {provider}’s own list for this key. Recommended ones first; search by name or id.', { provider: shortName(adding.id) })
-                      : adding.list.note
-                        ? t(adding.list.note)
-                        : server.on
-                          ? t('{provider} doesn’t share a list, so these are the models we know.', { provider: shortName(adding.id) })
-                          : t('Demo: these are the models we know. With the server, the provider’s own list shows here.')}
-                  </p>
-                  <div className="model-scope" role="radiogroup" aria-label={t('Which jobs use this model')}>
-                    {(
-                      [
-                        ['all', t('Use it for every job'), t('Every text job runs on this model. Voice notes keep their speech service.')],
-                        ['fit', t('Only where it fits'), keepHint(ai.preset, shortName(adding.id))],
-                      ] as const
-                    ).map(([v, l, h]) => (
-                      <button key={v} type="button" role="radio" aria-checked={adding.scope === v} className={adding.scope === v ? 'on' : ''} onClick={() => setAdding((a) => a && { ...a, scope: v })}>
-                        <span className="model-scope-dot" aria-hidden />
-                        <span>
-                          <strong>{l}</strong>
-                          <small>{h}</small>
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                  <div className="add-prov-foot">
-                    <button
-                      type="button"
-                      className="ghost-btn sm"
-                      onClick={() => {
-                        const id = adding.id!;
-                        setAdding(null);
-                        toast(t('{provider} connected. Pick its model any time on its row', { provider: providerOf(id)!.name }));
-                      }}
-                    >
-                      {t('Later')}
-                    </button>
-                    <button type="button" className="primary-btn sm" disabled={!adding.model} onClick={applyModel}>
-                      <CheckCircle2 size={14} /> {t('Use this model')}
-                    </button>
-                  </div>
-                </div>
-              ) : adding ? (
-                <div className="add-prov">
-                  <Select<ProviderId>
-                    value={adding.id}
-                    onChange={(id) => setAdding({ ...adding, id, state: 'idle' })}
-                    placeholder={t('Choose a provider')}
-                    label={t('Provider')}
-                    width={340}
-                    searchable
-                    options={PROVIDERS.map((p) => ({ value: p.id, label: p.name, hint: p.note, group: t(KIND_NAME[p.kind]), icon: <span className="prov-mark sm">{p.name.charAt(0)}</span> }))}
-                  />
-                  {adding.id && providerOf(adding.id)?.warn && (
-                    <p className="warn-note">
-                      <AlertTriangle size={14} /> {providerOf(adding.id)!.warn}
-                    </p>
-                  )}
-                  {adding.id && CRED_FIELDS[adding.id] && (
-                    <>
-                      {CRED_FIELDS[adding.id]!.fields.map((f) =>
-                        f.multiline ? (
-                          <textarea
-                            key={f.key}
-                            rows={4}
-                            spellCheck={false}
-                            autoComplete="off"
-                            aria-label={f.label}
-                            value={adding.fields?.[f.key] ?? ''}
-                            onChange={(e) => setAdding({ ...adding, fields: { ...adding.fields, [f.key]: e.target.value }, state: 'idle' })}
-                            placeholder={`${f.label}: ${f.placeholder ?? ''}`}
-                          />
-                        ) : (
-                          <input
-                            key={f.key}
-                            type={f.secret ? 'password' : 'text'}
-                            autoComplete="off"
-                            spellCheck={false}
-                            aria-label={f.label}
-                            value={adding.fields?.[f.key] ?? ''}
-                            onChange={(e) => setAdding({ ...adding, fields: { ...adding.fields, [f.key]: e.target.value }, state: 'idle' })}
-                            placeholder={`${f.optional ? t('{label} (optional)', { label: f.label }) : f.label}${f.placeholder ? `: ${f.placeholder}` : ''}`}
-                          />
-                        ),
-                      )}
-                      <p className="muted small">{CRED_FIELDS[adding.id]!.help}</p>
-                      {adding.state === 'error' && <p className="err">{adding.message ? t(adding.message) : t('Fill in every field.')}</p>}
-                    </>
-                  )}
-                  {adding.id && !CRED_FIELDS[adding.id] && (
-                    <>
-                      {providerOf(adding.id)!.needsUrl && <input value={adding.url} onChange={(e) => setAdding({ ...adding, url: e.target.value })} placeholder={adding.id === 'custom' ? 'https://ai.your-server.com/v1' : t('Endpoint')} aria-label={t('Address')} />}
-                      <input type="password" autoComplete="off" value={adding.key} onChange={(e) => setAdding({ ...adding, key: e.target.value, state: 'idle' })} placeholder={providerOf(adding.id)!.keyHint} aria-label={t('Key')} />
-                      {adding.state === 'error' && <p className="err">{adding.message ? t(adding.message) : providerOf(adding.id)!.needsUrl ? t('That doesn’t look like a valid key and address.') : t('That doesn’t look like a valid key.')}</p>}
-                    </>
-                  )}
-                  {adding.id && (
-                    <p className="muted small">
-                      {server.on ? t('We test the key with one tiny request, then store it encrypted. Only the last 4 characters are shown again.') : t('Demo: the key is only checked for its shape. With the local server it’s tested with the provider and stored encrypted.')}
-                      {picksModel(adding.id) ? ` ${t('Then you pick its model.')}` : ''}
-                    </p>
-                  )}
-                  <div className="add-prov-foot">
-                    <button type="button" className="ghost-btn sm" onClick={() => setAdding(null)}>
-                      {t('Cancel')}
-                    </button>
-                    <button type="button" className="primary-btn sm" disabled={!adding.id || (!CRED_FIELDS[adding.id] && !adding.key) || adding.state === 'testing'} onClick={addProvider}>
-                      {adding.state === 'testing' ? <Loader2 size={14} className="spin" /> : <KeyRound size={14} />} {adding.state === 'testing' ? t('Testing…') : t('Test and save')}
-                    </button>
-                  </div>
-                </div>
-              ) : (
+              {addFlow ?? (
                 <button type="button" className="ghost-btn sm add-prov-open" onClick={() => setAdding({ id: null, key: '', url: '', state: 'idle' })}>
                   <Plus size={14} /> {t('Add a provider')}
                 </button>
               )}
             </TabPane>
           </SmoothHeight>
+          )}
         </div>
 
         {/* Unlimited pays nothing for AI: no cost comparison to make. */}
@@ -711,6 +744,20 @@ export function AISection({ ws, people, users, me, canManage, onAI, onBilling, t
             // A real one-call try on the server (not on our AI, browser speech or speech services); a pretend one in the demo.
             const canTry = !!cur && (!server.on || (cur.provider !== 'included' && job.id !== 'speech' && cur.model !== 'browser' && ai.providers.some((x) => x.id === cur.provider)));
             const result = tested[job.id];
+            const costWord = cur?.provider === 'included' ? t('In your plan') : cur?.model === 'browser' ? tx('price', 'Free') : cost !== null && cost !== undefined ? t('≈ {cost} / 100 uses', { cost: rp(cost) }) : cur ? t('See provider prices') : '';
+            if (phone)
+              return (
+                <ChoiceRow
+                  key={job.id}
+                  label={job.name}
+                  sub={[costWord, result?.text].filter(Boolean).join(' · ') || job.hint}
+                  value={cur ? `${cur.provider}|${cur.model}` : ''}
+                  shown={cur ? jobOptions(job).find((o) => o.value === `${cur.provider}|${cur.model}`)?.label ?? modelLabel(cur.model, cur.provider === 'included' ? undefined : lists[cur.provider]) : connected.length || allowIncluded ? t('Choose a model') : t('Add a key first')}
+                  options={jobOptions(job).map((o) => ({ value: o.value, label: o.label, hint: o.hint, group: o.group }))}
+                  onChange={(v) => set({ preset: 'custom', jobs: { ...ai.jobs, [job.id]: pickFor(job.id, v) } })}
+                  disabled={!canManage}
+                />
+              );
             return (
               <div key={job.id} className="job-row">
                 <div className="job-name">
@@ -773,7 +820,28 @@ export function AISection({ ws, people, users, me, canManage, onAI, onBilling, t
                     </button>
                   ))}
                 </div>
-                {everything.length > 0 && (
+                {everything.length > 0 && phone && (
+                  <button type="button" className="link-btn small ai-all-jobs" onClick={() => setAllJobs(true)}>
+                    {t('One model for everything…')}
+                  </button>
+                )}
+                {allJobs && (
+                  <ChoiceSheet<string>
+                    title={t('One model for everything')}
+                    value=""
+                    options={everything.map((o) => ({ value: o.value, label: o.label, hint: o.hint, group: o.group }))}
+                    onClose={() => setAllJobs(false)}
+                    onPick={(v) => {
+                      setAllJobs(false);
+                      const jobs = { ...ai.jobs };
+                      for (const j of JOBS) if (j.id !== 'speech') jobs[j.id] = pickFor(j.id, v);
+                      set({ preset: 'custom', jobs });
+                      const model = everything.find((o) => o.value === v)?.label;
+                      toast(model ? t('Every text job now uses {model}', { model }) : t('Every text job now uses that model'));
+                    }}
+                  />
+                )}
+                {everything.length > 0 && !phone && (
                   <Select<string>
                     value={null}
                     onChange={(v) => {
@@ -796,7 +864,7 @@ export function AISection({ ws, people, users, me, canManage, onAI, onBilling, t
               {groups.map(([g, ids]) => (
                 <div key={g} className="job-group">
                   <h4>{g}</h4>
-                  <div className="jobs-table">{ids.map((id) => row(JOBS.find((j) => j.id === id)!))}</div>
+                  {phone ? <div className="g-card ai-jobs">{ids.map((id) => row(JOBS.find((j) => j.id === id)!))}</div> : <div className="jobs-table">{ids.map((id) => row(JOBS.find((j) => j.id === id)!))}</div>}
                 </div>
               ))}
             </>
@@ -853,6 +921,41 @@ export function AISection({ ws, people, users, me, canManage, onAI, onBilling, t
               <span />
             </button>
           </label>
+          {phone ? (
+            <>
+              <TextRow
+                label={t('Monthly limit for the company')}
+                sub={t('On your own keys, at list prices. AI stops for everyone when it’s reached. Empty: no limit.')}
+                value={ai.caps?.companyRp ? String(ai.caps.companyRp) : ''}
+                shown={ai.caps?.companyRp ? rp(ai.caps.companyRp) : t('No limit')}
+                inputMode="numeric"
+                placeholder="Rp"
+                disabled={!canManage}
+                footer={t('Empty: no limit.')}
+                validate={(v) => (/^\d+$/.test(v.replace(/[.,\s]/g, '')) ? null : t('A whole number of rupiah'))}
+                onSave={(v) => set({ caps: { ...ai.caps, companyRp: v ? Number(v.replace(/[.,\s]/g, '')) : undefined } })}
+              />
+              <TextRow
+                label={t('Monthly limit per person')}
+                sub={t('Each person stops at this amount; admins raise it here.')}
+                value={ai.caps?.personRp ? String(ai.caps.personRp) : ''}
+                shown={ai.caps?.personRp ? rp(ai.caps.personRp) : t('No limit')}
+                inputMode="numeric"
+                placeholder="Rp"
+                disabled={!canManage}
+                footer={t('Empty: no limit.')}
+                validate={(v) => (/^\d+$/.test(v.replace(/[.,\s]/g, '')) ? null : t('A whole number of rupiah'))}
+                onSave={(v) => set({ caps: { ...ai.caps, personRp: v ? Number(v.replace(/[.,\s]/g, '')) : undefined } })}
+              />
+              <GRow
+                label={t('Blocked providers')}
+                sub={t('Nobody in the company can use these, for example if a {guest} doesn’t allow data in China', { guest: term.who })}
+                value={ai.blocked.length ? fmtList(ai.blocked.map((id) => providerOf(id)?.name ?? id)) : t('None')}
+                onClick={canManage ? () => setBlocking(true) : undefined}
+              />
+            </>
+          ) : (
+          <>
           <div className="set-row">
             <span>
               <strong>{t('Monthly limit for the company')}</strong>
@@ -880,8 +983,67 @@ export function AISection({ ws, people, users, me, canManage, onAI, onBilling, t
               </button>
             ))}
           </div>
+          </>
+          )}
         </div>
       </fieldset>
+      {phone && blocking && (
+        <PushScreen title={t('Blocked providers')} onBack={() => setBlocking(false)} className="g-page g-edit">
+          <div className="g-body">
+            <Group footer={t('Nobody in the company can use these, for example if a {guest} doesn’t allow data in China', { guest: term.who })}>
+              {PROVIDERS.filter((x) => x.kind !== 'speech').map((x) => (
+                <SwitchRow key={x.id} label={x.name} on={ai.blocked.includes(x.id)} onChange={(on) => set({ blocked: on ? [...ai.blocked, x.id] : ai.blocked.filter((y) => y !== x.id) })} />
+              ))}
+            </Group>
+          </div>
+        </PushScreen>
+      )}
+      {phone && adding && (
+        <PushScreen title={adding.id ? providerOf(adding.id)!.name : t('Add a provider')} onBack={() => setAdding(null)} className="g-page ts-push ai-add-push">
+          <div className="ts-push-body">{addFlow}</div>
+        </PushScreen>
+      )}
+      {phone && openKey && (() => {
+        const c = ai.providers.find((x) => x.id === openKey);
+        if (!c) return null;
+        const info = providerOf(c.id)!;
+        const spent = server.on ? view?.spendUsd?.[c.id] ?? 0 : c.spentUsd;
+        const uses = JOBS.filter((j) => ai.jobs[j.id]?.provider === c.id).length;
+        const list = lists[c.id] ?? catalogList(c.id);
+        const current = defaultModelOf(c.id, c.model, ai.jobs, list);
+        return (
+          <PushScreen title={info.name} onBack={() => setOpenKey(null)} className="g-page g-edit">
+            <div className="g-body">
+              <Group footer={uses ? tn(uses, '{n} job uses it', '{n} jobs use it') : t('No job uses it yet')}>
+                <GRow label={t('Key')} value={`•••• ${c.keyLast4}`} />
+                <GRow label={t('Added by')} value={users.find((u) => u.id === c.addedBy)?.name ?? t('someone')} />
+                <GRow label={t('Status')} value={c.status === 'ok' ? t('Working') : t('Not working')} />
+                {picksModel(c.id) && c.status === 'ok' && (
+                  <GRow label={t('Model')} accessory={<span className="g-inline"><ModelPicker list={list} value={current || null} typed={c.typed} onPick={(id, typed) => changeModel(c, id, typed)} check={checkModel(c.id)} label={t('{provider}: model', { provider: info.name })} flat disabled={!canManage} /></span>} />
+                )}
+              </Group>
+              <Group footer={t('about {spent} this month', { spent: dollars(spent) })}>
+                <TextRow
+                  label={t('Monthly cap US$')}
+                  value={c.capUsd ? String(c.capUsd) : ''}
+                  shown={c.capUsd ? `US$${fmtNumber(c.capUsd)}` : tx('cap', 'none')}
+                  inputMode="decimal"
+                  disabled={!canManage}
+                  footer={t('Empty: no limit.')}
+                  validate={(v) => (Number.isFinite(Number(v)) && Number(v) >= 0 ? null : t('A number'))}
+                  onSave={(v) => set({ providers: ai.providers.map((x) => (x.id === c.id ? { ...x, capUsd: v ? Number(v) : undefined } : x)) })}
+                />
+              </Group>
+              {canManage && (
+                <Group>
+                  <GRow label={t('Replace key')} action onClick={() => (setOpenKey(null), setAdding({ id: c.id, key: '', url: c.baseUrl ?? '', state: 'idle' }))} />
+                  <GRow label={t('Remove key')} danger onClick={() => (setOpenKey(null), removeKey(c))} />
+                </Group>
+              )}
+            </div>
+          </PushScreen>
+        );
+      })()}
     </>
   );
 }

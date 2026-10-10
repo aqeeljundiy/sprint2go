@@ -4,6 +4,8 @@ import { RotateCcw } from 'lucide-react';
 import { DEFAULT_CLIENT_ACCESS, type ClientAccess, type Team } from '../../types';
 import { Select } from '../ui/Select';
 import { t } from '../../i18n';
+import { usePhone } from '../../mobile/media';
+import { ChoiceRow, TextRow } from '../ui/Grouped';
 
 type Key = keyof ClientAccess;
 
@@ -63,71 +65,92 @@ export function ClientAccessForm({
     if (typeof v === 'boolean') return v ? t('On') : t('Off');
     return words[k]?.[String(v)] ?? String(v);
   };
+  const sub = (k: Key) => (
+    <>
+      {LABEL[k][1]}
+      {company && (
+        <>
+          {' · '}
+          {overrides && k in overrides ? (
+            <button className="link-btn" onClick={(e) => (e.stopPropagation(), onReset?.(k))} disabled={!canManage}>
+              <RotateCcw size={11} /> {t('Use company setting ({value})', { value: show(k, company[k]) })}
+            </button>
+          ) : (
+            <span className="ca-company">{t('company setting')}</span>
+          )}
+        </>
+      )}
+    </>
+  );
   const row = (k: Key, control: ReactNode) => (
     <div className="set-row ca-row" key={k}>
       <span>
         <strong>{LABEL[k][0]}</strong>
-        <small>
-          {LABEL[k][1]}
-          {company && (
-            <>
-              {' · '}
-              {overrides && k in overrides ? (
-                <button className="link-btn" onClick={() => onReset?.(k)} disabled={!canManage}>
-                  <RotateCcw size={11} /> {t('Use company setting ({value})', { value: show(k, company[k]) })}
-                </button>
-              ) : (
-                <span className="ca-company">{t('company setting')}</span>
-              )}
-            </>
-          )}
-        </small>
+        <small>{sub(k)}</small>
       </span>
       {control}
     </div>
   );
+  // Phones (iOS Settings): a choice is a row with the current one on the right and a sheet with a tick.
+  const phone = usePhone();
+  // One guest's own page: their own choice says so, and the sheet offers the company's back (no button inside the row).
+  const RESET = '__company';
+  const pick = <V extends string>(k: Key, options: { value: V; label: string; hint?: string }[]) => {
+    if (!phone) return row(k, sel(k, options));
+    const own = !!company && !!overrides && k in overrides;
+    const opts: { value: string; label: string; hint?: string }[] = own ? [...options, { value: RESET, label: t('Use company setting ({value})', { value: show(k, company![k]) }) }] : options;
+    return (
+      <ChoiceRow
+        key={k}
+        label={LABEL[k][0]}
+        sub={company ? `${LABEL[k][1]} · ${own ? t('Own setting') : t('company setting')}` : LABEL[k][1]}
+        value={String(value[k])}
+        options={opts}
+        onChange={(v) => (v === RESET ? onReset?.(k) : onChange({ [k]: v } as Partial<ClientAccess>))}
+        disabled={!canManage}
+      />
+    );
+  };
 
   return (
     <div className="ca-form">
-      {row(
-        'teamNames',
-        sel('teamNames', [
-          { value: 'full', label: t('Full names and photos') },
-          { value: 'first', label: t('First names and photos') },
-          { value: 'hide', label: t('Hide'), hint: t('Shows your company name instead') },
-        ]),
-      )}
+      {pick('teamNames', [
+        { value: 'full', label: t('Full names and photos') },
+        { value: 'first', label: t('First names and photos') },
+        { value: 'hide', label: t('Hide'), hint: t('Shows your company name instead') },
+      ])}
       {row('requests', toggle('requests'))}
-      {value.requests &&
-        row(
-          'requestsTo',
-          sel('requestsTo', [{ value: 'owner', label: t('The {project}’s account manager', { project: term.one }) }, ...teams.map((tm) => ({ value: tm.id, label: t('{team} team queue', { team: tm.name }) }))]),
-        )}
-      {row(
-        'meetingNotes',
-        sel('meetingNotes', [
-          { value: 'auto', label: t('Shared automatically'), hint: t('Meetings they attended') },
-          { value: 'manual', label: t('Only when we share each one') },
-        ]),
-      )}
-      {row(
-        'recordings',
-        sel('recordings', [
-          { value: 'off', label: t('Off') },
-          { value: 'audio', label: t('Audio') },
-        ]),
-      )}
-      {row(
-        'invites',
-        sel('invites', [
-          { value: 'direct', label: t('Yes, straight away') },
-          { value: 'approve', label: t('Yes, an admin approves') },
-          { value: 'off', label: t('No') },
-        ]),
-      )}
+      {value.requests && pick('requestsTo', [{ value: 'owner', label: t('The {project}’s account manager', { project: term.one }) }, ...teams.map((tm) => ({ value: tm.id, label: t('{team} team queue', { team: tm.name }) }))])}
+      {pick('meetingNotes', [
+        { value: 'auto', label: t('Shared automatically'), hint: t('Meetings they attended') },
+        { value: 'manual', label: t('Only when we share each one') },
+      ])}
+      {pick('recordings', [
+        { value: 'off', label: t('Off') },
+        { value: 'audio', label: t('Audio') },
+      ])}
+      {pick('invites', [
+        { value: 'direct', label: t('Yes, straight away') },
+        { value: 'approve', label: t('Yes, an admin approves') },
+        { value: 'off', label: t('No') },
+      ])}
       {row('uploads', toggle('uploads'))}
       {row('ai', toggle('ai'))}
+      {value.ai && phone && (
+        <TextRow
+          key="aiQuestions"
+          label={LABEL.aiQuestions[0]}
+          sub={LABEL.aiQuestions[1]}
+          value={String(value.aiQuestions)}
+          disabled={!canManage}
+          inputMode="numeric"
+          allowEmpty={false}
+          validate={(v) => (/^\d+$/.test(v) && +v >= 1 && +v <= 1000 ? null : t('A number from 1 to 1000'))}
+          onSave={(v) => onChange({ aiQuestions: Math.max(1, Number(v) || DEFAULT_CLIENT_ACCESS.aiQuestions) })}
+        />
+      )}
       {value.ai &&
+        !phone &&
         row(
           'aiQuestions',
           <input

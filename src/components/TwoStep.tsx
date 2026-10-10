@@ -7,6 +7,9 @@ import { server, signOut } from '../sync';
 import { BrandMark, LangSwitch } from './SignIn';
 import { Badge } from './ui/Person';
 import { mark, t, tn } from '../i18n';
+import { usePhone } from '../mobile/media';
+import { PushScreen } from './ui/PushScreen';
+import { EditScreen, GRow, Group } from './ui/Grouped';
 import { fmtDay, fmtList } from '../i18n/format';
 
 /*
@@ -396,9 +399,11 @@ export function TwoStepRow({ toast }: { toast?: (t: string) => void }) {
   const [manage, setManage] = useState(false);
   const [dialog, setDialog] = useState<DialogMode | null>(null);
   const load = () => void loadTwoStep().then((s) => setSt(s ?? 'failed'));
+  const phone = usePhone();
   useEffect(() => {
     if (server.on) load();
   }, []);
+  if (phone && server.on) return <TwoStepPhone st={st} load={load} toast={toast} />;
 
   if (!server.on)
     return (
@@ -584,9 +589,7 @@ const titleOf = (mode: DialogMode) =>
   ({ on: t('Turn on two-step sign-in'), again: t('Set up on a new phone'), backup: t('New backup codes'), off: t('Turn off two-step sign-in') })[mode];
 
 function TwoStepDialog({ mode, onClose, onChanged }: { mode: DialogMode; onClose: () => void; onChanged: (toast?: string) => void }) {
-  const [codes, setCodes] = useState<string[] | null>(null);
   const [locked, setLocked] = useState(false); // backup codes on screen: only Done or the close button closes it
-  const [pw, setPw] = useState('');
   const title = titleOf(mode);
   // On the page body: Settings' scrolling pane would otherwise hold a fixed overlay inside itself.
   return createPortal(
@@ -601,38 +604,164 @@ function TwoStepDialog({ mode, onClose, onChanged }: { mode: DialogMode; onClose
           </button>
         </header>
         <div className="modal-body">
-          {(mode === 'on' || mode === 'again') && (
-            <SetupFlow
-              again={mode === 'again'}
-              onEnabled={() => (setLocked(true), onChanged(mode === 'again' ? t('Two-step sign-in moved to your new app') : undefined))}
-              onDone={onClose}
-              doneLabel={t('I’ve saved them')}
-            />
-          )}
-          {mode === 'backup' && (
-            <SmoothHeight>
-              <TabPane key={codes ? 'codes' : 'prove'}>
-                {codes ? (
-                  <BackupCodes codes={codes} renewed onDone={onClose} doneLabel={t('I’ve saved them')} />
-                ) : (
-                  <ProveStep text={t('Enter a code from your authenticator app to make new backup codes.')} action={t('Make new codes')} onProof={(code) => post<{ backupCodes: string[] }>('/api/2fa/backup', { code }).then((d) => (setCodes(d.backupCodes), setLocked(true), onChanged()))} />
-                )}
-              </TabPane>
-            </SmoothHeight>
-          )}
-          {mode === 'off' && (
-            <div className="ts-step">
-              <p className="ts-text">{t('Signing in will only need your password. Your password and a code from your app, to be sure it’s you:')}</p>
-              <div className="field">
-                <label>{t('Password')}</label>
-                <input type="password" value={pw} onChange={(e) => setPw(e.target.value)} autoComplete="current-password" autoFocus />
-              </div>
-              <ProveStep text={t('And the 6-digit code from your authenticator app.')} action={t('Turn off')} onProof={(code) => post('/api/2fa/off', { password: pw, code }).then(() => (onChanged(t('Two-step sign-in is off')), onClose()))} />
-            </div>
-          )}
+          <TwoStepSteps mode={mode} onClose={onClose} onChanged={onChanged} setLocked={setLocked} />
         </div>
       </div>
     </div>,
     document.body,
+  );
+}
+
+/** What the two-step dialog walks through (turn on, new phone, new backup codes, turn off); on phones a pushed screen. */
+function TwoStepSteps({ mode, onClose, onChanged, setLocked }: { mode: DialogMode; onClose: () => void; onChanged: (toast?: string) => void; setLocked: (v: boolean) => void }) {
+  const [codes, setCodes] = useState<string[] | null>(null);
+  const [pw, setPw] = useState('');
+  return (
+    <>
+      {(mode === 'on' || mode === 'again') && (
+        <SetupFlow
+          again={mode === 'again'}
+          onEnabled={() => (setLocked(true), onChanged(mode === 'again' ? t('Two-step sign-in moved to your new app') : undefined))}
+          onDone={onClose}
+          doneLabel={t('I’ve saved them')}
+        />
+      )}
+      {mode === 'backup' && (
+        <SmoothHeight>
+          <TabPane key={codes ? 'codes' : 'prove'}>
+            {codes ? (
+              <BackupCodes codes={codes} renewed onDone={onClose} doneLabel={t('I’ve saved them')} />
+            ) : (
+              <ProveStep text={t('Enter a code from your authenticator app to make new backup codes.')} action={t('Make new codes')} onProof={(code) => post<{ backupCodes: string[] }>('/api/2fa/backup', { code }).then((d) => (setCodes(d.backupCodes), setLocked(true), onChanged()))} />
+            )}
+          </TabPane>
+        </SmoothHeight>
+      )}
+      {mode === 'off' && (
+        <div className="ts-step">
+          <p className="ts-text">{t('Signing in will only need your password. Your password and a code from your app, to be sure it’s you:')}</p>
+          <div className="field">
+            <label>{t('Password')}</label>
+            <input type="password" value={pw} onChange={(e) => setPw(e.target.value)} autoComplete="current-password" autoFocus />
+          </div>
+          <ProveStep text={t('And the 6-digit code from your authenticator app.')} action={t('Turn off')} onProof={(code) => post('/api/2fa/off', { password: pw, code }).then(() => (onChanged(t('Two-step sign-in is off')), onClose()))} />
+        </div>
+      )}
+    </>
+  );
+}
+
+/**
+ * Phones (iOS Settings): "Two-step sign-in" with On or Off on the right opens its own screen; turning it on, a new phone,
+ * new backup codes and turning it off are pushed screens over that. "Sign out everywhere" is a row of its own.
+ */
+function TwoStepPhone({ st, load, toast }: { st: TwoStepStatus | null | 'failed'; load: () => void; toast?: (t: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const [step, setStep] = useState<DialogMode | null>(null);
+  const [signOutAll, setSignOutAll] = useState(false);
+  const s = st && st !== 'failed' ? st : null;
+  const low = !!s?.on && s.backupLeft <= 2;
+  const changed = (text?: string) => (load(), text && toast?.(text));
+  const value = !st ? t('Checking…') : !s ? '' : s.on ? t('On') : s.required ? t('Required') : t('Off');
+  const about = t('A code from an authenticator app each time you sign in, so a stolen password isn’t enough.');
+  return (
+    <>
+      <GRow label={t('Two-step sign-in')} value={value} onClick={s ? () => setOpen(true) : undefined} />
+      <GRow label={t('Sign out everywhere')} onClick={() => setSignOutAll(true)} />
+      {open && s && (
+        <PushScreen title={t('Two-step sign-in')} onBack={() => setOpen(false)} className="g-page g-edit">
+          <div className="g-body">
+            {!s.on ? (
+              <Group footer={s.required ? `${requiredText(s.required)}. ${about}` : about}>
+                <GRow label={t('Turn on two-step sign-in')} action onClick={() => setStep('on')} />
+              </Group>
+            ) : (
+              <>
+                <Group footer={t('On since {date}.', { date: day(s.since!) })}>
+                  <GRow label={t('Backup codes')} value={low ? tn(s.backupLeft, 'Only {n} left', 'Only {n} left') : tn(s.backupLeft, '{n} left', '{n} left')} onClick={() => setStep('backup')} />
+                  <GRow label={t('New phone')} onClick={() => setStep('again')} />
+                </Group>
+                <PhoneDevices devices={s.devices ?? []} onChanged={changed} />
+                <Group footer={s.required ? t('{required}, so it stays on.', { required: requiredText(s.required) }) : t('Sign in with just your password again.')}>
+                  {s.required ? <GRow label={t('Turn off two-step sign-in')} value={t('Required')} /> : <GRow label={t('Turn off two-step sign-in')} danger onClick={() => setStep('off')} />}
+                </Group>
+              </>
+            )}
+          </div>
+        </PushScreen>
+      )}
+      {step && <TwoStepPushed mode={step} onClose={() => setStep(null)} onChanged={changed} />}
+      {signOutAll && <SignOutEverywhereScreen hasDevices={!!s?.devices?.length} onBack={() => setSignOutAll(false)} onDone={(text) => (load(), toast?.(text))} />}
+    </>
+  );
+}
+
+/** One of the two-step steps as a pushed screen; while new backup codes are on screen, only "I've saved them" leaves. */
+function TwoStepPushed({ mode, onClose, onChanged }: { mode: DialogMode; onClose: () => void; onChanged: (toast?: string) => void }) {
+  const [locked, setLocked] = useState(false);
+  return (
+    <PushScreen title={titleOf(mode)} onBack={() => !locked && onClose()} className="g-page ts-push">
+      <div className="ts-push-body">
+        <TwoStepSteps mode={mode} onClose={onClose} onChanged={onChanged} setLocked={setLocked} />
+      </div>
+    </PushScreen>
+  );
+}
+
+/** Remembered devices on a phone: one row each with Forget, and Forget all when there are several. */
+function PhoneDevices({ devices, onChanged }: { devices: RememberedDevice[]; onChanged: (toast?: string) => void }) {
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const rows = useLeaving(devices, (d) => d.id);
+  const forget = (id: string | 'all') => {
+    setBusy(id);
+    setError(null);
+    post('/api/2fa/devices/forget', id === 'all' ? { all: true } : { id })
+      .then(() => onChanged(id === 'all' ? t('Every remembered device asks for the code again') : t('That device asks for the code again')))
+      .catch((e: Error) => setError(e.message))
+      .finally(() => setBusy(null));
+  };
+  return (
+    <Group title={t('Remembered devices')} footer={error ? t(error) : devices.length ? t('These sign in with just your password until the date shown. Forget any you don’t use.') : t('None. Tick “Remember this device” when you enter a code to skip it for 30 days on that device.')}>
+      {rows.map(({ item: d, leaving }) => (
+        <GRow
+          key={d.id}
+          className={leaving ? 'row-leaving' : ''}
+          label={
+            <>
+              {deviceLabel(d.name)} {d.current && <Badge tone="info">{t('This device')}</Badge>}
+            </>
+          }
+          sub={t('Until {expires}', { expires: day(d.expiresAt) })}
+          accessory={
+            <button type="button" className="g-save" disabled={!!busy} onClick={() => forget(d.id)}>
+              {t('Forget')}
+            </button>
+          }
+        />
+      ))}
+      {devices.length > 1 && <GRow label={t('Forget all')} danger onClick={busy ? undefined : () => forget('all')} />}
+      {!devices.length && <GRow label={t('No remembered devices')} />}
+    </Group>
+  );
+}
+
+/** Sign out everywhere else, on a phone: what happens, and the button that does it. */
+function SignOutEverywhereScreen({ hasDevices, onBack, onDone }: { hasDevices: boolean; onBack: () => void; onDone: (toast: string) => void }) {
+  return (
+    <EditScreen
+      title={t('Sign out everywhere')}
+      onBack={onBack}
+      saveLabel={t('Sign out')}
+      danger
+      onSave={() =>
+        post('/api/2fa/signout-everywhere')
+          .then(() => (onDone(t('Signed out everywhere else. You’re still signed in here.')), null))
+          .catch((e: Error) => e.message)
+      }
+    >
+      <p className="g-note">{t('Lost a phone, or signed in on a computer that isn’t yours? End every other session.')}</p>
+      <p className="g-note">{hasDevices ? t('Every other phone, computer and browser signed in as you signs out, and remembered devices ask for the code again. You stay signed in here.') : t('Every other phone, computer and browser signed in as you signs out. You stay signed in here.')}</p>
+    </EditScreen>
   );
 }

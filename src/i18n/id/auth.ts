@@ -191,6 +191,10 @@ const id: Record<string, string> = {
   'Use one of your backup codes, or ask another owner.': 'Pakai salah satu kode cadangan Anda, atau minta bantuan pemilik lain.',
   'Only an owner can reset an owner’s two-step sign-in.': 'Hanya pemilik yang bisa mengatur ulang masuk dua langkah milik pemilik.',
   'Two-step sign-in isn’t on for them.': 'Masuk dua langkah tidak aktif untuk orang ini.',
+  // Two-step sign-in on phones (its own screen in Settings, Account).
+  'No remembered devices': 'Tidak ada perangkat yang diingat',
+  'Only {n} left': 'Tinggal {n}',
+  'Until {expires}': 'Sampai {expires}',
 };
 
 export default id;

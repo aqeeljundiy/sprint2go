@@ -30,7 +30,7 @@ const STRICT_AREAS = STRICT && opt('--strict') && !opt('--strict').startsWith('-
 const AREAS = [
   ['shell', /^src\/(App|Root|main|lazy|terms|toast|sync|store|push|pushBridge|diagnostics|tryOut|sandbox|caps|utils|exitAnimations|slidingTabs|onePanel|presence|photos|seed)\.tsx?$|^src\/mobile\/|^src\/components\/(MobileTop|AppRail|CommandPalette|AccountMenu|WorkspaceSwitcher|InstallPrompt|Notifications|DemoCompany|AppSettings|AppSetupCard|Avatar|Logo|WorkspaceLogo|PhotoPicker)\.tsx$/],
   ['ui', /^src\/components\/ui\/|^src\/i18n\/(format|index)\.ts$/],
-  ['settings', /^src\/settings\.ts$|^src\/components\/(SettingsPage|settingsList|NotificationSettings|HelpSection|OutOfOffice|WorkspaceForms|ConnectedApps|EmailSetupGuide|PhoneMailApps|LanguagePicker)\.tsx?$|^src\/components\/(admin|imports)\/|^src\/data\/(pricing|aiCatalog|aiModels)\.ts$/],
+  ['settings', /^src\/settings\.ts$|^src\/components\/(SettingsPage|SettingsPhone|settingsList|NotificationSettings|HelpSection|OutOfOffice|WorkspaceForms|ConnectedApps|EmailSetupGuide|PhoneMailApps|LanguagePicker)\.tsx?$|^src\/components\/(admin|imports)\/|^src\/data\/(pricing|aiCatalog|aiModels)\.ts$/],
   ['auth', /^src\/components\/(SignIn|TwoStep)\.tsx$/],
   ['home', /^src\/components\/HomeView\.tsx$|^src\/components\/home\/|^src\/needsYou\.ts$/],
   ['onboarding', /^src\/components\/Onboarding\.tsx$/],
