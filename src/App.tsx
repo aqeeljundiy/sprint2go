@@ -39,6 +39,7 @@ import { isMine, setIdentity } from './identity';
 import { scanned, session, useStored } from './store';
 import { live, reloadAll, resync, server, uploadFile, uploadPolicy, wasSkipped } from './sync';
 import { FilesView } from './components/mail/FilesView';
+import { threadHasAttachment } from './mailAttachments';
 import { makeLinks as makeFileLinks, saveToDrive as saveAttachments } from './components/mail/attachApi'; // Mail attachments round
 import { TRY_KEYS, isSandbox, isSandboxId, sandboxWsId, type TryKey } from './sandbox';
 import { DemoCompanyBar, DemoInvite, ResetDemoDialog, TryList, demoCompanySeen, hideDemoCompany, openDemoCompany, resetDemoCompany, useDemoState } from './components/DemoCompany';
@@ -641,7 +642,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
       (filter === 'unread' && t.unread) ||
       (filter === 'reply' && needsReply(t, isMine)) ||
       (filter === 'assigned' && t.assignee === user.id) ||
-      (filter === 'files' && t.messages.some((m) => m.attachments?.length))) &&
+      (filter === 'files' && threadHasAttachment(t))) && // pictures inside the words don't count (src/mailAttachments.ts)
     (!q || t.subject.toLowerCase().includes(q) || t.messages.some((m) => m.from.name.toLowerCase().includes(q) || m.from.email.includes(q) || m.body.toLowerCase().includes(q)));
   const visible = useMemo(
     () => scoped.filter((t) => inView(t, view, viewCtx) && passes(t)).sort((a, b) => lastMessage(b).date.localeCompare(lastMessage(a).date)),
@@ -922,7 +923,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     if (d.note) text = d.note;
     showToast(left > 1000 ? { text, ms: Math.max(left, d.note ? 6000 : 0), action: { label: t('Undo'), run: undo } } : { text, ms: d.note ? 6000 : undefined });
   };
-  const [restoreReply, setRestoreReply] = useState<{ threadId: string; html: string; text: string; key: number } | null>(null);
+  const [restoreReply, setRestoreReply] = useState<{ threadId: string; html: string; text: string; key: number; files?: OutgoingFile[] } | null>(null);
 
   /** Why the mail engine didn't take an email, as a sentence that ends properly. */
   const refusal = async (r: Response | null, fallback: string) => {
@@ -965,7 +966,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
     /** It didn't go: the reply leaves the conversation and its words go back in the reply box, to send again or change. */
     const notSent = (why: string) => {
       setThreads((ts) => ts.map((x) => (x.id === id ? { ...x, messages: x.messages.filter((m) => m.id !== msgId) } : x)));
-      const back = () => setRestoreReply({ threadId: id, html, text, key: Date.now() });
+      const back = () => setRestoreReply({ threadId: id, html, text, key: Date.now(), files });
       back();
       showToast({ text: t('Reply not sent. {why} What you wrote is back in the reply box.', { why }), ms: 10000, action: { label: t('Open'), run: () => (setSelectedId(id), setReaderOpen(true), back()) } });
     };
@@ -982,7 +983,7 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
             ? sentToast(r, t('Reply sent'), () =>
                 takeBack(id, msgId, () => {
                   setThreads((ts) => ts.map((x) => (x.id === id ? { ...x, messages: x.messages.filter((m) => m.id !== msgId) } : x)));
-                  setRestoreReply({ threadId: id, html, text, key: Date.now() });
+                  setRestoreReply({ threadId: id, html, text, key: Date.now(), files });
                 }),
               )
             : notSent(await refusal(r, t('The mail engine refused it.'))),
@@ -1063,7 +1064,8 @@ export default function App({ user, signedInUsers, allUsers, workspaces: allWork
    */
   const send = (m: Outgoing) => {
     const big = m.files.filter((f) => f.link);
-    if (!real || !big.length) return sendNow(m);
+    // Nothing to share yet when it can't go out (sendNow says why and keeps the draft).
+    if (!real || !big.length || (!m.sendAt && !boxReady(m.fromId).send)) return sendNow(m);
     const people = [...m.to, ...m.cc, ...(m.bcc ?? [])].map((p) => p.email);
     void makeFileLinks(big, m.linkAccess ?? 'recipients', people, ws.id).then(
       (add) => sendNow({ ...m, files: m.files.filter((f) => !f.link), html: m.html + (add?.html ?? ''), text: m.text + (add?.text ?? '') }),

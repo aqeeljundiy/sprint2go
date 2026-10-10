@@ -100,7 +100,7 @@ interface Props {
   canTrack?: boolean;
   trackByDefault?: boolean;
   /** A reply taken back with Undo: back in the reply box, as it was written. */
-  restoreReply?: { threadId: string; html: string; text: string; key: number } | null;
+  restoreReply?: { threadId: string; html: string; text: string; key: number; files?: OutFile[] } | null; // files: what was attached comes back too
   /** Why replies can't go out from this mailbox yet; Reply and Forward then explain instead of opening. */
   replyOff?: string;
   onReplyOff?: () => void;
@@ -152,6 +152,7 @@ export function Reader(props: Props) {
   const [replyTrack, setReplyTrack] = useState<boolean | null>(null); // null: the person's default
   // Files in the desktop reply box: uploaded when added, big ones as Drive links (src/components/mail/DraftFiles.tsx).
   const replyFiles = useDraftFiles([], reply.html.length);
+  const [restoredFiles, setRestoredFiles] = useState<OutFile[]>([]); // phones: files of a reply that came back
   const [summary, setSummary] = useState<Summary | 'loading' | null>(null);
   const [summaryOpen, setSummaryOpen] = useState(false);
   const [suggestions, setSuggestions] = useState<string[] | null>(null);
@@ -201,6 +202,7 @@ export function Reader(props: Props) {
     if (!r || !thread || r.threadId !== thread.id) return;
     setReplyInitial(r.html);
     setReply({ html: r.html, text: r.text });
+    if (r.files?.length) (replyFiles.addExisting(r.files), setRestoredFiles(r.files));
     setReplyOpen(true);
   }, [props.restoreReply?.key]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -1162,11 +1164,12 @@ export function Reader(props: Props) {
             all={replyAll}
             subject={thread.subject}
             initialHtml={replyInitial ?? draft?.html ?? (props.signature ? `<p><br></p>${props.signature}` : '')}
+            initialFiles={restoredFiles}
             signature={props.signature}
             userId={props.meUser.id}
             myName={props.myName}
             track={props.canTrack && replyOutside.length > 0 ? { on: replyTracked, set: setReplyTrack } : null}
-            onSend={(html, text, files) => props.onReply(thread.id, html, text, replyTracked, replyAll, files)}
+            onSend={(html, text, files) => (setRestoredFiles([]), props.onReply(thread.id, html, text, replyTracked, replyAll, files))}
             onKeep={(d) => {
               if (d) REPLY_DRAFTS.set(thread.id, d);
               else REPLY_DRAFTS.delete(thread.id);

@@ -140,7 +140,7 @@ const PAGE_CSS = `
 html,body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;-webkit-text-size-adjust:100%}
 body{padding:24px 16px 48px}
 .doc{max-width:760px;margin:0 auto;background:var(--card);padding:32px;border-radius:10px;box-shadow:0 1px 3px rgba(0,0,0,.08);overflow-wrap:anywhere}
-@media (max-width:600px){body{padding:8px 0 32px}.doc{padding:16px;border-radius:0;box-shadow:none}}
+@media (max-width:600px){body{padding:12px 12px 32px}.doc{margin:-12px -12px 0;padding:16px;border-radius:0;box-shadow:none}.slide{padding:16px}}
 h1,h2,h3,h4{line-height:1.3;margin:1.2em 0 .5em}h1{font-size:24px}h2{font-size:20px}h3{font-size:17px}h4{font-size:15px}
 p{margin:0 0 .6em}ul,ol{margin:0 0 .8em;padding-left:24px}
 img{max-width:100%;height:auto}

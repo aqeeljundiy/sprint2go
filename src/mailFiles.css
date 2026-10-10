@@ -44,7 +44,7 @@
 }
 .mf-row {
   display: grid;
-  grid-template-columns: repeat(auto-fill, 176px);
+  grid-template-columns: repeat(auto-fill, minmax(148px, 176px));
   gap: 8px;
   max-width: 760px;
 }
@@ -369,6 +369,15 @@
   gap: 8px;
   padding: 8px 14px;
   border-top: 1px solid var(--border);
+}
+.compose .df {
+  flex: none;
+  max-height: 45%;
+  overflow-y: auto;
+}
+/* The words scroll inside their own box; pictures in them never spill over the files below. */
+.compose-body {
+  overflow: hidden;
 }
 .reply-box .df,
 .gm-reply .df {

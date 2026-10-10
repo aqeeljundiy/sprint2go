@@ -34,6 +34,11 @@ export function MessageFiles({ thread, message }: { thread: Thread; message: Mes
   const sender = message.from.name || message.from.email;
   const items: ViewItem[] = files.map((a, i) => ({ key: `${message.id}/${i}`, att: a, threadId: thread.id, messageId: message.id, from: sender }));
 
+  const scanNote = (
+    <span className="mf-scan" title={t('No virus scanner checked these files. Open them only if you trust who sent them.')}>
+      <ShieldQuestion size={14} /> {t('Not scanned for viruses')}
+    </span>
+  );
   const startSave = (atts: Attachment[], anchor: HTMLElement | null) => {
     anchorRef.current = anchor;
     setSaving({ atts, anchor });
@@ -46,15 +51,11 @@ export function MessageFiles({ thread, message }: { thread: Thread; message: Mes
 
   return (
     <div className={phone ? 'gm-atts' : 'mf'}>
-      {(files.length > 1 || unscanned) && (
+      {(files.length > 1 || (unscanned && !phone)) && (
         <div className={phone ? 'gm-atts-head' : 'mf-head'}>
           <span className="mf-count">
             {files.length > 1 ? tn(files.length, '{n} attachment', '{n} attachments') : null}
-            {unscanned && (
-              <span className="mf-scan" title={t('No virus scanner checked these files. Open them only if you trust who sent them.')}>
-                <ShieldQuestion size={14} /> {t('Not scanned for viruses')}
-              </span>
-            )}
+            {unscanned && !phone && scanNote}
           </span>
           {kept.length > 1 && (
             <span className="mf-all">
@@ -73,6 +74,7 @@ export function MessageFiles({ thread, message }: { thread: Thread; message: Mes
           )}
         </div>
       )}
+      {unscanned && phone && <div className="mf-scanline">{scanNote}</div>}
       <div className={phone ? 'gm-att-row' : 'mf-row'}>
         {files.map((a, i) =>
           phone ? (

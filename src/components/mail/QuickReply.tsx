@@ -30,6 +30,7 @@ export function QuickReply({
   onSend,
   onKeep,
   onClose,
+  initialFiles,
 }: {
   to: Person[];
   all?: boolean; // Reply all
@@ -43,6 +44,8 @@ export function QuickReply({
   onSend: (html: string, text: string, files: OutFile[]) => void;
   onKeep: (draft: { html: string; text: string } | null) => void; // closed without sending: what's written, or null
   onClose: () => void;
+  /** Files of a reply that came back (not sent, or Undo). */
+  initialFiles?: OutFile[];
 }) {
   const [body, setBody] = useState({ html: initialHtml, text: htmlToText(initialHtml) });
   const [format, setFormat] = useState(false);
@@ -55,7 +58,7 @@ export function QuickReply({
   const latest = useRef(body);
   latest.current = body;
   // Files: uploaded when added, big ones as Drive links (DraftFiles.tsx).
-  const files = useDraftFiles([], body.html.length);
+  const files = useDraftFiles(initialFiles ?? [], body.html.length);
   const typed = hasOwnText(body.text, signature) || files.files.length > 0;
   const ready = typed && !files.busy;
   const inlineImages = (pics: File[]) => Promise.all(pics.map((f) => uploadForMail(f).then((up) => ({ url: up.url, name: f.name }), (e: Error) => (toast({ text: e.message }), null))));

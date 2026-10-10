@@ -1917,7 +1917,13 @@
     display: inline-flex;
     gap: 16px;
   }
+  .mf-scanline {
+    display: flex;
+    margin: 0 0 8px;
+    font-size: var(--fs-caption);
+  }
   .gm-atts-head .mf-all .link-btn {
+    white-space: nowrap;
     display: inline-flex;
     align-items: center;
     gap: 4px;
@@ -1956,7 +1962,7 @@
     font-size: var(--fs-secondary);
   }
   .mv-slide {
-    padding: 0 0 48px;
+    padding: 0 0 56px; /* the arrows and "2 of 7" sit under the file, never over it */
   }
   .mv-image img,
   .mv-video {
@@ -2039,8 +2045,17 @@
   }
 
   /* The Files view: a search, the filters in a row that scrolls sideways, a list of files. */
+  /* The search pill is the top bar; the view's name sits under it, as the list's folder name does. */
   .files-pane > .tracking-head {
+    padding: 8px 16px 0;
+    border-bottom: 0;
+  }
+  .files-pane > .tracking-head .menu-btn,
+  .files-pane > .tracking-head p {
     display: none;
+  }
+  .files-pane > .tracking-head h1 {
+    font: var(--t-title);
   }
   .fv-tools {
     gap: 8px;

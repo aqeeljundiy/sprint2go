@@ -3,6 +3,7 @@ import { flushSync } from 'react-dom';
 import { lastTracked, summarize } from '../tracking';
 import { Archive, Check, Clock, Eye, EyeOff, FileText, Inbox, Mail, MailOpen, Menu, MessageSquare, MoreHorizontal, Paperclip, PenLine, RefreshCw, Search, ShieldAlert, Star, Trash2, X } from 'lucide-react';
 import type { Client, Label, Person, Thread, User } from '../types';
+import { threadHasAttachment } from '../mailAttachments';
 import { lastMessage, listDate, participants, relative, snippet } from '../utils';
 import { Avatar } from './Avatar';
 import { isMine } from '../identity';
@@ -549,7 +550,7 @@ export function MailRow(p: {
 }) {
   const th = p.t;
   const last = lastMessage(th);
-  const hasFiles = th.messages.some((m) => m.attachments?.length);
+  const hasFiles = threadHasAttachment(th); // not pictures inside the words (src/mailAttachments.ts)
   const tracked = lastTracked(th, p.me);
   const sum = tracked?.tracking && !th.sendAt ? summarize(tracked.tracking) : null; // not sent yet: nothing to see
   const who = th.assignee ? p.personOf(th.assignee) : undefined;

@@ -12,7 +12,7 @@ import { useStored } from '../../store';
 import { usePhone } from '../../mobile/media';
 import { toast } from '../../toast';
 import { fmtAgo, fmtDay } from '../../i18n/format';
-import { mark, t, tn } from '../../i18n';
+import { mark, t, tn, tx } from '../../i18n';
 import '../../mailFiles.css';
 
 const KINDS: { id: string; label: string; kinds: FileKind[] }[] = [
@@ -98,7 +98,7 @@ export function FilesView({ threads, onOpenThread, onMenu }: { threads: Thread[]
         </label>
         <div className="fv-chips" role="toolbar" aria-label={t('Filters')}>
           <button type="button" ref={fromBtn} className={`fv-chip${from ? ' on' : ''}`} onClick={() => setFromOpen(true)} aria-haspopup="dialog">
-            <User size={14} /> <span>{from ? from.name : t('From')}</span> <ChevronDown size={14} />
+            <User size={14} /> <span>{from ? from.name : tx('mail', 'From')}</span> <ChevronDown size={14} />
           </button>
           <button type="button" ref={whenBtn} className={`fv-chip${when !== 'any' ? ' on' : ''}`} onClick={() => setWhenOpen(true)} aria-haspopup="menu">
             <CalendarDays size={14} /> <span>{t(WHEN.find((w) => w.id === when)!.label)}</span> <ChevronDown size={14} />
@@ -178,7 +178,7 @@ export function FilesView({ threads, onOpenThread, onMenu }: { threads: Thread[]
           )
         }
       />
-      <Popover anchor={fromBtn} open={fromOpen} onClose={() => (setFromOpen(false), setFromQ(''))} width={300} title={t('From')}>
+      <Popover anchor={fromBtn} open={fromOpen} onClose={() => (setFromOpen(false), setFromQ(''))} width={300} title={tx('mail', 'From')}>
         <div className="mail-pick in-pop fv-from">
           <label className="dfp-search">
             <Search size={16} />
