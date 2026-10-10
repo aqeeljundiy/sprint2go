@@ -233,7 +233,8 @@ try {
   const in3 = await waitFor(() => threadsWith(s3).find((t) => t.accountId === 'pnp-bima'));
   const cm = in3?.messages?.[0];
   check(!!cm && !JSON.stringify(cm).includes(SECRET) && cm.confidential?.id?.startsWith('c-') && !cm.confidential.sender, 'the teammate’s copy holds a notice and the confidential mark, not the words');
-  const own3 = await waitFor(() => doc('threads', tid3)?.messages?.[0]?.confidential?.id?.startsWith('c-0') === false && doc('threads', tid3));
+  // Wait for the whole server mark (id and sender), not just the id: the two can land a moment apart.
+  const own3 = await waitFor(() => { const m = doc('threads', tid3)?.messages?.[0]; return m?.confidential?.sender === true && m.confidential.id === cm?.confidential?.id && doc('threads', tid3); });
   check(own3?.messages?.[0]?.confidential?.sender === true && own3.messages[0].confidential.id === cm?.confidential?.id && own3.messages[0].body === SECRET, 'the sender’s copy keeps its words and gets the server’s mark (not the one the app made up)');
   const cid = cm?.confidential?.id ?? 'c-none';
   const ro = await R.get(`/api/mail/confidential/${cid}`);
