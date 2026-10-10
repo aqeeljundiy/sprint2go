@@ -139,7 +139,8 @@ function guestMessages(docs: any[]) {
  */
 function mail(docs: any[]) {
   for (const t of docs) {
-    if (!t || t.location !== 'inbox' || !t.unread || t.sendAt) continue;
+    // Only Primary (inbox tabs: server/mailSmart.ts): Promotions, Social, Updates and Forums wait in their tab, as in Gmail.
+    if (!t || t.location !== 'inbox' || !t.unread || t.sendAt || (t.category && t.category !== 'primary')) continue;
     // Most thread saves are someone reading, moving or replying: only a message that just arrived matters.
     const fresh = (t.messages ?? []).filter((m: any) => recent(m.date) && m.from?.email && fromPerson(m));
     if (!fresh.length) continue;

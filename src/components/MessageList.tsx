@@ -23,7 +23,7 @@ import { mark, t, tn } from '../i18n';
 import { ImportantMark, SearchChips, SearchOptions } from './mail/Sorting';
 import { MoveToSheet } from './mail/Shortcuts';
 import { markImportant, mute } from './mail/sortPrefs';
-import { BellOff, FolderInput } from 'lucide-react';
+import { BellOff, Flag, FolderInput } from 'lucide-react';
 
 /** The chips under the title: one at a time, tap again for everything. */
 export type MailFilter = 'all' | 'unread' | 'reply' | 'assigned' | 'files';
@@ -263,7 +263,7 @@ export const MessageList = forwardRef<HTMLInputElement, Props>(function MessageL
     if (extra) out.push({ label: t('Select'), icon: Check, group: 'select', run: () => setPicked(new Set(ids)) });
     out.push({ label: t('Move to…'), icon: FolderInput, group: 'move', run: () => setMoving(ids) });
     const allImportant = list.every((th) => th.important);
-    out.push({ label: allImportant ? t('Mark not important') : t('Mark important'), icon: Star, group: 'move', run: () => markImportant(ids, !allImportant) });
+    out.push({ label: allImportant ? t('Mark not important') : t('Mark important'), icon: Flag, group: 'move', run: () => markImportant(ids, !allImportant) });
     const allMuted = list.every((th) => th.muted);
     out.push({ label: allMuted ? t('Unmute') : t('Mute'), icon: BellOff, group: 'move', run: () => mute(ids, !allMuted) });
     if (list.some((th) => th.location !== 'spam')) out.push({ label: t('Report spam'), icon: ShieldAlert, group: 'end', run: () => actions.spam(ids) });

@@ -44,6 +44,7 @@ const id: Record<string, string> = {
   Primary: 'Utama',
   Promotions: 'Promosi',
   Forums: 'Forum',
+  'mail tab::Updates': 'Pembaruan',
   'People you know and anything not in another tab': 'Orang yang Anda kenal dan semua yang tidak masuk tab lain',
   'Deals, offers and newsletters': 'Promo, penawaran, dan newsletter',
   'Social networks and sites you share on': 'Jejaring sosial dan situs tempat Anda berbagi',
@@ -166,7 +167,8 @@ const id: Record<string, string> = {
 
   // Keyboard shortcuts
   'Moving around': 'Berpindah',
-  'Older or newer email': 'Email lebih lama atau lebih baru',
+  'Older email': 'Email lebih lama',
+  'Newer email': 'Email lebih baru',
   'Back to the list': 'Kembali ke daftar',
   'Go to Mail': 'Ke Mail',
   'Go to Chat': 'Ke Chat',

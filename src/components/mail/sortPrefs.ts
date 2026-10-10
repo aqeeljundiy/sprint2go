@@ -6,7 +6,7 @@ import { setStored, store } from '../../store';
 import { toastUndo } from '../../toast';
 import type { Thread } from '../../types';
 import { CATEGORIES, type Category } from '../../mailQuery';
-import { mark, t } from '../../i18n';
+import { mark, t, tx } from '../../i18n';
 
 export type InboxType = 'default' | 'important' | 'unread' | 'starred';
 export type Advance = 'auto' | 'newer' | 'older' | 'list';
@@ -39,7 +39,7 @@ export function useMailPrefs() {
   return [prefs, update] as const;
 }
 
-export const categoryName = (c: Category) => ({ primary: t('Primary'), promotions: t('Promotions'), social: t('Social'), updates: t('Updates'), forums: t('Forums') })[c];
+export const categoryName = (c: Category) => ({ primary: t('Primary'), promotions: t('Promotions'), social: t('Social'), updates: tx('mail tab', 'Updates'), forums: t('Forums') })[c];
 export const CATEGORY_HINT: Record<Category, string> = {
   primary: mark('People you know and anything not in another tab'),
   promotions: mark('Deals, offers and newsletters'),

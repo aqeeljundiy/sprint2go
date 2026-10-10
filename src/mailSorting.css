@@ -67,8 +67,12 @@
 .so-ticks {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px 16px;
+  gap: 6px;
   padding: 12px 0 4px;
+}
+/* The options form is taller than a menu: let its popover grow before it scrolls. */
+.pop:has(> .so-form) {
+  max-height: min(640px, calc(100vh - 96px));
 }
 .so-query {
   margin-top: 8px;
@@ -141,7 +145,16 @@
 /* ---------- Inbox tabs (desktop) ---------- */
 .list-pane .mail-tabs {
   min-height: 44px;
-  padding: 6px 12px;
+  padding: 6px 8px;
+}
+/* The list is narrow: the tabs share its width, words only (the hint names each on hover). */
+.list-pane .mail-tabs > button {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0 8px;
+}
+.list-pane .mail-tabs > button > svg {
+  display: none;
 }
 .mail-tab-new {
   padding: 1px 6px;
@@ -341,6 +354,11 @@
   flex-wrap: wrap;
   gap: 8px;
   margin-top: 4px;
+}
+.safety-actions .safety-report,
+.keep-ask .keep-delete {
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 40%, var(--border));
 }
 .list-banner.safety-spam > span {
   min-width: 200px;

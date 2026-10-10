@@ -79,10 +79,9 @@ export function SearchOptions({ query, onQuery }: { query: string; onQuery: (q: 
   );
   const run = () => (onQuery(q), setOpen(false));
   const tick = (key: 'attachment' | 'unread' | 'starred' | 'important', label: string) => (
-    <label className="check-row">
-      <input type="checkbox" checked={f[key]} onChange={(e) => set({ [key]: e.target.checked })} />
+    <button type="button" className={`mail-chip${f[key] ? ' on' : ''}`} aria-pressed={f[key]} onClick={() => set({ [key]: !f[key] })}>
       {label}
-    </label>
+    </button>
   );
   return (
     <>
@@ -387,7 +386,7 @@ export function KeepNotice({ where, ids }: { where: 'spam' | 'trash'; ids: strin
             </button>
             <button
               type="button"
-              className="primary-btn sm danger-btn"
+              className="ghost-btn outline sm keep-delete"
               onClick={() => {
                 deleteForever(ids);
                 setAsking(false);
@@ -552,7 +551,7 @@ export function InboxSettingsScreen({ onBack }: { onBack: () => void }) {
       {prefs.saved.length > 0 && (
         <Group title={t('Saved searches')} footer={t('Saved from search. They’re in the drawer.')}>
           {prefs.saved.map((s) => (
-            <GRow key={s.id} label={s.name} sub={s.q} accessory={
+            <GRow key={s.id} label={s.name} sub={s.name !== s.q ? s.q : undefined} accessory={
               <button type="button" className="icon-btn" aria-label={t('Remove saved search {name}', { name: s.name })} onClick={() => update((p) => ({ saved: p.saved.filter((x) => x.id !== s.id) }))}>
                 <X size={20} />
               </button>

@@ -112,7 +112,7 @@ export function MailSafety({ thread, onNotSpam }: { thread: Thread; onNotSpam: (
   const showWarn = level && dismissed !== thread.id;
   return (
     <>
-      {inSpam && (
+      {inSpam && level !== 'danger' && (
         <div className="list-banner safety-spam">
           <ShieldAlert size={16} />
           <span>
@@ -128,7 +128,7 @@ export function MailSafety({ thread, onNotSpam }: { thread: Thread; onNotSpam: (
           </button>
         </div>
       )}
-      {showWarn && !inSpam && (
+      {(inSpam ? level === 'danger' : showWarn) && (
         <div className={`safety-banner ${level}`} role="alert">
           <AlertTriangle size={18} className="safety-icon" />
           <div className="safety-words">
@@ -141,13 +141,19 @@ export function MailSafety({ thread, onNotSpam }: { thread: Thread; onNotSpam: (
             <small>{t('Don’t open its links or files, or reply with passwords, codes or payment details, unless you’ve checked with the sender another way.')}</small>
             <span className="safety-actions">
               {!warn.some((w) => w.kind === 'reported') && (
-                <button type="button" className="primary-btn sm danger-btn" onClick={() => reportPhishing([thread.id])}>
+                <button type="button" className="ghost-btn outline sm safety-report" onClick={() => reportPhishing([thread.id])}>
                   {t('Report phishing')}
                 </button>
               )}
-              <button type="button" className="ghost-btn sm" onClick={() => setDismissed(thread.id)}>
-                {t('It’s safe')}
-              </button>
+              {inSpam ? (
+                <button type="button" className="ghost-btn sm" onClick={() => onNotSpam(thread.id)}>
+                  <ShieldCheck size={13} /> {t('Not spam')}
+                </button>
+              ) : (
+                <button type="button" className="ghost-btn sm" onClick={() => setDismissed(thread.id)}>
+                  {t('It’s safe')}
+                </button>
+              )}
             </span>
           </div>
         </div>

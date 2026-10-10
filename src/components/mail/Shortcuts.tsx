@@ -50,7 +50,8 @@ const SHORTCUTS = (): { group: string; keys: [string, string][] }[] => [
   {
     group: t('Moving around'),
     keys: [
-      ['j / k', t('Older or newer email')],
+      ['j', t('Older email')],
+      ['k', t('Newer email')],
       ['/', t('Search')],
       ['Esc', t('Back to the list')],
       ['g m', t('Go to Mail')],
