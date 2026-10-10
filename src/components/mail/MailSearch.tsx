@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
-import { ArrowLeft, Check, ChevronDown, Clock, LayoutGrid, Search, X } from 'lucide-react';
+import { ArrowLeft, Check, ChevronDown, Clock, LayoutGrid, ListFilter, Search, X } from 'lucide-react';
 import type { Client, Label, Person, Thread, User } from '../../types';
 import { lastMessage } from '../../utils';
 import { isMine } from '../../identity';
@@ -49,6 +49,8 @@ export function MailSearch(p: {
   onStar: (id: string, on: boolean) => void;
   onOpen: (id: string) => void;
   onAllApps?: () => void;
+  /** "Create filter from this search": the words and the From, To and attachment chips (src/components/mail/Organize.tsx). */
+  onFilterSearch?: (q: string, extra?: { from?: string; to?: string; files?: boolean }) => void;
   onClose: () => void;
 }) {
   const input = useRef<HTMLInputElement>(null);
@@ -231,6 +233,12 @@ export function MailSearch(p: {
               <button type="button" className="gm-suggest" onClick={() => commit()}>
                 <Search size={20} />
                 <span>{t('Search for “{q}” in mail', { q: q.trim() })}</span>
+              </button>
+            )}
+            {p.onFilterSearch && (words || f.from || f.to || f.files) && (done || !words) && (
+              <button type="button" className="gm-suggest" onClick={() => p.onFilterSearch!(q.trim(), { from: f.from?.email, to: f.to?.email, files: f.files || undefined })}>
+                <ListFilter size={20} />
+                <span>{t('Create filter from this search')}</span>
               </button>
             )}
             {results.length > 0 ? (

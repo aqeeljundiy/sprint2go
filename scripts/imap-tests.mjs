@@ -145,6 +145,8 @@ try {
     w.mailReady = ready(w.accounts);
     put('workspaces', w);
   };
+  // The company's labels (server/mailFilters.ts): every mailbox in it has them, so they're folders in every mail app.
+  ['Clients', 'Team', 'Infra', 'Finance'].forEach((name, i) => put('mailLabels', { id: name.toLowerCase(), workspaceId: 'w-acme', accountId: null, name, parentId: null, color: '#10b981', show: 'show', order: i }));
   const m = (id, from, to, body, at, mid, extra = {}) => ({ id, from, to, date: at, body, mid, ...extra });
   const nadia = { name: 'Nadia Client', email: 'nadia@client.test' };
   const aliceP = { name: 'Alice Martin', email: 'alice@acme.test' };

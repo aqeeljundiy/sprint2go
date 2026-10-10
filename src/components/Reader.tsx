@@ -118,6 +118,10 @@ interface Props {
   unsubscribedAt?: string;
   onUnsubscribe: (t: Thread) => void;
   onBlock: (t: Thread) => void;
+  /** Labels and filters (src/components/mail/Organize.tsx): the label chips, the "Filed by" line, "Label as…" and "Filter messages like this". */
+  labelChips?: ReactNode;
+  filedLine?: ReactNode;
+  organizeActions?: (t: Thread) => SheetAction[];
   teammates: User[]; // people with access to this mailbox
   /** Team mail: more than one person opens this mailbox, so comments live here. */
   team: boolean;
@@ -394,6 +398,7 @@ export function Reader(props: Props) {
     ...(props.onMakeTask ? [{ label: tx('mail', 'Make a task'), icon: ListPlus, run: () => props.onMakeTask!(thread.id) }] : []),
     { label: t('Mark as unread'), icon: Mail, group: 'mark', run: () => props.onMarkUnread(thread.id) },
     { label: thread.starred ? t('Unstar') : t('Star'), icon: Star, group: 'mark', checked: thread.starred, run: () => props.onStar(thread.id) },
+    ...(props.organizeActions?.(thread) ?? []),
     ...(phone && props.shared ? [] : props.shared ? [{ label: t('Who handles this…'), icon: UserPlus, group: 'mark', run: () => setAssignOpen(true) }] : []),
     ...(thread.location !== 'spam' ? [{ label: t('Report spam'), icon: ShieldAlert, group: 'end', run: () => props.onSpam(thread.id) }] : []),
     ...(incoming ? [{ label: t('Block {name}', { name: incoming.from.name || incoming.from.email }), icon: Ban, group: 'end', run: () => props.onBlock(thread) }] : []),
@@ -570,8 +575,10 @@ export function Reader(props: Props) {
                 <Clock size={13} /> {thread.snoozeIfNoReply ? t('Back {when} if nobody replies', { when: whenWords(new Date(thread.snoozedUntil!)) }) : t('Back {when}', { when: whenWords(new Date(thread.snoozedUntil!)) })}
               </span>
             )}
+            {props.labelChips}
             <span className="thread-count">{tn(n, '{n} message', '{n} messages')}</span>
           </div>
+          {props.filedLine}
         </div>
 
         {(props.aiOn || props.onMakeTask || props.todos.length > 0) && (
@@ -797,6 +804,7 @@ export function Reader(props: Props) {
     const phoneMore = (): SheetAction[] => [
       ...(thread.location !== 'drafts' && thread.location !== 'trash' ? [{ label: t('Snooze'), icon: Clock, run: () => setSnoozeOpen(true) }] : []),
       ...(props.shared ? [{ label: t('Who handles this…'), icon: UserPlus, run: () => setAssignOpen(true) }] : []),
+      ...(props.organizeActions?.(thread) ?? []),
       ...(props.onMakeTask ? [{ label: tx('mail', 'Make a task'), icon: ListPlus, run: () => props.onMakeTask!(thread.id) }] : []),
       ...(thread.invite && !props.inviteAdded ? [{ label: t('Add to calendar'), icon: CalendarPlus, run: () => props.onAddInvite(thread.id) }] : []),
       ...(incoming ? [{ label: t('Block {name}', { name: incoming.from.name || incoming.from.email }), icon: Ban, group: 'end', run: () => props.onBlock(thread) }] : []),
@@ -1013,11 +1021,13 @@ export function Reader(props: Props) {
                   <Clock size={12} /> {thread.snoozeIfNoReply ? t('Back {when} if nobody replies', { when: whenWords(new Date(thread.snoozedUntil!)) }) : t('Back {when}', { when: whenWords(new Date(thread.snoozedUntil!)) })}
                 </span>
               )}
+              {props.labelChips}
             </h2>
             <button type="button" className={`gm-star${thread.starred ? ' on' : ''}`} onClick={() => props.onStar(thread.id)} aria-pressed={thread.starred} aria-label={thread.starred ? t('Unstar') : t('Star')}>
               <Star size={22} />
             </button>
           </div>
+          {props.filedLine}
 
           {props.aiOn && (
             <div className="gm-chiprow">

@@ -19,6 +19,7 @@ import { parseRRule } from '../src/recurrence.ts';
 import { msg, phrase } from '../src/i18n/index.ts';
 import { chatRecipients, isGroupDm } from '../src/chatFollow.ts';
 import { noticeWords, whereOf } from './chatLater.ts';
+import { labelPath, type MailLabel } from '../src/mailFilterMatch.ts';
 
 export interface ToolDeps {
   /** What one person may see of a document (null: nothing), as the app shows it to them (index.ts teamLens). */
@@ -371,6 +372,12 @@ function taskLine(v: View, t: Doc) {
   };
 }
 const lastOf = (t: Doc) => (t.messages ?? [])[(t.messages ?? []).length - 1] ?? {};
+/** A conversation's labels by their whole name, from the labels this person sees. */
+function labelsOfThread(v: View, t: Doc): string[] {
+  if (!t.labels?.length) return [];
+  const all = v.docs('mailLabels') as unknown as MailLabel[];
+  return (t.labels as string[]).map((id) => all.find((l) => l.id === id)).filter((l): l is MailLabel => !!l).map((l) => labelPath(l, all));
+}
 function threadLine(v: View, t: Doc) {
   const last = lastOf(t);
   return {
@@ -383,6 +390,9 @@ function threadLine(v: View, t: Doc) {
     ...(t.location !== 'inbox' ? { folder: t.location } : {}),
     messages: (t.messages ?? []).length,
     ...(t.assignee ? { assignee: v.nameOf(t.assignee) } : {}),
+    // Labels by their whole name ("Clients/KopiKita"), and the filter that filed it (server/mailFilters.ts).
+    ...(labelsOfThread(v, t).length ? { labels: labelsOfThread(v, t) } : {}),
+    ...(t.filed?.length ? { filed_by: t.filed[t.filed.length - 1].scope === 'block' ? 'a blocked sender' : t.filed[t.filed.length - 1].name } : {}),
     snippet: clip(last.body, 140),
     link: v.link('mail', t.id),
   };

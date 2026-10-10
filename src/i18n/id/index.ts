@@ -13,6 +13,7 @@ import auth from './auth';
 import home from './home';
 import onboarding from './onboarding';
 import mail from './mail';
+import mailFilters from './mail.filters';
 import calendar from './calendar';
 import notes from './notes';
 import chat from './chat';
@@ -26,8 +27,9 @@ import vault from './vault';
 import guest from './guest';
 import admin from './admin';
 import server from './server';
+import serverFilters from './server.filters';
 import misc from './misc';
 
-const id: Record<string, string> = { ...common, ...shell, ...ui, ...settings, ...settingsAi, ...settingsCompany, ...settingsMail, ...settingsImports, ...auth, ...home, ...onboarding, ...mail, ...calendar, ...notes, ...chat, ...meet, ...drive, ...tasks, ...projects, ...teams, ...tables, ...vault, ...guest, ...admin, ...server, ...misc };
+const id: Record<string, string> = { ...common, ...shell, ...ui, ...settings, ...settingsAi, ...settingsCompany, ...settingsMail, ...settingsImports, ...auth, ...home, ...onboarding, ...mail, ...mailFilters, ...calendar, ...notes, ...chat, ...meet, ...drive, ...tasks, ...projects, ...teams, ...tables, ...vault, ...guest, ...admin, ...server, ...serverFilters, ...misc };
 
 export default id;
