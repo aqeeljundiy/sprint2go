@@ -209,7 +209,7 @@ function Header({ f, i, count, p, sticky, onDragStart, onDragOver, dropSide, dra
   };
   return (
     <div
-      className={`tb-th${i < pinnedN ? ' tb-pinned' : ''}${dragging ? ' col-dragging' : ''}${dropSide ? ` drop-${dropSide}` : ''}`}
+      className={`tb-th${sticky !== undefined ? ' tb-pinned' : ''}${dragging ? ' col-dragging' : ''}${dropSide ? ` drop-${dropSide}` : ''}`}
       style={sticky !== undefined ? { left: sticky } : undefined}
       role="columnheader"
       draggable={!ro}

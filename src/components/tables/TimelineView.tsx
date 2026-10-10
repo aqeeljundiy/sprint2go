@@ -249,7 +249,7 @@ export function TimelineView({ table: tb, view, rows, ctx, onOpenRow, onValues, 
               </div>
             );
           })}
-          {!readOnly && canAdd && onAddRow && (
+          {!readOnly && canAdd && onAddRow && !narrow && ( /* phones add rows with the create button */
             <button type="button" className="tb-grid-add tb-tl-add" onClick={() => onAddRow({ [sf.id]: localDay(), ...(ef ? { [ef.id]: localDay() } : {}) })}>
               <Plus size={14} /> {t('New row')}
             </button>
