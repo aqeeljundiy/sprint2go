@@ -145,7 +145,7 @@ export const THREADS: Thread[] = [
         from: dokploy,
         to: [ME],
         date: ago(38),
-        body: `Your application "Website (staging)" was deployed successfully.\n\nProject: sprint2go Studio website\nEnvironment: staging\nBuild time: 1m 42s\nDomain: https://staging.demo.sprint2go.com\n\n— Dokploy`,
+        body: `Your application "Website (staging)" was deployed successfully.\n\nProject: sprint2go demo website\nEnvironment: staging\nBuild time: 1m 42s\nDomain: https://staging.demo.sprint2go.com\n\n— Dokploy`,
       },
     ],
   },
@@ -423,7 +423,7 @@ export const THREADS: Thread[] = [
       {
         id: 'mh1',
         from: p('Nina Kurnia', 'nina@brightleaf.example'),
-        to: [p('sprint2go Studio', 'hello@demo.sprint2go.com')],
+        to: [p('sprint2go demo', 'hello@demo.sprint2go.com')],
         date: ago(55),
         body: `Hello,\n\nWe're launching a skincare line in January and are looking for an agency to run Meta and TikTok ads. Budget around IDR 150m per month to start.\n\nCould we book a call next week?\n\nNina`,
       },
@@ -441,7 +441,7 @@ export const THREADS: Thread[] = [
       {
         id: 'mh2',
         from: p('Kevin Tan', 'kevin@creatorloop.example'),
-        to: [p('sprint2go Studio', 'hello@demo.sprint2go.com')],
+        to: [p('sprint2go demo', 'hello@demo.sprint2go.com')],
         date: ago(60 * 30),
         body: `Hi team,\n\nWe manage 400+ creators across ID, MY and PH. Open to a referral partnership for UGC production?\n\nKevin`,
       },

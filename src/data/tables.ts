@@ -1,6 +1,6 @@
 import type { DataTable, TableRow } from '../types';
 
-/** Demo tables for sprint2go Studio: a client's leads (the lead-gen work) and the team's content pipeline. */
+/** Demo tables for sprint2go demo: a client's leads (the lead-gen work) and the team's content pipeline. */
 const at = (daysAgo: number) => new Date(Date.UTC(2026, 9, 8 - daysAgo, 3)).toISOString();
 
 const S = { new: 'o-new', contacted: 'o-contacted', qualified: 'o-qualified', won: 'o-won', lost: 'o-lost' };

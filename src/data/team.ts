@@ -25,7 +25,7 @@ export const CLIENTS: Client[] = [
   { id: 'c-teduh', type: 'Client', workspaceId: 'pnp', name: 'Teduh Hotels', domain: 'teduhhotels.example', color: '#0ea5e9', status: 'lead', ownerId: 'u-raka' },
   { id: 'c-brightleaf', type: 'Client', workspaceId: 'pnp', name: 'Brightleaf', domain: 'brightleaf.example', color: '#a855f7', status: 'lead', ownerId: 'u-sofia' },
   {
-    // Rimba runs its own Sprint2go workspace and is also a client of sprint2go Studio: Yusuf signs in once and has both.
+    // Rimba runs its own Sprint2go workspace and is also a client of sprint2go demo: Yusuf signs in once and has both.
     id: 'c-rimba', type: 'Client', workspaceId: 'pnp', name: 'Rimba Group', domain: 'rimbagroup.example', color: '#0f766e', status: 'active', ownerId: 'u-sofia', since: '2026-09-21T03:00:00.000Z',
     people: [{ email: 'yusuf@rimbagroup.example', name: 'Yusuf Halim', role: 'approver', status: 'joined', invitedBy: 'u-sofia', at: '2026-09-25T03:00:00.000Z' }],
   },

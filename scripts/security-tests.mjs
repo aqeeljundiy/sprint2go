@@ -522,7 +522,7 @@ try {
 
   /* ---------- 16. BIMI: the logo is checked, served from a stable address, and only admins change it ---------- */
   {
-    const good = '<svg xmlns="http://www.w3.org/2000/svg" version="1.2" baseProfile="tiny-ps" viewBox="0 0 64 64"><title>sprint2go Studio</title><rect width="64" height="64" fill="#5b5bf6"/></svg>';
+    const good = '<svg xmlns="http://www.w3.org/2000/svg" version="1.2" baseProfile="tiny-ps" viewBox="0 0 64 64"><title>sprint2go demo</title><rect width="64" height="64" fill="#5b5bf6"/></svg>';
     const bad = good.replace('<rect', '<script>alert(document.cookie)</script><rect');
     const refused = await raka.post('/api/mail/bimi', { workspaceId: 'pnp', name: 'logo.svg', svg: bad });
     const refusedBody = await refused.json();

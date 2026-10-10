@@ -35,9 +35,9 @@ const PNP_LOGO = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(
 )}`;
 
 export const USERS: User[] = [
-  { id: 'u-raka', name: 'Raka Hartono', email: 'raka@demo.sprint2go.com', title: 'COO · sprint2go Studio', color: '#6366f1' },
+  { id: 'u-raka', name: 'Raka Hartono', email: 'raka@demo.sprint2go.com', title: 'COO · sprint2go demo', color: '#6366f1' },
   { id: 'u-bima', name: 'Bima Anggara', email: 'bima@demo.sprint2go.com', title: 'Performance Marketer', color: '#059669', nicknames: ['Bim'] },
-  { id: 'u-hendra', name: 'Hendra Wijaya', email: 'hendra@demo.sprint2go.com', title: 'CEO · sprint2go Studio', color: '#d97706', nicknames: ['Hen'] },
+  { id: 'u-hendra', name: 'Hendra Wijaya', email: 'hendra@demo.sprint2go.com', title: 'CEO · sprint2go demo', color: '#d97706', nicknames: ['Hen'] },
   { id: 'u-sofia', name: 'Sofia Ramadhani', email: 'sofia@demo.sprint2go.com', title: 'Head of Accounts', color: '#0284c7', nicknames: ['Sofi'] },
   { id: 'u-joko', name: 'Joko Prasetyo', email: 'joko@demo.sprint2go.com', title: 'Video Editor', color: '#ea580c' },
   { id: 'u-emma', name: 'Emma Larsen', email: 'emma@demo.sprint2go.com', title: 'Graphic Designer', color: '#7c3aed' },
@@ -81,7 +81,7 @@ export const WORKSPACES: Workspace[] = [
   },
   {
     id: 'pnp',
-    name: 'sprint2go Studio',
+    name: 'sprint2go demo',
     color: '#f97316',
     logo: PNP_LOGO,
     domains: ['demo.sprint2go.com'],
@@ -94,7 +94,7 @@ export const WORKSPACES: Workspace[] = [
       { userId: 'u-joko', role: 'member' },
       { userId: 'u-emma', role: 'member' },
     ],
-    // sprint2go Studio keeps its domain on Google Workspace and moves some people to Sprint2go.
+    // sprint2go demo keeps its domain on Google Workspace and moves some people to Sprint2go.
     emailSetup: 'mix',
     holidays: { country: 'ID' },
     plan: {
@@ -103,7 +103,7 @@ export const WORKSPACES: Workspace[] = [
       cycle: 'monthly',
       addons: { mailboxes: 2, storage50: 0, meetHours10: 1, branding: false },
       payment: { method: 'va', label: 'BCA virtual account' },
-      billing: { company: 'sprint2go Studio', npwp: '', address: 'Jakarta Selatan', emails: ['intan@demo.sprint2go.com', 'raka@demo.sprint2go.com'] },
+      billing: { company: 'sprint2go demo', npwp: '', address: 'Jakarta Selatan', emails: ['intan@demo.sprint2go.com', 'raka@demo.sprint2go.com'] },
       since: '2026-07-01T00:00:00.000Z',
     },
     ai: {
@@ -141,7 +141,7 @@ export const WORKSPACES: Workspace[] = [
     meetUrl: 'https://meet.demo.sprint2go.com',
     accounts: [
       { id: 'pnp-raka', email: 'raka@demo.sprint2go.com', name: 'Raka', kind: 'personal', connected: true, users: ['u-raka'] },
-      { id: 'pnp-hello', email: 'hello@demo.sprint2go.com', name: 'sprint2go Studio', kind: 'shared', connected: true, users: ['u-raka', 'u-bima', 'u-sofia', 'u-hendra'] },
+      { id: 'pnp-hello', email: 'hello@demo.sprint2go.com', name: 'sprint2go demo', kind: 'shared', connected: true, users: ['u-raka', 'u-bima', 'u-sofia', 'u-hendra'] },
       { id: 'pnp-bima', email: 'bima@demo.sprint2go.com', name: 'Bima Anggara', kind: 'personal', connected: true, users: ['u-bima'] },
       { id: 'pnp-hendra', email: 'hendra@demo.sprint2go.com', name: 'Hendra Wijaya', kind: 'personal', connected: true, users: ['u-hendra'], provider: 'google' },
       { id: 'pnp-sofia', email: 'sofia@demo.sprint2go.com', name: 'Sofia Ramadhani', kind: 'personal', connected: true, users: ['u-sofia'], provider: 'google' },

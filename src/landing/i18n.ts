@@ -65,7 +65,7 @@ const en = {
     needs: 'Needs you',
     r1: ['November ad budget (Rp 45 jt)', 'Yusuf asked for your OK', 'Approve'],
     r2: ['Q4 creative brief', 'New comment from Tomas', 'Open'],
-    guest: 'Guest · sprint2go Studio',
+    guest: 'Guest · sprint2go demo',
   },
   agency: {
     kicker: 'For agencies',
@@ -258,7 +258,7 @@ const id: Dict = {
     needs: 'Perlu Anda',
     r1: ['Anggaran iklan November (Rp 45 jt)', 'Yusuf meminta persetujuan Anda', 'Setujui'],
     r2: ['Brief kreatif Q4', 'Komentar baru dari Tomas', 'Buka'],
-    guest: 'Tamu · sprint2go Studio',
+    guest: 'Tamu · sprint2go demo',
   },
   agency: {
     kicker: 'Untuk agensi',

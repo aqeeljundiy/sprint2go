@@ -44,9 +44,9 @@ export const ACCENTS = ['#5b5bf6', '#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '
 
 export const DEFAULT_SETTINGS: Settings = {
   name: 'Raka',
-  title: 'COO · sprint2go Studio',
+  title: 'COO · sprint2go demo',
   avatarColor: '#5b5bf6',
-  signature: '<p><b>Raka</b><br>COO · sprint2go Studio</p>',
+  signature: '<p><b>Raka</b><br>COO · sprint2go demo</p>',
   theme: 'system',
   accent: '#5b5bf6',
   density: 'comfortable',

@@ -1190,13 +1190,13 @@ await test('Trials: one per person and per company domain; an operator can allow
 
 await test('BIMI: a logo passes only with the SVG Tiny PS basics, and the record points at its stable address', async () => {
   const bimi = await import('../server/bimi.ts');
-  const good = '<?xml version="1.0" encoding="UTF-8"?><svg xmlns="http://www.w3.org/2000/svg" version="1.2" baseProfile="tiny-ps" viewBox="0 0 100 100"><title>sprint2go Studio</title><rect width="100" height="100" fill="#5b5bf6"/><path d="M20 20h60v60H20z" fill="url(#g)"/></svg>';
+  const good = '<?xml version="1.0" encoding="UTF-8"?><svg xmlns="http://www.w3.org/2000/svg" version="1.2" baseProfile="tiny-ps" viewBox="0 0 100 100"><title>sprint2go demo</title><rect width="100" height="100" fill="#5b5bf6"/><path d="M20 20h60v60H20z" fill="url(#g)"/></svg>';
   assert.deepEqual(bimi.svgProblems(good), []);
   const has = (svg, re) => bimi.svgProblems(svg).some((p) => re.test(p));
   assert.ok(has(good.replace(' baseProfile="tiny-ps"', ''), /baseProfile="tiny-ps"/), 'the profile');
   assert.ok(has(good.replace('version="1.2"', 'version="1.1"'), /version="1\.2"/), 'the version');
   assert.ok(has(good.replace('0 0 100 100', '0 0 120 80'), /isn’t square: its viewBox is 120 by 80/), 'square');
-  assert.ok(has(good.replace('<title>sprint2go Studio</title>', ''), /<title>/), 'a title');
+  assert.ok(has(good.replace('<title>sprint2go demo</title>', ''), /<title>/), 'a title');
   assert.ok(has(good.replace('<rect', '<script>alert(1)</script><rect'), /script/), 'no scripts');
   assert.ok(has(good.replace('<rect', '<rect onclick="x()"'), /event handlers/), 'no handlers');
   assert.ok(has(good.replace('<rect', '<image href="https://evil.example/x.png"/><rect'), /embedded picture/), 'no pictures');

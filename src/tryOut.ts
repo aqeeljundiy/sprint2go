@@ -13,6 +13,16 @@ const PREFIX = 's2g-try:';
 export function startTryOut() {
   if (!trying) return;
   setStoragePrefix(PREFIX);
+  // A visit saved from older demo data starts over, so nobody keeps seeing the old sample names.
+  const DATA = '2026-10-10b';
+  try {
+    if (localStorage.getItem(PREFIX + 'data') !== DATA) {
+      clearPrefixed();
+      localStorage.setItem(PREFIX + 'data', DATA);
+    }
+  } catch {
+    /* storage off: nothing was kept anyway */
+  }
   const send = window.fetch.bind(window);
   window.fetch = (input: RequestInfo | URL, init?: RequestInit) => {
     const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url, location.href);

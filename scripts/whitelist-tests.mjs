@@ -173,7 +173,7 @@ try {
   };
   const op = await operator('tomas@rimbagroup.example'); // owner operator (S2G_OPERATORS)
   const support = await operator('yusuf@rimbagroup.example', 'support');
-  const raka = await signIn('raka@demo.sprint2go.com'); // owner of sprint2go Studio
+  const raka = await signIn('raka@demo.sprint2go.com'); // owner of sprint2go demo
   const sofia = await signIn('sofia@demo.sprint2go.com'); // admin
   const bima = await signIn('bima@demo.sprint2go.com'); // member
   const intan = await signIn('intan@demo.sprint2go.com'); // member
@@ -190,7 +190,7 @@ try {
   check((await support.post('/api/admin/whitelist/add', { workspaceId: 'pnp', aiLimit: 1, sesLimit: 1 })).status === 403, 'and adding is refused');
 
   /* finding a company */
-  for (const q of ['studio', 'demo.sprint2go.com', 'raka@demo.sprint2go.com']) {
+  for (const q of ['sprint2go demo', 'demo.sprint2go.com', 'raka@demo.sprint2go.com']) {
     const f = await op.get(`/api/admin/whitelist/find?q=${encodeURIComponent(q)}`);
     check(f.body.results?.some((x) => x.id === 'pnp'), `found by ${q.includes('@') ? 'owner email' : q.includes('.') ? 'domain' : 'name'}`);
   }

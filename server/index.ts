@@ -3772,6 +3772,11 @@ const housekeeping = () => {
   try {
     const gone = sandbox.cleanup();
     if (gone.length) console.log(`[sandbox] ${gone.length} unused demo companies removed`);
+    const remade = sandbox.refreshStale((owner) => {
+      const u = db.getDoc('users', owner) as { name?: string; timeZone?: string } | undefined;
+      return { name: u?.name ?? 'You', tz: u?.timeZone };
+    });
+    if (remade) console.log(`[sandbox] ${remade} demo companies remade from today's demo data`);
   } catch (e) {
     console.error('[sandbox]', e instanceof Error ? e.message : e);
   }

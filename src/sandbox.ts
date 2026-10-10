@@ -18,7 +18,7 @@ export const isSandbox = (ws: { id?: string; sandbox?: unknown } | null | undefi
 export const SAMPLE_COMPANY = 'pnp';
 export const SAMPLE_SEAT = 'u-raka';
 /** The demo company's name in the switcher (a "Demo" badge sits next to it). */
-export const SANDBOX_NAME = 'sprint2go Studio';
+export const SANDBOX_NAME = 'sprint2go demo';
 
 /** What the server keeps on the demo company's workspace: whose it is and when it was made, and the "Try this" list. */
 export interface SandboxMark {

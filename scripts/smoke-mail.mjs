@@ -134,7 +134,7 @@ try {
   check(refused, 'an unknown routing test address is refused (550)');
 
   // 4. A second company claims demo.sprint2go.com: the first one keeps its mail; the newcomer's addresses get nothing.
-  const other = { id: 'smoke-other', name: 'Not sprint2go Studio', domains: ['demo.sprint2go.com'], members: [], emailSetup: 'hosted', accounts: [{ id: 'other-raka', email: 'raka@demo.sprint2go.com', name: 'Impostor', kind: 'personal', users: [] }, { id: 'other-only', email: 'only-other@demo.sprint2go.com', name: 'Impostor', kind: 'personal', users: [] }] };
+  const other = { id: 'smoke-other', name: 'Not sprint2go demo', domains: ['demo.sprint2go.com'], members: [], emailSetup: 'hosted', accounts: [{ id: 'other-raka', email: 'raka@demo.sprint2go.com', name: 'Impostor', kind: 'personal', users: [] }, { id: 'other-only', email: 'only-other@demo.sprint2go.com', name: 'Impostor', kind: 'personal', users: [] }] };
   db.prepare("INSERT INTO docs (coll, id, data, updated_at, updated_by) VALUES ('workspaces', ?, ?, ?, NULL)").run(other.id, JSON.stringify(other), new Date().toISOString());
   const s4 = `smoke-owner ${randomBytes(4).toString('hex')}`;
   await send('raka@demo.sprint2go.com', s4);
