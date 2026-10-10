@@ -17,16 +17,16 @@
     min-height: var(--tap);
     max-width: 58vw;
     margin: 0;
-    padding: 0 6px 0 4px;
+    padding: 0 8px 0 4px;
     gap: 4px;
-    border-radius: 12px;
+    border-radius: var(--r-tile);
   }
   .mt-cal-text {
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-size: 21px;
+    font-size: var(--fs-display);
     font-weight: 600;
     letter-spacing: -0.01em;
   }
@@ -46,10 +46,10 @@
   .mobile-top .mt-cal-today span {
     width: 24px;
     height: 24px;
-    border-radius: 6px;
+    border-radius: var(--r-tile);
     border-width: 1.75px;
     border-top-width: 4px;
-    font-size: 11px;
+    font-size: var(--fs-caption);
   }
 
   /* ---------- The drawer (Calendar's and Meet's): AppDrawer ---------- */
@@ -64,7 +64,7 @@
     min-height: 56px;
     margin: 0 12px 4px 0;
     padding: 0 12px 0 16px;
-    border-radius: 0 28px 28px 0;
+    border-radius: 0 var(--r-pill) var(--r-pill) 0;
     text-align: left;
     color: var(--text);
     transition: background 0.15s;
@@ -78,8 +78,8 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-size: 17px;
-    font-weight: 650;
+    font-size: var(--fs-title);
+    font-weight: 600;
   }
   .ad-company-chev {
     flex: none;
@@ -99,7 +99,7 @@
     min-height: 48px;
     margin-right: 12px;
     padding: 4px 12px 4px 0;
-    border-radius: 0 24px 24px 0;
+    border-radius: 0 var(--r-pill) var(--r-pill) 0;
     text-align: left;
     color: var(--text);
     transition:
@@ -130,17 +130,17 @@
     flex: 1;
     min-width: 0;
     display: grid;
-    gap: 1px;
+    gap: 0px;
   }
   .ad-label {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-size: 16px;
-    font-weight: 500;
+    font-size: var(--fs-body);
+    font-weight: 600;
   }
   .ad-sub {
-    font-size: 13px;
+    font-size: var(--fs-secondary);
     color: var(--text-3);
   }
   .ad-end {
@@ -155,7 +155,7 @@
     place-items: center;
     width: 20px;
     height: 20px;
-    border-radius: 5px;
+    border-radius: var(--r-tile);
     border: 2px solid var(--c);
     color: #fff;
     transition: background 0.15s;
@@ -169,7 +169,7 @@
     gap: 8px;
     min-height: 36px;
     padding: 8px 16px 0 56px;
-    font-size: 13px;
+    font-size: var(--fs-secondary);
     font-weight: 600;
     color: var(--text-3);
   }
@@ -204,7 +204,7 @@
     width: 100%;
     min-height: 56px;
     padding: 0 16px;
-    font-size: 16px;
+    font-size: var(--fs-body);
     color: var(--text);
   }
   .cal-settings-hol .hol-countries svg {
@@ -214,12 +214,12 @@
   }
   .cal-settings-hol .hol-countries .sb-label {
     display: grid;
-    gap: 2px;
-    font-size: 16px;
+    gap: 4px;
+    font-size: var(--fs-body);
     text-align: left;
   }
   .cal-settings-hol .hol-countries small {
-    font-size: 13px;
+    font-size: var(--fs-secondary);
     color: var(--text-3);
   }
 
@@ -244,14 +244,14 @@
   .ccm-pill {
     display: inline-flex;
     align-items: center;
-    gap: 10px;
+    gap: 12px;
     min-height: 56px;
-    padding: 0 20px 0 16px;
-    border-radius: 28px;
+    padding: 0 24px 0 16px;
+    border-radius: var(--r-pill);
     background: color-mix(in srgb, var(--accent) 16%, var(--surface));
     color: var(--accent-text, var(--accent));
     box-shadow: 0 4px 14px -6px rgb(0 0 0 / 0.25);
-    font-size: 16px;
+    font-size: var(--fs-body);
     font-weight: 600;
     animation: ccm-rise 0.18s cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
     animation-delay: calc(var(--i) * 30ms);
@@ -307,7 +307,7 @@
     display: grid;
     place-items: center;
     padding: 0;
-    font-size: 12px;
+    font-size: var(--fs-caption);
     font-weight: 600;
     color: var(--text-3);
   }
@@ -318,8 +318,8 @@
     height: 40px;
     border-radius: 0;
     background: none;
-    font-size: 15px;
-    font-weight: 500;
+    font-size: var(--fs-body);
+    font-weight: 400;
   }
   .month-drop.bare .md-day > span {
     display: grid;
@@ -372,10 +372,10 @@
     display: grid;
     place-items: center;
     height: 32px;
-    padding: 0 14px;
-    border-radius: 16px;
-    font-size: 14px;
-    font-weight: 500;
+    padding: 0 16px;
+    border-radius: var(--r-card);
+    font-size: var(--fs-caption);
+    font-weight: 600;
     color: var(--text-2);
     transition:
       background 0.15s,
@@ -421,9 +421,9 @@
   .ev-page-save,
   .qc-save {
     min-height: 36px;
-    padding: 0 20px;
-    border-radius: 18px;
-    font-size: 15px;
+    padding: 0 24px;
+    border-radius: var(--r-card);
+    font-size: var(--fs-body);
   }
 
   /* ---------- The editor's rows: one fixed list, an icon column of 56 px ---------- */
@@ -435,7 +435,7 @@
   .er-row {
     display: flex;
     align-items: center;
-    min-height: 52px;
+    min-height: 48px;
     padding-right: 16px;
   }
   .er-row.top {
@@ -468,8 +468,8 @@
     background: none;
     color: var(--text);
     font: inherit;
-    font-size: 24px !important; /* above the shell's 16 px floor for fields */
-    font-weight: 500;
+    font-size: var(--fs-display) !important; /* above the shell's 16 px floor for fields */
+    font-weight: 400;
     outline: 0;
   }
   input.er-title::placeholder {
@@ -503,11 +503,11 @@
     align-items: center;
     gap: 8px;
     min-height: 36px;
-    padding: 0 14px;
-    border-radius: 8px;
+    padding: 0 16px;
+    border-radius: var(--r-tile);
     border: 1px solid var(--border);
-    font-size: 14px;
-    font-weight: 500;
+    font-size: var(--fs-caption);
+    font-weight: 600;
     color: var(--text);
     transition:
       background 0.15s,
@@ -535,7 +535,7 @@
     width: 100%;
     min-height: 52px;
     text-align: left;
-    font-size: 16px;
+    font-size: var(--fs-body);
     color: var(--text);
   }
   .er-line:disabled {
@@ -549,7 +549,7 @@
   }
   .er-invite {
     min-height: 48px;
-    font-size: 15px;
+    font-size: var(--fs-body);
     color: var(--text-2);
   }
   .er-when {
@@ -566,7 +566,7 @@
     border: 0;
     background: none;
     box-shadow: none;
-    font-size: 16px;
+    font-size: var(--fs-body);
     color: var(--text);
   }
   .sel.er-pick > svg,
@@ -584,7 +584,7 @@
     font-variant-numeric: tabular-nums;
   }
   .er-date-text {
-    font-size: 16px;
+    font-size: var(--fs-body);
     color: var(--text-3);
   }
   .er-row.bad .sel.er-time,
@@ -594,7 +594,7 @@
   .er-error {
     margin-top: -8px;
     padding-bottom: 8px;
-    font-size: 13px;
+    font-size: var(--fs-secondary);
   }
   .er-field {
     display: flex;
@@ -611,7 +611,7 @@
     background: none;
     color: var(--text);
     font: inherit;
-    font-size: 16px;
+    font-size: var(--fs-field);
     outline: 0;
   }
   .er-input::placeholder {
@@ -619,7 +619,7 @@
   }
   textarea.er-notes {
     min-height: 52px;
-    padding: 14px 0;
+    padding: 16px 0;
     resize: none;
     line-height: 1.45;
     overflow: hidden;
@@ -648,7 +648,7 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-size: 16px;
+    font-size: var(--fs-body);
   }
   .guest-row .icon-btn {
     width: var(--tap);
@@ -684,8 +684,8 @@
     background: none;
     color: var(--text);
     font: inherit;
-    font-size: 22px !important; /* above the shell's 16 px floor for fields */
-    font-weight: 500;
+    font-size: var(--fs-display) !important; /* above the shell's 16 px floor for fields */
+    font-weight: 400;
     outline: 0;
   }
   input.qc-title::placeholder {
@@ -698,7 +698,7 @@
     min-height: 40px;
     padding: 0 16px;
     text-align: left;
-    font-size: 15px;
+    font-size: var(--fs-body);
     color: var(--text-2);
   }
   .qc-guests {
@@ -723,7 +723,7 @@
     min-height: 52px;
     padding-right: 16px;
     text-align: left;
-    font-size: 16px;
+    font-size: var(--fs-body);
     color: var(--text);
   }
   .rp-opt:active {
@@ -734,7 +734,7 @@
     position: relative;
     width: 20px;
     height: 20px;
-    margin: 0 16px 0 20px;
+    margin: 0 16px 0 24px;
     border-radius: 50%;
     border: 2px solid var(--text-3);
     transition: border-color 0.15s;
@@ -756,10 +756,10 @@
   }
   .rp-opt-text {
     display: grid;
-    gap: 2px;
+    gap: 4px;
   }
   .rp-opt-text small {
-    font-size: 13px;
+    font-size: var(--fs-secondary);
     color: var(--text-3);
   }
   .rp-custom-page {
@@ -772,17 +772,17 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    min-height: 56px;
+    min-height: 48px;
     padding: 0 16px;
   }
   .rp-c-label,
   .rp-c-head {
-    font-size: 16px;
+    font-size: var(--fs-body);
     color: var(--text);
   }
   .rp-c-head {
     padding: 8px 16px 4px;
-    font-size: 13px;
+    font-size: var(--fs-secondary);
     font-weight: 600;
     color: var(--text-3);
   }
@@ -796,7 +796,7 @@
   .rp-custom-page .rp-days {
     display: grid;
     grid-template-columns: repeat(7, minmax(0, 1fr));
-    gap: 2px;
+    gap: 4px;
     padding: 4px 12px 8px;
   }
   .rp-custom-page .rp-day {
@@ -804,7 +804,7 @@
     width: min(100%, 40px);
     height: auto;
     aspect-ratio: 1;
-    font-size: 14px;
+    font-size: var(--fs-secondary);
   }
   .rp-end {
     flex-wrap: wrap;
@@ -816,7 +816,7 @@
     align-items: center;
     min-height: 52px;
     text-align: left;
-    font-size: 16px;
+    font-size: var(--fs-body);
     color: var(--text);
   }
   .rp-end > .sel,
@@ -836,7 +836,7 @@
     width: 48px;
     min-height: 40px;
     border: 1px solid var(--border);
-    border-radius: 10px;
+    border-radius: var(--r-tile);
     background: var(--surface-2);
     color: var(--text);
     text-align: center;
@@ -844,7 +844,7 @@
   }
   .rp-custom-sheet .sheet-title {
     flex: none;
-    font-size: 18px;
+    font-size: var(--fs-title);
   }
 
   /* A question over an event (Discard?, which dates): the last toast steps aside so it never covers a choice. */
@@ -859,7 +859,7 @@
   .cal-chip {
     min-height: var(--tap);
     padding: 0 16px;
-    font-size: 15px;
+    font-size: var(--fs-body);
   }
 }
 
@@ -906,7 +906,7 @@
     align-items: center;
     min-height: 56px;
     padding: 8px 16px 0;
-    font-size: 22px;
+    font-size: var(--fs-title);
     font-weight: 600;
     letter-spacing: -0.01em;
     background: var(--bg);
@@ -914,9 +914,9 @@
   .is-phone .sch-week {
     display: flex;
     align-items: center;
-    min-height: 28px;
-    padding: 0 16px 0 60px;
-    font-size: 13px;
+    min-height: 32px;
+    padding: 0 16px 0 56px;
+    font-size: var(--fs-secondary);
     color: var(--text-3);
   }
   .is-phone .sch-day {
@@ -926,18 +926,18 @@
   }
   .is-phone .sch-date {
     gap: 0;
-    padding-top: 2px;
+    padding-top: 4px;
   }
   .is-phone .sch-dow {
-    font-size: 12px;
+    font-size: var(--fs-caption);
     font-weight: 600;
     color: var(--text-3);
   }
   .is-phone .sch-num {
     width: 36px;
     height: 36px;
-    font-size: 20px;
-    font-weight: 500;
+    font-size: var(--fs-title);
+    font-weight: 400;
     color: var(--text);
   }
   .is-phone .sch-day.today .sch-dow {
@@ -948,12 +948,12 @@
     color: #fff;
   }
   .is-phone .sch-items {
-    gap: 6px;
+    gap: 8px;
   }
   .is-phone .sch-free {
     min-height: 36px;
     padding: 0 4px;
-    font-size: 14px;
+    font-size: var(--fs-secondary);
   }
   .is-phone .sch-now {
     margin: 1px 0 1px -4px;
@@ -967,14 +967,14 @@
     background: var(--danger);
   }
   .is-phone .sch-end {
-    padding-left: 60px;
+    padding-left: 56px;
   }
   /* A task due that day: a card in the task colour with its check circle. */
   .is-phone .sch-task {
     gap: 0;
     min-height: 32px;
     padding: 0 4px 0 0;
-    border-radius: 8px;
+    border-radius: var(--r-tile);
     background: var(--accent);
     color: #fff;
   }
@@ -982,7 +982,7 @@
     width: 40px;
     height: 32px;
     border: 0;
-    border-radius: 8px 0 0 8px;
+    border-radius: var(--r-tile) 0 0 var(--r-tile);
     background: none;
     color: #fff;
   }
@@ -992,7 +992,7 @@
   .is-phone .sch-task-title {
     min-height: 32px;
     padding: 0 8px 0 0;
-    font-size: 14px;
+    font-size: var(--fs-secondary);
     font-weight: 600;
     color: #fff;
   }
@@ -1007,8 +1007,8 @@
   .ev-card.solid {
     gap: 8px;
     min-height: 48px;
-    padding: 6px 12px;
-    border-radius: 8px;
+    padding: 8px 12px;
+    border-radius: var(--r-tile);
     background: var(--c);
     box-shadow: none;
     color: var(--on, #fff);
@@ -1023,14 +1023,14 @@
     gap: 0;
   }
   .ev-card.solid .ev-card-title {
-    font-size: 14px;
+    font-size: var(--fs-secondary);
     font-weight: 600;
     line-height: 18px;
     -webkit-line-clamp: 1;
   }
   .ev-card.solid .ev-card-meta,
   .ev-card.solid .ev-card-place {
-    font-size: 13px;
+    font-size: var(--fs-secondary);
     line-height: 18px;
     color: inherit;
     opacity: 0.9;
@@ -1044,7 +1044,7 @@
     color: inherit;
   }
   .ev-card.solid .ev-repeat {
-    margin-left: 6px;
+    margin-left: 8px;
   }
   .ev-card.solid.past {
     opacity: 0.6;
@@ -1064,7 +1064,7 @@
   }
   .ev-card.solid .ev-check {
     width: 18px;
-    height: 18px;
+    height: 20px;
     border-color: currentColor;
   }
   .ev-done-mark {
@@ -1076,12 +1076,12 @@
     flex: none;
     display: inline-grid;
     place-items: center;
-    height: 28px;
-    padding: 0 14px;
-    border-radius: 14px;
+    height: 32px;
+    padding: 0 16px;
+    border-radius: var(--r-card);
     background: var(--surface);
     color: var(--c);
-    font-size: 13px;
+    font-size: var(--fs-secondary);
     font-weight: 700;
     text-decoration: none;
   }
@@ -1090,8 +1090,8 @@
     right: 4px;
     top: 4px;
     height: 24px;
-    padding: 0 10px;
-    font-size: 12px;
+    padding: 0 12px;
+    font-size: var(--fs-caption);
   }
   .allday-list {
     padding: 0 16px 8px;
@@ -1108,12 +1108,12 @@
   }
   .tg-phone .tg-day {
     flex-direction: column;
-    gap: 2px;
+    gap: 4px;
     min-height: 52px;
     padding: 4px 0;
   }
   .tg-phone .tg-dow {
-    font-size: 12px;
+    font-size: var(--fs-caption);
     font-weight: 600;
     letter-spacing: 0.02em;
     color: var(--text-3);
@@ -1121,8 +1121,8 @@
   .tg-phone .tg-num {
     min-width: 32px;
     height: 32px;
-    font-size: 20px;
-    font-weight: 500;
+    font-size: var(--fs-title);
+    font-weight: 400;
   }
   .tg-phone .tg-day.today .tg-dow {
     color: var(--accent-text, var(--accent));
@@ -1131,12 +1131,12 @@
     font-size: 0;
   }
   .tg-week .tg-dow::first-letter {
-    font-size: 12px;
+    font-size: var(--fs-caption);
   }
   .tg-week .tg-num {
     min-width: 28px;
-    height: 28px;
-    font-size: 16px;
+    height: 32px;
+    font-size: var(--fs-body);
   }
   /* Day: the date in the gutter, the all-day events beside it. */
   .tg-band {
@@ -1155,7 +1155,7 @@
     display: flex;
     flex-direction: column;
     justify-content: center;
-    gap: 2px;
+    gap: 4px;
     padding: 4px 8px 4px 0;
   }
   .tg-phone .pill-event {
@@ -1163,10 +1163,10 @@
     align-items: center;
     min-height: 24px;
     padding: 0 8px;
-    border-radius: 4px;
+    border-radius: var(--r-tile);
     background: var(--c);
     color: var(--on, #fff);
-    font-size: 13px;
+    font-size: var(--fs-secondary);
     font-weight: 600;
   }
   .tg-phone .pill-event.pending {
@@ -1177,15 +1177,15 @@
   }
   .tg-phone .tg-allday-more {
     min-height: 24px;
-    font-size: 13px;
+    font-size: var(--fs-secondary);
   }
   .tg-phone .tg-allday-cell {
-    padding: 2px 1px;
+    padding: 4px 0px;
   }
   .tg-phone .tg-gutter,
   .tg-phone .tg-hours span {
-    font-size: 12px;
-    font-weight: 500;
+    font-size: var(--fs-caption);
+    font-weight: 400;
     color: var(--text-3);
   }
   .tg-phone .tg-hours span {
@@ -1198,13 +1198,13 @@
     background-color: transparent;
   }
   .tg-phone .block-event {
-    padding: 3px 6px;
-    border-radius: 4px;
+    padding: 4px 8px;
+    border-radius: var(--r-tile);
     border-left: 0;
     background: var(--c);
     color: var(--on, #fff);
     box-shadow: 0 0 0 1px var(--surface);
-    font-size: 12px;
+    font-size: var(--fs-caption);
   }
   .tg-phone .block-event .be-title {
     font-weight: 600;
@@ -1238,8 +1238,8 @@
     color: var(--c);
   }
   .tg-week .block-event {
-    padding: 2px 3px;
-    font-size: 11px;
+    padding: 4px 4px;
+    font-size: var(--fs-caption);
   }
   .tg-week .block-event .be-title {
     text-overflow: clip;
@@ -1257,7 +1257,7 @@
   .tg-phone .ghost-block {
     left: 1px;
     right: 1px;
-    border-radius: 4px;
+    border-radius: var(--r-tile);
     background: color-mix(in srgb, var(--accent) 10%, transparent);
     box-shadow: none;
   }
@@ -1268,7 +1268,7 @@
   .tg-phone .gh-handle::after {
     width: 10px;
     height: 10px;
-    margin: -5px 0 0 -5px;
+    margin: -4px 0 0 -4px;
   }
   .tg-phone .gh-handle.top {
     top: -12px;
@@ -1299,7 +1299,7 @@
     display: grid;
     place-items: center;
     padding: 0;
-    font-size: 12px;
+    font-size: var(--fs-caption);
     font-weight: 600;
     color: var(--text-3);
   }
@@ -1319,7 +1319,7 @@
     flex-direction: column;
     align-items: stretch;
     justify-content: flex-start;
-    gap: 1px;
+    gap: 0px;
     min-width: 0;
     min-height: 0;
     padding: 4px 0 0;
@@ -1346,11 +1346,11 @@
     align-self: center;
     width: 22px;
     min-width: 0;
-    height: 22px;
-    margin-bottom: 2px;
+    height: 24px;
+    margin-bottom: 4px;
     padding: 0;
     border-radius: 50%;
-    font-size: 12px;
+    font-size: var(--fs-caption);
     font-weight: 600;
     color: var(--text);
   }
@@ -1365,12 +1365,12 @@
     flex: none;
     display: block;
     height: 16px;
-    margin: 0 2px;
-    padding: 0 3px;
-    border-radius: 3px;
+    margin: 0 4px;
+    padding: 0 4px;
+    border-radius: var(--r-tile);
     background: var(--c);
     color: var(--on, #fff);
-    font-size: 10.5px;
+    font-size: var(--fs-caption);
     font-weight: 600;
     line-height: 16px;
     text-align: left;
@@ -1386,7 +1386,7 @@
   .mg-more-n {
     flex: none;
     padding: 0 4px;
-    font-size: 10.5px;
+    font-size: var(--fs-caption);
     font-weight: 600;
     line-height: 16px;
     color: var(--text-2);
@@ -1436,8 +1436,8 @@
     flex: none;
     width: 16px;
     height: 16px;
-    margin: 8px 20px 0 20px;
-    border-radius: 4px;
+    margin: 8px 24px 0 24px;
+    border-radius: var(--r-tile);
     background: var(--c, var(--accent));
   }
   .ev-dp-title > div {
@@ -1445,14 +1445,14 @@
   }
   .ev-dp-title h2 {
     margin: 0 0 4px;
-    font-size: 22px;
-    font-weight: 500;
+    font-size: var(--fs-display);
+    font-weight: 700;
     line-height: 1.3;
     overflow-wrap: anywhere;
   }
   .ev-dp-title p {
     margin: 0;
-    font-size: 15px;
+    font-size: var(--fs-body);
     line-height: 22px;
     color: var(--text-2);
   }
@@ -1474,7 +1474,7 @@
     text-align: left;
     color: var(--text);
     text-decoration: none;
-    font-size: 16px;
+    font-size: var(--fs-body);
     transition: background 0.15s;
   }
   .dr-row.top .dr-main {
@@ -1496,14 +1496,14 @@
     flex: 1;
     min-width: 0;
     display: grid;
-    gap: 2px;
+    gap: 4px;
     line-height: 1.35;
   }
   .dr-row.top .dr-text {
-    padding-top: 9px;
+    padding-top: 8px;
   }
   .dr-text small {
-    font-size: 13px;
+    font-size: var(--fs-secondary);
     color: var(--text-3);
   }
   .dr-join .dr-icon {
@@ -1554,7 +1554,7 @@
     display: grid;
     place-items: center;
     width: 14px;
-    height: 14px;
+    height: 16px;
     border-radius: 50%;
     box-shadow: 0 0 0 2px var(--surface);
     color: #fff;
@@ -1569,7 +1569,7 @@
   .dr-guest-text {
     min-width: 0;
     display: grid;
-    font-size: 16px;
+    font-size: var(--fs-body);
   }
   .dr-guest-text span {
     overflow: hidden;
@@ -1577,7 +1577,7 @@
     white-space: nowrap;
   }
   .dr-guest-text small {
-    font-size: 13px;
+    font-size: var(--fs-secondary);
     color: var(--text-3);
   }
   .dr-notes {
@@ -1585,7 +1585,7 @@
     overflow-wrap: anywhere;
   }
   .dr-muted {
-    font-size: 15px;
+    font-size: var(--fs-body);
     color: var(--text-2);
   }
   .dr-cal-dot {
@@ -1601,17 +1601,17 @@
   }
   .dr-chip {
     min-height: 36px;
-    padding: 0 14px;
-    border-radius: 18px;
+    padding: 0 16px;
+    border-radius: var(--r-card);
     background: var(--accent-soft);
     color: var(--accent-text, var(--accent));
-    font-size: 14px;
+    font-size: var(--fs-caption);
     font-weight: 600;
   }
 
   /* An invite: Yes, No, Maybe as pills in a bar at the bottom (Google's). */
   .ev-detail-page > .sheet-foot {
-    min-height: 60px;
+    min-height: 64px;
     padding: 8px 16px calc(8px + env(safe-area-inset-bottom));
     border-top: 1px solid var(--border);
     background: var(--surface);
@@ -1622,16 +1622,16 @@
   .ev-rsvp.phone .ev-rsvp-q {
     flex: 1;
     margin: 0;
-    font-size: 15px;
-    font-weight: 500;
+    font-size: var(--fs-body);
+    font-weight: 400;
     color: var(--text-2);
   }
   .ev-rsvp.phone .ev-rsvp-btn {
     flex: none;
     min-height: 36px;
     padding: 0 16px;
-    border-radius: 18px;
-    font-size: 15px;
+    border-radius: var(--r-card);
+    font-size: var(--fs-body);
     font-weight: 600;
   }
   .ev-rsvp.phone .ev-rsvp-btn.on {
@@ -1641,13 +1641,13 @@
   /* Which dates a change is for (Google's look): plain rows, a radio at the right, Cancel at the top. */
   .scope-sheet .sheet-title {
     flex: 1;
-    font-size: 18px;
+    font-size: var(--fs-title);
     font-weight: 600;
   }
   .scope-cancel {
     min-height: var(--tap);
     padding: 0 4px;
-    font-size: 16px;
+    font-size: var(--fs-body);
   }
   .scope-list {
     display: flex;
@@ -1659,7 +1659,7 @@
     align-items: center;
     gap: 12px;
     min-height: 56px;
-    padding: 4px 4px 4px 20px;
+    padding: 4px 4px 4px 24px;
     text-align: left;
   }
   .scope-opt:active {
@@ -1669,12 +1669,12 @@
     flex: 1;
     min-width: 0;
     display: grid;
-    gap: 2px;
-    font-size: 16px;
+    gap: 4px;
+    font-size: var(--fs-body);
     color: var(--text);
   }
   .scope-text small {
-    font-size: 13px;
+    font-size: var(--fs-secondary);
     color: var(--text-3);
   }
   .scope-opt.on .rp-radio {

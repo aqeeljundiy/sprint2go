@@ -103,7 +103,6 @@ export function MobileTop({
           ) : (
             <button className="mt-ws" onClick={() => canSwitch && setWsOpen(true)} aria-haspopup="dialog" aria-label={elsewhere ? t('Workspace: {name}, new mail in another workspace', { name: current.name }) : t('Workspace: {name}', { name: current.name })}>
               <WorkspaceLogo ws={current} size={32} />
-              {elsewhere && <i className="mt-ws-dot" />}
             </button>
           )}
           <span className="mt-slot" ref={titleSlot} />

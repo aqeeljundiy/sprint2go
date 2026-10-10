@@ -1,0 +1,148 @@
+/* ==========================================================================
+   The sprint2go system on phones: the roles every app shares, loaded last in the phone layer so an app's own file
+   can't drift from them. Values come from src/tokens.css; the rules are in docs/mobile-kit.md, "The system".
+   A new section header, chip or segmented control joins the lists below instead of styling itself.
+   ========================================================================== */
+
+@media (max-width: 767px) {
+  /* ---------- Icons: 16 inline, 20 in rows, 24 in bars. Lucide's size prop lands on the svg; this snaps it. ---------- */
+  svg.lucide:is([width='10'], [width='11'], [width='12'], [width='13'], [width='14'], [width='15']) {
+    width: var(--icon-s);
+    height: var(--icon-s);
+  }
+  svg.lucide:is([width='17'], [width='18'], [width='19'], [width='21']) {
+    width: var(--icon-m);
+    height: var(--icon-m);
+  }
+  svg.lucide:is([width='22'], [width='23'], [width='26'], [width='28']) {
+    width: var(--icon-l);
+    height: var(--icon-l);
+  }
+
+  /* ---------- Top bar: 52 px, the page's own colour; logo, title 24/700, up to two icons ---------- */
+  .mobile-top {
+    min-height: calc(var(--topbar-h) + env(safe-area-inset-top));
+  }
+  .mt-title,
+  .mt-cal-title {
+    font: var(--t-display);
+    letter-spacing: var(--ls-display);
+  }
+  /* Streams and plain lists sit on white, so their bar is white too (grouped screens keep the grey page). */
+  .app:is(.mode-mail, .mode-chat, .mode-drive, .mode-calendar, .mode-meet) {
+    --page: var(--surface);
+  }
+  .mobile-top {
+    background: var(--page, var(--bg));
+  }
+
+  /* ---------- Pushed screens: the arrow alone at x 4, title 17/600 at x 52 ---------- */
+  .push-head {
+    gap: 4px;
+    padding-left: 4px;
+  }
+  .push-back {
+    justify-content: center;
+    width: var(--tap);
+    padding: 0;
+    color: var(--text);
+  }
+  .push-back span {
+    display: none;
+  }
+  .push-title,
+  .push-title-2,
+  .sheet-title {
+    font: var(--t-title);
+    letter-spacing: var(--ls-title);
+  }
+
+  /* ---------- Section headers: 15/600 primary, sentence case, 24 above and 8 below ---------- */
+  :is(
+      .hsec-h,
+      .sec-head .sec-name,
+      .tasks-browse h2,
+      .t-h-label,
+      .brief-rows-head,
+      .nl-sec-head,
+      .g-head,
+      .settings-push .set-block > h3,
+      .tdir-head,
+      .mh-head,
+      .gm-label,
+      .gm-head,
+      .ad-heading,
+      .ns-day,
+      .tb-pf-section h4,
+      .tb-pcal-list h4,
+      .tb-ag-day h4,
+      .cd-sec-head
+    ) {
+    font: var(--t-heading);
+    color: var(--text);
+    text-transform: none;
+    letter-spacing: 0;
+  }
+  /* A sheet's group label ("Companies") is a quieter header inside a list. */
+  .as-group {
+    font: var(--t-heading);
+    color: var(--text);
+    padding: 16px 12px 8px;
+  }
+
+  /* ---------- Rows in sheets and menus ---------- */
+  .as-item {
+    font: var(--t-body);
+  }
+  .as-label small {
+    font: var(--t-secondary);
+    color: var(--text-3);
+  }
+
+  /* ---------- Segmented controls: 36 tall, pill, 13/600 ---------- */
+  .segmented {
+    min-height: 36px;
+    border-radius: var(--r-pill);
+  }
+  .segmented > button {
+    font: var(--t-segment);
+    border-radius: var(--r-pill);
+  }
+
+  /* ---------- Badges and counts: 12/600 pills, always a number or a word ---------- */
+  span.badge {
+    font: var(--t-chip);
+    border-radius: var(--r-pill);
+  }
+
+  /* ---------- Buttons ---------- */
+  .primary-btn,
+  .ghost-btn {
+    font: var(--t-label);
+    border-radius: var(--r-pill);
+  }
+  .primary-btn:not(.sm) {
+    min-height: var(--tap);
+    padding: 0 16px;
+  }
+  .link-btn {
+    font: var(--t-label);
+    color: var(--accent-text);
+  }
+
+  /* ---------- Empty states: a 20 icon in a 48 circle, 15/600 title, 13 line, one button ---------- */
+  .empty.empty-state:not(.compact) {
+    padding: 48px 24px;
+  }
+  .empty-state > .empty-art {
+    border-radius: var(--r-round);
+  }
+  .empty-state > .empty-title {
+    font: var(--t-heading);
+    color: var(--text);
+  }
+  .empty-state > .empty-sub {
+    font: var(--t-secondary);
+    color: var(--text-3);
+  }
+}

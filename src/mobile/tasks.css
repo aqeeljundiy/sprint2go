@@ -34,7 +34,7 @@
   /* ---------- The large title (Apple's; Todoist's "Today") ---------- */
   .tv-title {
     margin: 0 0 12px;
-    font-size: 32px;
+    font-size: var(--fs-display);
     font-weight: 700;
     line-height: 40px;
     letter-spacing: -0.02em;
@@ -50,14 +50,14 @@
     align-items: center;
   }
   .tv-dots {
-    color: var(--accent);
+    color: var(--accent-text);
   }
   /* Todoist's project pill: people, layout and "…" in one capsule. */
   .tv-pill {
     height: var(--tap);
     margin-right: 4px;
-    padding: 0 2px;
-    border-radius: 999px;
+    padding: 0 4px;
+    border-radius: var(--r-pill);
     background: var(--surface);
     box-shadow: 0 0 0 1px var(--border);
   }
@@ -65,12 +65,12 @@
   .tv-pill-btn {
     width: 42px;
     height: var(--tap);
-    border-radius: 999px;
+    border-radius: var(--r-pill);
     color: var(--text);
     transition: background-color 0.15s ease, color 0.15s ease;
   }
   .tv-pill-btn.on {
-    color: var(--accent);
+    color: var(--accent-text);
   }
   .tv-pill .tv-dots:active,
   .tv-pill-btn:active {
@@ -79,11 +79,11 @@
   .mt-text {
     flex: none;
     min-height: var(--tap);
-    padding: 0 10px;
-    border-radius: 12px;
-    color: var(--accent);
+    padding: 0 12px;
+    border-radius: var(--r-tile);
+    color: var(--accent-text);
     font: inherit;
-    font-size: 17px;
+    font-size: var(--fs-body);
     transition: background-color 0.15s ease;
   }
   .mt-text.strong {
@@ -106,10 +106,10 @@
   .t-heading {
     gap: 4px;
     min-height: 44px;
-    padding: 20px 16px 8px;
+    padding: 24px 16px 8px;
     border-bottom: 1px solid var(--line);
     color: var(--text);
-    font-size: 17px;
+    font-size: var(--fs-heading);
     font-weight: 600;
   }
   .t-heading > b {
@@ -126,9 +126,9 @@
     min-height: var(--tap);
     margin: -12px -8px -12px auto;
     padding: 0 8px;
-    color: var(--accent);
-    font-size: 15px;
-    font-weight: 500;
+    color: var(--accent-text);
+    font-size: var(--fs-body);
+    font-weight: 400;
     text-decoration: none;
   }
   .t-heading .t-resched-2 {
@@ -158,9 +158,9 @@
     pointer-events: none;
   }
   .trow {
-    gap: 6px;
-    min-height: 56px;
-    padding: 14px 16px 14px 6px;
+    gap: 8px;
+    min-height: 48px;
+    padding: 16px 16px 16px 8px;
   }
   .trow:hover {
     background: var(--bg); /* touch leaves no hover behind */
@@ -175,15 +175,15 @@
   .trow-check {
     width: 44px;
     height: 44px;
-    margin: -10px 0;
+    margin: -12px 0;
   }
   .trow-check .ring {
     width: 24px;
     height: 24px;
   }
   .trow-check .ring svg {
-    width: 14px;
-    height: 14px;
+    width: 16px;
+    height: 16px;
   }
   .trow-check.p-review .ring {
     border-color: var(--accent);
@@ -194,18 +194,18 @@
     padding-top: 0;
   }
   .trow-title {
-    font-size: 17px;
+    font-size: var(--fs-body);
     line-height: 22px;
   }
   .trow-meta {
-    gap: 4px 10px;
+    gap: 4px 12px;
     margin-top: 4px;
-    font-size: 14px;
+    font-size: var(--fs-secondary);
     line-height: 18px;
   }
   .trow-meta svg {
-    width: 14px;
-    height: 14px;
+    width: 16px;
+    height: 16px;
   }
   .tm {
     gap: 4px;
@@ -232,12 +232,12 @@
   }
   .trow-act {
     align-self: flex-start;
-    margin: -6px 0;
+    margin: -8px 0;
   }
   .trow-act .row-act {
     min-height: 32px;
     padding-inline: 12px;
-    font-size: 14px;
+    font-size: var(--fs-secondary);
     font-weight: 600;
   }
   /* Who's on it: a small avatar at the top right, on the title's line (team, queue and project views). */
@@ -285,7 +285,7 @@
     gap: 8px;
     min-height: var(--tap);
     padding: 0 0 0 4px;
-    font-size: 15px;
+    font-size: var(--fs-body);
     font-weight: 600;
   }
   .tcol-head .stage-dot {
@@ -308,7 +308,7 @@
     gap: 4px;
     padding: 12px;
     border: 1px solid var(--line);
-    border-radius: 12px;
+    border-radius: var(--r-tile);
     box-shadow: none;
   }
   .tcard:hover {
@@ -322,12 +322,12 @@
     display: none;
   }
   .tcard-top {
-    gap: 10px;
+    gap: 12px;
   }
   .tcard-check {
     width: 32px;
     height: 32px;
-    margin: -6px -6px -6px -6px;
+    margin: -8px -8px -8px -8px;
   }
   .tcard-check .ring {
     width: 20px;
@@ -335,7 +335,7 @@
   }
   .tcard-title {
     -webkit-line-clamp: 2;
-    font-size: 15px;
+    font-size: var(--fs-body);
     font-weight: 400;
     line-height: 20px;
   }
@@ -343,13 +343,13 @@
     flex: none;
   }
   .tcard-meta {
-    gap: 4px 10px;
-    padding-left: 30px;
-    font-size: 13px;
+    gap: 4px 12px;
+    padding-left: 32px;
+    font-size: var(--fs-secondary);
   }
   .tcard-meta svg {
-    width: 13px;
-    height: 13px;
+    width: 16px;
+    height: 12px;
   }
   .tcard-meta .tm[class*='due-'] {
     font-weight: 400;
@@ -359,18 +359,18 @@
   }
   .tcol-empty {
     padding: 16px 8px;
-    font-size: 14px;
+    font-size: var(--fs-secondary);
   }
   .tcol-add {
     gap: 12px;
     min-height: var(--tap);
     padding: 0 8px;
     color: var(--text-3);
-    font-size: 15px;
+    font-size: var(--fs-body);
     font-weight: 400;
   }
   .tcol-add svg {
-    color: var(--accent);
+    color: var(--accent-text);
   }
   .tcol-new {
     flex: 0 0 60%;
@@ -383,10 +383,10 @@
     min-height: var(--tap);
     padding: 12px;
     border: 1.5px dashed var(--border);
-    border-radius: 12px;
+    border-radius: var(--r-tile);
     color: var(--text-3);
     font: inherit;
-    font-size: 15px;
+    font-size: var(--fs-body);
     transition: background-color 0.15s ease;
   }
   .tcol-new:active {
@@ -403,7 +403,7 @@
   .ucal-month {
     min-height: var(--tap);
     margin-left: -4px;
-    font-size: 20px;
+    font-size: var(--fs-title);
     font-weight: 700;
   }
   .ucal-month svg {
@@ -414,9 +414,9 @@
     padding: 0 8px;
     border: 0;
     background: none;
-    color: var(--accent);
-    font-size: 15px;
-    font-weight: 500;
+    color: var(--accent-text);
+    font-size: var(--fs-body);
+    font-weight: 400;
   }
   .ucal-bar .ucal-today:disabled {
     color: var(--text-3);
@@ -427,16 +427,16 @@
     gap: 0;
   }
   .ucal-cell {
-    gap: 2px;
+    gap: 4px;
     min-height: 56px;
-    padding: 2px 0 0;
-    border-radius: 12px;
+    padding: 4px 0 0;
+    border-radius: var(--r-tile);
   }
   .ucal-cell:hover:not(:disabled) {
     background: none;
   }
   .ucal-cell small {
-    font-weight: 500;
+    font-weight: 400;
   }
   .ucal-cell b {
     display: grid;
@@ -445,12 +445,12 @@
     height: 32px;
     border-radius: 50%;
     color: var(--text);
-    font-size: 17px;
+    font-size: var(--fs-body);
     font-weight: 600;
     transition: background-color 0.18s ease, color 0.18s ease;
   }
   .ucal-cell.today b {
-    color: var(--accent);
+    color: var(--accent-text);
   }
   .ucal-cell.on {
     background: none;
@@ -465,7 +465,7 @@
   .ucal-cell .dot {
     width: 4px;
     height: 4px;
-    margin-top: -2px;
+    margin-top: -4px;
   }
   .ucal-cell.on .dot.on {
     background: var(--text-3);
@@ -478,7 +478,7 @@
     margin: 0;
     min-height: 40px;
     padding: 16px 16px 8px;
-    font-size: 15px;
+    font-size: var(--fs-body);
   }
   .ucal-day.empty .t-heading {
     color: var(--text-3);
@@ -487,12 +487,12 @@
     width: 100%;
     gap: 16px;
     min-height: var(--tap);
-    padding: 0 16px 0 20px;
+    padding: 0 16px 0 24px;
     border-radius: 0;
-    font-size: 15px;
+    font-size: var(--fs-body);
   }
   .ucal-add svg {
-    color: var(--accent);
+    color: var(--accent-text);
   }
   .ucal-add:active {
     background: var(--hover);
@@ -508,22 +508,22 @@
   .qa-mirror,
   .qa-field textarea {
     padding: 8px 16px;
-    font-size: 16px; /* the field is 16px on phones (no zoom): the highlights under it match */
+    font-size: var(--fs-field); /* the field is 16px on phones (no zoom): the highlights under it match */
   }
   .qa-todo .qa-mirror,
   .qa-todo .qa-field textarea {
     padding: 16px 16px 4px;
-    font-size: 18px !important; /* larger than the 16 px floor, so no zoom; the mirror must match the field */
-    font-weight: 500;
+    font-size: var(--fs-field) !important; /* larger than the 16 px floor, so no zoom; the mirror must match the field */
+    font-weight: 400;
     line-height: 26px;
   }
   .qa-todo .qa-field textarea {
-    min-height: 46px;
+    min-height: 48px;
   }
   /* Every parsed word gets the same soft highlight (Todoist's peach). */
   .qa-todo .qa-tok {
     --tok: color-mix(in oklab, var(--warn) 18%, transparent);
-    border-radius: 6px;
+    border-radius: var(--r-tile);
   }
   .qa-desc-wrap {
     display: grid;
@@ -555,12 +555,12 @@
     color: var(--text-3);
   }
   .qa-chips {
-    padding: 2px 16px 12px;
+    padding: 4px 16px 12px;
   }
   .qa-chip {
     height: 40px;
-    padding: 0 14px;
-    font-size: 14px;
+    padding: 0 16px;
+    font-size: var(--fs-caption);
   }
   .qa-todo .qa-chips {
     gap: 8px;
@@ -568,14 +568,14 @@
   }
   .qa-todo .qa-chip {
     height: 36px;
-    gap: 6px;
-    padding: 0 12px 0 10px;
+    gap: 8px;
+    padding: 0 12px 0 12px;
     border: 1px solid var(--line);
-    border-radius: 10px;
+    border-radius: var(--r-tile);
     background: none;
     color: var(--text-2);
-    font-size: 15px;
-    font-weight: 500;
+    font-size: var(--fs-body);
+    font-weight: 600;
   }
   .qa-todo .qa-chip svg {
     width: 16px;
@@ -618,16 +618,16 @@
     padding: 4px;
     overflow-y: auto;
     border: 1px solid var(--border);
-    border-radius: 12px;
+    border-radius: var(--r-tile);
     background: var(--surface);
     box-shadow: 0 8px 24px -8px rgb(0 0 0 / 0.25);
   }
   .qa-sug {
     min-height: var(--tap);
-    font-size: 15px;
+    font-size: var(--fs-body);
   }
   .qa-foot {
-    padding: 6px 12px 8px 16px;
+    padding: 8px 12px 8px 16px;
   }
   .qa-todo .qa-foot {
     min-height: 52px;
@@ -638,17 +638,17 @@
     min-width: 0;
     display: inline-flex;
     align-items: center;
-    gap: 6px;
+    gap: 8px;
     max-width: max-content;
     min-height: var(--tap);
     padding: 0 8px;
     border: 0;
-    border-radius: 10px;
+    border-radius: var(--r-tile);
     background: none;
     color: var(--text);
     font: inherit;
-    font-size: 15px;
-    font-weight: 500;
+    font-size: var(--fs-body);
+    font-weight: 400;
     transition: background-color 0.15s ease;
   }
   .qa-proj:active,
@@ -691,22 +691,22 @@
   /* ---------- Sheets ---------- */
   .ds-row {
     min-height: var(--tap);
-    font-size: 15px;
+    font-size: var(--fs-body);
   }
   .ds-save input {
     height: var(--tap);
-    font-size: 16px;
+    font-size: var(--fs-field);
   }
   .ds-view {
     min-height: var(--tap);
   }
   .mgp-day {
     max-width: 44px;
-    font-size: 15px;
+    font-size: var(--fs-body);
   }
   .pmd-act {
     min-height: 52px;
-    font-size: 15px;
+    font-size: var(--fs-body);
   }
 
 
@@ -734,9 +734,9 @@
   }
   .sel.td-crumb {
     height: var(--tap);
-    padding: 0 6px;
+    padding: 0 8px;
     color: var(--text-2);
-    font-size: 15px;
+    font-size: var(--fs-body);
     font-weight: 400;
   }
   .tdp-sheet .sheet-body {
@@ -747,13 +747,13 @@
   }
   .tdp > .td-title-row {
     display: flex;
-    gap: 6px;
-    padding: 4px 16px 8px 6px;
+    gap: 8px;
+    padding: 4px 16px 8px 8px;
   }
   .tdp .td-check {
     width: 44px;
     height: 44px;
-    margin: -6px 0 -6px;
+    margin: -8px 0 -8px;
   }
   .tdp .td-check .ring {
     width: 24px;
@@ -766,7 +766,7 @@
     border: 0;
     background: none;
     color: var(--text);
-    font-size: 20px !important; /* the 16 px field floor is for typing fields; a title reads larger */
+    font-size: var(--fs-display) !important; /* the 16 px field floor is for typing fields; a title reads larger */
     font-weight: 600;
     line-height: 26px;
     resize: none;
@@ -810,7 +810,7 @@
     display: flex;
     align-items: center;
     color: var(--text);
-    font-size: 17px;
+    font-size: var(--fs-body);
   }
   .tdp-val .sel,
   .tdp-val .people-btn {
@@ -823,7 +823,7 @@
     background: none;
     box-shadow: none;
     color: inherit;
-    font-size: 17px;
+    font-size: var(--fs-body);
   }
   .tdp-val .sel-chev,
   .tdp-val .sel > svg:last-child,
@@ -859,7 +859,7 @@
     background: none;
     color: var(--text);
     font: inherit;
-    font-size: 16px;
+    font-size: var(--fs-body);
     line-height: 22px;
     resize: none;
     outline: 0;
@@ -869,7 +869,7 @@
     align-items: flex-start;
   }
   .tdp-row.td-notes .tdp-icon {
-    margin-top: 13px;
+    margin-top: 12px;
   }
   .tdp-btn {
     flex: 1;
@@ -884,7 +884,7 @@
     background: none;
     color: var(--text);
     font: inherit;
-    font-size: 17px;
+    font-size: var(--fs-body);
     text-align: left;
   }
   .tdp-ap.waiting .tdp-icon,
@@ -917,13 +917,13 @@
     flex: none;
     height: 40px;
     gap: 8px;
-    padding: 0 14px 0 12px;
+    padding: 0 16px 0 12px;
     border: 0;
-    border-radius: 10px;
+    border-radius: var(--r-tile);
     background: var(--surface-2);
     color: var(--text-2);
-    font-size: 15px;
-    font-weight: 500;
+    font-size: var(--fs-body);
+    font-weight: 600;
     white-space: nowrap;
   }
   :root[data-theme='dark'] .tdp-chips .sel.td-chip,
@@ -934,8 +934,8 @@
   .tdp-chips .td-chip svg,
   .tdp-chips .td-chip-in svg,
   .tdp-chips .td-chip-people .people-btn svg {
-    width: 18px;
-    height: 18px;
+    width: 20px;
+    height: 20px;
     color: var(--text-2);
   }
   .tdp-chips .td-chip-in {
@@ -966,7 +966,7 @@
     background: none;
     color: var(--text);
     font: inherit;
-    font-size: 17px;
+    font-size: var(--fs-heading);
     font-weight: 600;
     text-align: left;
   }
@@ -975,7 +975,7 @@
     align-items: center;
     gap: 4px;
     color: var(--text-3);
-    font-size: 15px;
+    font-size: var(--fs-body);
     font-weight: 400;
   }
   .tdp-chev {
@@ -989,7 +989,7 @@
     position: relative;
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 8px;
     min-height: 48px;
     padding: 0 16px 0 8px;
   }
@@ -1020,7 +1020,7 @@
     flex: 1;
     min-width: 0;
     color: var(--text);
-    font-size: 17px;
+    font-size: var(--fs-body);
     transition: color 0.18s ease;
   }
   input.tdp-ctext {
@@ -1030,7 +1030,7 @@
     background: none;
     outline: 0;
     font: inherit;
-    font-size: 17px;
+    font-size: var(--fs-field);
   }
   .tdp-citem.done .tdp-ctext {
     color: var(--text-3);
@@ -1041,8 +1041,8 @@
     align-items: center;
     gap: 16px;
     min-height: 48px;
-    padding: 0 16px 0 18px;
-    color: var(--accent);
+    padding: 0 16px 0 16px;
+    color: var(--accent-text);
   }
   .tdp-add input {
     flex: 1;
@@ -1053,11 +1053,11 @@
     outline: 0;
     color: var(--text);
     font: inherit;
-    font-size: 16px;
+    font-size: var(--fs-field);
   }
   .tdp-add input::placeholder {
-    color: var(--accent);
-    font-weight: 500;
+    color: var(--accent-text);
+    font-weight: 400;
   }
   .tdp-last {
     display: flex;
@@ -1067,11 +1067,11 @@
   }
   .tdp-last-text {
     display: grid;
-    gap: 2px;
+    gap: 4px;
     min-width: 0;
   }
   .tdp-last-text b {
-    font-size: 15px;
+    font-size: var(--fs-body);
     font-weight: 600;
   }
   .tdp-last-text span {
@@ -1080,14 +1080,14 @@
     -webkit-line-clamp: 2;
     overflow: hidden;
     color: var(--text);
-    font-size: 15px;
+    font-size: var(--fs-body);
     line-height: 20px;
   }
   .tdp-none {
     margin: 0;
     padding: 0 16px;
     color: var(--text-3);
-    font-size: 15px;
+    font-size: var(--fs-body);
   }
   .tdp-sec .history {
     padding: 0 16px;
@@ -1096,9 +1096,9 @@
     min-height: var(--tap);
     margin: 0 8px;
     padding: 0 8px;
-    color: var(--accent);
-    font-size: 15px;
-    font-weight: 500;
+    color: var(--accent-text);
+    font-size: var(--fs-body);
+    font-weight: 400;
     text-decoration: none;
   }
   .tdp > .td-meta,
@@ -1116,8 +1116,8 @@
     align-items: flex-end;
     gap: 4px;
     min-height: var(--tap);
-    padding: 0 6px 0 16px;
-    border-radius: 22px;
+    padding: 0 8px 0 16px;
+    border-radius: var(--r-pill);
     background: var(--surface-2);
     box-shadow: inset 0 0 0 1px var(--border);
   }
@@ -1126,12 +1126,12 @@
     min-width: 0;
     min-height: var(--tap);
     max-height: 140px;
-    padding: 11px 0;
+    padding: 12px 0;
     border: 0;
     background: none;
     color: var(--text);
     font: inherit;
-    font-size: 16px;
+    font-size: var(--fs-field);
     line-height: 22px;
     resize: none;
     outline: 0;
@@ -1146,7 +1146,7 @@
     place-items: center;
     width: 32px;
     height: 32px;
-    margin-bottom: 6px;
+    margin-bottom: 8px;
     border: 0;
     border-radius: 50%;
     background: var(--accent);
@@ -1169,7 +1169,7 @@
     height: var(--tap);
   }
   .tdp-comment .td-c-foot {
-    padding: 6px 4px 0;
+    padding: 8px 4px 0;
   }
   .tdp-comment .td-c-foot small:empty {
     display: none;
@@ -1186,11 +1186,11 @@
     bottom: 0;
     flex-direction: column;
     align-items: stretch;
-    gap: 2px;
+    gap: 4px;
     max-width: none;
-    padding: 4px 6px calc(6px + env(safe-area-inset-bottom));
+    padding: 4px 8px calc(8px + env(safe-area-inset-bottom));
     border-width: 1px 0 0;
-    border-radius: 18px 18px 0 0;
+    border-radius: var(--r-card) var(--r-card) 0 0;
     transform: none;
     animation-name: bulkUp;
   }
@@ -1222,19 +1222,19 @@
   .tb-acts button {
     flex-direction: column;
     justify-content: center;
-    gap: 3px;
-    min-height: 54px;
+    gap: 4px;
+    min-height: 56px;
     padding: 4px 0;
-    font-size: 12px;
+    font-size: var(--fs-caption);
   }
   .tq.is-selecting .tq-body {
-    padding-bottom: 150px;
+    padding-bottom: calc(3 * 48px);
   }
 }
 
 @media (max-width: 359px) {
   .tb-acts button {
-    font-size: 11px;
+    font-size: var(--fs-caption);
   }
 }
 
@@ -1265,7 +1265,7 @@
     margin: 0;
     overflow: hidden;
     color: var(--text);
-    font-size: 17px;
+    font-size: var(--fs-heading);
     font-weight: 600;
     white-space: nowrap;
     text-overflow: ellipsis;
@@ -1276,7 +1276,7 @@
   }
   .tbr-card {
     overflow: hidden;
-    border-radius: 16px;
+    border-radius: var(--r-card);
     background: var(--surface);
   }
   .tbr-row {
@@ -1285,7 +1285,7 @@
     align-items: center;
     gap: 0;
     width: 100%;
-    min-height: 52px;
+    min-height: 48px;
     padding: 0 12px 0 16px;
     border: 0;
     background: none;
@@ -1311,21 +1311,21 @@
     flex: none;
     display: grid;
     place-items: center;
-    width: 22px;
-    height: 22px;
-    margin-right: 18px;
-    color: var(--accent);
+    width: 24px;
+    height: 24px;
+    margin-right: 16px;
+    color: var(--accent-text);
   }
   .tbr-hash {
-    font-size: 22px;
-    font-weight: 500;
+    font-size: var(--fs-title);
+    font-weight: 400;
     line-height: 1;
   }
   .tbr-label {
     flex: 1;
     min-width: 0;
     overflow: hidden;
-    font-size: 17px;
+    font-size: var(--fs-body);
     white-space: nowrap;
     text-overflow: ellipsis;
   }
@@ -1337,17 +1337,17 @@
     flex: none;
     margin-left: 8px;
     color: var(--text-3);
-    font-size: 15px;
+    font-size: var(--fs-body);
   }
   .tbr-hint.danger {
     color: var(--danger);
   }
   .tbr-hint.accent {
-    color: var(--accent);
+    color: var(--accent-text);
   }
   .tbr-chev {
     flex: none;
-    margin-left: 6px;
+    margin-left: 8px;
     color: var(--text-3);
   }
 }
@@ -1358,7 +1358,7 @@
 }
 @media (min-width: 393px) and (max-width: 767px) {
   .tv-title {
-    font-size: 34px;
+    font-size: var(--fs-display);
     line-height: 41px;
   }
 }
@@ -1401,7 +1401,7 @@
     margin: 0;
     overflow: hidden;
     color: var(--text);
-    font-size: 17px;
+    font-size: var(--fs-heading);
     font-weight: 600;
     text-align: center;
     white-space: nowrap;
@@ -1424,7 +1424,7 @@
   .ds-pback {
     box-shadow: none;
     background: none;
-    color: var(--accent);
+    color: var(--accent-text);
   }
   .ds-pcircle.accent {
     background: var(--accent);
@@ -1435,9 +1435,9 @@
     transform: scale(0.94);
   }
   .ds-plab {
-    margin: 16px 4px 6px;
+    margin: 16px 4px 8px;
     color: var(--text-3);
-    font-size: 15px;
+    font-size: var(--fs-body);
     font-weight: 600;
   }
   .ds-pbody > .ds-plab:first-child {
@@ -1445,11 +1445,11 @@
   }
   .ds-card {
     overflow: hidden;
-    border-radius: 16px;
+    border-radius: var(--r-card);
     background: var(--surface);
   }
   .ds-card .ds-pics {
-    gap: 10px;
+    gap: 12px;
     padding: 12px 12px 8px;
   }
   .ds-card .ds-pic {
@@ -1458,13 +1458,13 @@
     gap: 8px;
     padding: 8px 4px;
     border: 2px solid var(--line);
-    border-radius: 14px;
+    border-radius: var(--r-card);
     color: var(--text-2);
   }
   .ds-card .ds-pic span {
-    padding: 2px 10px;
-    border-radius: 999px;
-    font-size: 13px;
+    padding: 4px 12px;
+    border-radius: var(--r-pill);
+    font-size: var(--fs-secondary);
     font-weight: 600;
     transition: background-color 0.15s ease, color 0.15s ease;
   }
@@ -1482,13 +1482,13 @@
     align-items: center;
     gap: 12px;
     width: 100%;
-    min-height: 52px;
+    min-height: 48px;
     padding: 0 16px;
     border: 0;
     background: none;
     color: var(--text);
     font: inherit;
-    font-size: 17px;
+    font-size: var(--fs-body);
     text-align: left;
     transition: background-color 0.15s ease;
   }
@@ -1513,7 +1513,7 @@
     text-overflow: ellipsis;
   }
   .ds-plabel.accent {
-    color: var(--accent);
+    color: var(--accent-text);
   }
   .ds-plabel.danger {
     color: var(--danger);
@@ -1533,17 +1533,17 @@
   }
   .ds-pcheck {
     flex: none;
-    color: var(--accent);
+    color: var(--accent-text);
   }
   .ds-picon {
     flex: none;
     color: var(--text-3);
   }
   .ds-pview.on .ds-plabel {
-    color: var(--accent);
+    color: var(--accent-text);
   }
   .ds-pview .icon-btn {
-    margin-right: -10px;
+    margin-right: -12px;
     color: var(--text-3);
   }
   .ds-pname input {
@@ -1557,7 +1557,7 @@
     outline: 0;
   }
   .ds-pname .link-btn {
-    font-size: 17px;
+    font-size: var(--fs-title);
     font-weight: 600;
     text-decoration: none;
   }
@@ -1575,7 +1575,7 @@
     max-width: 55%;
     margin-left: auto;
     overflow: hidden;
-    font-size: 15px;
+    font-size: var(--fs-body);
     white-space: nowrap;
     text-overflow: ellipsis;
   }
@@ -1589,9 +1589,9 @@
   }
   .tbr-photo .client-badge {
     width: 28px;
-    height: 28px;
-    border-radius: 8px;
-    font-size: 13px;
+    height: 32px;
+    border-radius: var(--r-tile);
+    font-size: var(--fs-secondary);
   }
   .tasks-browse .proj-new {
     margin: 0 16px 16px;

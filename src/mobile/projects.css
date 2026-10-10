@@ -34,7 +34,7 @@
   .proj-sections {
     display: block;
     border: 1px solid var(--border);
-    border-radius: 16px;
+    border-radius: var(--r-card);
     background: var(--surface);
     overflow: hidden;
   }
@@ -44,10 +44,10 @@
     align-items: center;
     gap: 12px;
     width: 100%;
-    min-height: 50px;
-    padding: 6px 12px;
-    font-size: 16px;
-    font-weight: 500;
+    min-height: 48px;
+    padding: 8px 12px;
+    font-size: var(--fs-body);
+    font-weight: 400;
     color: var(--text);
     text-align: left;
     transition: background 0.15s;
@@ -70,8 +70,8 @@
     display: grid;
     place-items: center;
     width: 30px;
-    height: 30px;
-    border-radius: 9px;
+    height: 32px;
+    border-radius: var(--r-tile);
     background: var(--surface-2);
     color: var(--text-2);
   }
@@ -84,8 +84,8 @@
   }
   .proj-sec-note {
     flex: none;
-    font-size: 13px;
-    font-weight: 500;
+    font-size: var(--fs-secondary);
+    font-weight: 400;
     color: var(--text-3);
   }
   .proj-sec-note.warn {
@@ -115,16 +115,16 @@
   /* Guests part: each shared item is a full-height row; the eye that shares it is a real tap target. */
   .project-pane .pa-row {
     min-height: 48px;
-    gap: 10px;
+    gap: 12px;
   }
   .project-pane .pa-title {
     align-self: stretch;
-    font-size: 15px;
+    font-size: var(--fs-body);
   }
   .project-pane .eye {
     width: 40px;
     height: 40px;
-    border-radius: 12px;
+    border-radius: var(--r-tile);
   }
   .project-pane .proj-photo-btn {
     flex: none;
@@ -135,12 +135,12 @@
   /* The list of projects: what is late or waiting comes right under the name, then what is next. Tighter cards, so
      three fit on a small phone. */
   .proj-grid {
-    gap: 10px;
+    gap: 12px;
   }
   .proj-card {
     gap: 8px;
-    padding: 14px;
-    border-radius: 16px;
+    padding: 16px;
+    border-radius: var(--r-card);
     box-shadow: none;
   }
   .proj-card > * {
@@ -153,7 +153,7 @@
     order: 1;
   }
   .proj-card .proj-next {
-    font-size: 14px;
+    font-size: var(--fs-secondary);
     color: var(--text-2);
   }
 }

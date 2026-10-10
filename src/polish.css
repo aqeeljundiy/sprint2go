@@ -596,20 +596,20 @@ details.advanced[open] summary h3::after {
 @media (max-width: 767px) {
   /* Pane headers become simple sub-headers under the top bar. */
   .tracking-head {
-    padding: 10px 14px;
+    padding: 12px 16px;
   }
   .tracking-head h1 {
-    font-size: 17px;
+    font-size: var(--fs-title);
   }
   .back-btn {
-    margin-left: -6px;
+    margin-left: -8px;
   }
   /* Modals become full-height sheets from the bottom. */
   .modal {
     width: 100% !important;
     max-height: 92vh;
     margin-top: auto;
-    border-radius: 20px 20px 0 0 !important;
+    border-radius: var(--r-card) var(--r-card) 0 0 !important;
   }
   .modal-scrim {
     align-items: flex-end !important;
@@ -4121,7 +4121,7 @@ a.help-file:hover {
 }
 @media (max-width: 767px) {
   .mail-setup-body {
-    padding: 16px 16px 80px;
+    padding: 16px 16px var(--fab-space);
   }
 }
 @media (prefers-reduced-motion: reduce) {

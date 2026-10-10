@@ -16,7 +16,7 @@
   flex: none;
   display: grid;
   place-items: center;
-  border-radius: 12px;
+  border-radius: var(--r-tile);
   color: #fff;
   background: var(--text-3);
 }
@@ -48,7 +48,7 @@
     gap: 12px;
     min-height: 48px;
     padding: 0 8px 0 16px;
-    border-radius: 24px;
+    border-radius: var(--r-pill);
     background: var(--surface-2);
     color: var(--text-3);
   }
@@ -86,11 +86,11 @@
   .mh-chip {
     flex: none;
     min-height: 32px;
-    padding: 0 14px;
-    border-radius: 8px;
+    padding: 0 16px;
+    border-radius: var(--r-tile);
     border: 1px solid var(--border);
-    font-size: 14px;
-    font-weight: 500;
+    font-size: var(--fs-caption);
+    font-weight: 600;
     color: var(--text);
     transition:
       background 0.15s,
@@ -107,14 +107,14 @@
     align-items: flex-end;
     min-height: 36px;
     margin: 8px 0 0;
-    padding: 0 4px 6px;
-    font-size: 14px;
+    padding: 0 4px 8px;
+    font-size: var(--fs-heading);
     font-weight: 600;
     color: var(--text-3);
   }
   .mh-card {
     overflow: hidden;
-    border-radius: 16px;
+    border-radius: var(--r-card);
     background: var(--surface);
     border: 1px solid var(--border);
   }
@@ -128,7 +128,7 @@
   .mh-row {
     display: flex;
     align-items: center;
-    min-height: 72px;
+    min-height: 64px;
   }
   .mh-main {
     flex: 1;
@@ -136,7 +136,7 @@
     display: flex;
     align-items: center;
     gap: 16px;
-    min-height: 72px;
+    min-height: 64px;
     padding: 0 16px;
     text-align: left;
     color: var(--text);
@@ -149,20 +149,20 @@
     flex: 1;
     min-width: 0;
     display: grid;
-    gap: 2px;
+    gap: 4px;
   }
   .mh-text strong {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-size: 16px;
+    font-size: var(--fs-body);
     font-weight: 600;
   }
   .mh-text small {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-size: 14px;
+    font-size: var(--fs-secondary);
     color: var(--text-2);
   }
   .mh-unfiled {
@@ -172,8 +172,8 @@
     flex: none;
     display: inline-flex;
     align-items: center;
-    gap: 6px;
-    font-size: 13px;
+    gap: 8px;
+    font-size: var(--fs-secondary);
     font-weight: 600;
     color: var(--text-2);
   }
@@ -214,8 +214,8 @@
     min-height: var(--tap);
     margin: 4px 0 0 auto;
     padding: 0 12px;
-    border-radius: 22px;
-    font-size: 15px;
+    border-radius: var(--r-pill);
+    font-size: var(--fs-body);
     font-weight: 600;
     color: var(--accent-text, var(--accent));
   }
@@ -232,7 +232,7 @@
   }
   .ms-note {
     margin: 4px 16px 12px;
-    font-size: 14px;
+    font-size: var(--fs-secondary);
     line-height: 1.45;
     color: var(--text-2);
   }
@@ -249,7 +249,7 @@
     gap: 4px;
   }
   .tn-title {
-    font-size: 18px;
+    font-size: var(--fs-title);
   }
   .tn-body {
     padding-bottom: 8px;
@@ -278,15 +278,15 @@
     flex: none;
     min-height: 32px;
     padding: 0 12px;
-    border-radius: 16px;
+    border-radius: var(--r-card);
     background: var(--accent-soft);
     color: var(--accent-text, var(--accent));
-    font-size: 14px;
+    font-size: var(--fs-secondary);
     font-weight: 600;
   }
   .tn-note {
     margin: 8px 16px 0;
-    font-size: 13px;
+    font-size: var(--fs-secondary);
     line-height: 1.45;
     color: var(--text-3);
   }
@@ -299,15 +299,15 @@
   .m-row {
     flex-wrap: wrap;
     align-items: flex-start;
-    row-gap: 6px;
-    min-height: 56px;
-    padding: 10px 8px;
+    row-gap: 8px;
+    min-height: 48px;
+    padding: 12px 8px;
   }
   .m-row > .m-main {
     flex: 1 1 calc(100% - 48px);
   }
   .m-row > .m-main + * {
-    margin-left: 44px;
+    margin-left: 48px;
   }
   .m-main strong {
     white-space: normal;
@@ -316,7 +316,7 @@
     -webkit-box-orient: vertical;
   }
   .m-main small {
-    font-size: 13px;
+    font-size: var(--fs-secondary);
   }
   .m-filters input {
     min-width: 0;
@@ -351,13 +351,13 @@
   .meet-page .m-title {
     order: 1;
     margin-bottom: 4px;
-    font-size: 22px;
-    font-weight: 500;
+    font-size: var(--fs-display);
+    font-weight: 700;
   }
   .meet-page .m-sub {
     order: 2;
     margin: 0;
-    font-size: 15px;
+    font-size: var(--fs-body);
     color: var(--text-2);
   }
   .meet-page .m-live {
@@ -366,7 +366,7 @@
     align-items: center;
     gap: 8px;
     margin: 4px 0 0;
-    font-size: 15px;
+    font-size: var(--fs-body);
     font-weight: 600;
     color: var(--danger);
   }
@@ -388,7 +388,7 @@
     min-width: 0;
   }
   .m-facts .dr-text {
-    font-size: 16px;
+    font-size: var(--fs-body);
   }
   .meet-page .m-player {
     order: 3;
@@ -402,7 +402,7 @@
     top: 0;
     z-index: 2;
     margin: 12px 0 0;
-    padding: 6px 0;
+    padding: 8px 0;
     background: var(--surface);
   }
   .meet-page .m-tabs .m-tab-act .lbl {

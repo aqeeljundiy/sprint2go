@@ -1622,7 +1622,7 @@
 @media (max-width: 767px) {
   .sb-mobile-top {
     display: block;
-    padding: 0 6px 10px;
+    padding: 0 8px 12px;
   }
   .drawer-top {
     display: flex;
@@ -1674,11 +1674,11 @@
   }
   .meet-pane.detail .meet-detail {
     display: block;
-    padding: 16px 16px 96px;
+    padding: 16px 16px calc(var(--fab-space) + 8px);
   }
   .meet-back {
     display: inline-flex;
-    margin-bottom: 10px;
+    margin-bottom: 12px;
   }
   /* Onboarding: src/mobile/misc.css */
 }

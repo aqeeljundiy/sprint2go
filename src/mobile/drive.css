@@ -31,7 +31,7 @@
     height: 48px;
     margin: 0 16px 4px;
     padding: 0 8px 0 16px;
-    border-radius: 24px;
+    border-radius: var(--r-pill);
     background: var(--hover);
     color: var(--text-2);
   }
@@ -42,7 +42,7 @@
     border: 0;
     background: none;
     font: inherit;
-    font-size: 17px;
+    font-size: var(--fs-field);
     color: var(--text);
     outline: none;
   }
@@ -72,9 +72,9 @@
     min-height: 44px;
     margin-left: -8px;
     padding: 0 8px;
-    border-radius: 10px;
-    font-size: 14px;
-    font-weight: 500;
+    border-radius: var(--r-tile);
+    font-size: var(--fs-secondary);
+    font-weight: 600;
     color: var(--text-2);
     transition: background 0.15s;
   }
@@ -82,8 +82,8 @@
     background: var(--hover);
   }
   .dp-sort-note {
-    font-size: 14px;
-    font-weight: 500;
+    font-size: var(--fs-secondary);
+    font-weight: 400;
     color: var(--text-3);
   }
   .dp-layout {
@@ -113,13 +113,13 @@
     place-items: center;
     width: 40px;
     height: 40px;
-    border-radius: 10px;
+    border-radius: var(--r-tile);
     overflow: hidden;
   }
   .dp-icon .ficon {
     width: 40px !important;
     height: 40px !important;
-    border-radius: 10px;
+    border-radius: var(--r-tile);
   }
   .dp-photo img {
     width: 100%;
@@ -131,10 +131,10 @@
     min-width: 0;
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: 4px;
   }
   .dp-name {
-    font-size: 16px;
+    font-size: var(--fs-body);
     line-height: 21px;
     color: var(--text);
     overflow: hidden;
@@ -158,7 +158,7 @@
     display: flex;
     align-items: center;
     gap: 4px;
-    font-size: 13px;
+    font-size: var(--fs-secondary);
     line-height: 18px;
     color: var(--text-3);
     overflow: hidden;
@@ -191,7 +191,7 @@
     gap: 4px 0;
     padding: 8px 0 0 8px;
     border: 0;
-    border-radius: 14px;
+    border-radius: var(--r-card);
     background: var(--hover);
   }
   .dp-tile .d-thumb {
@@ -203,18 +203,18 @@
     padding: 0 0 0 4px;
   }
   .dp-tile .d-name {
-    font-size: 14px;
+    font-size: var(--fs-secondary);
   }
   .dp-tile .d-more {
     position: static;
   }
   .drive-phone .media-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 3px;
+    gap: 4px;
   }
   .drive-phone .media-grid .file-card {
     position: relative;
-    border-radius: 4px;
+    border-radius: var(--r-tile);
   }
   .drive-phone .media-grid .d-more {
     position: absolute;
@@ -238,7 +238,7 @@
   .drive-scroll > .empty-state {
     flex: 1;
     justify-content: center;
-    padding-bottom: 80px;
+    padding-bottom: var(--fab-space);
   }
   .drive-scroll > .empty-state .empty-art {
     width: auto;
@@ -255,7 +255,7 @@
   .dp-push-new {
     width: 44px;
     height: 44px;
-    color: var(--accent);
+    color: var(--accent-text);
   }
   .drive-push .dp-in {
     flex: 1;
@@ -279,21 +279,21 @@
   .dp-name-input {
     width: 100%;
     height: 48px;
-    padding: 0 14px;
+    padding: 0 16px;
     border: 0;
-    border-radius: 12px;
+    border-radius: var(--r-tile);
     background: var(--hover);
     font: inherit;
-    font-size: 17px;
+    font-size: var(--fs-field);
     color: var(--text);
     outline: none;
   }
   .dp-done {
     min-height: 44px;
-    padding: 0 10px;
-    font-size: 17px;
+    padding: 0 12px;
+    font-size: var(--fs-body);
     font-weight: 600;
-    color: var(--accent);
+    color: var(--accent-text);
     transition: opacity 0.15s;
   }
   .dp-done:disabled {

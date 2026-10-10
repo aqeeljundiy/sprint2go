@@ -46,14 +46,14 @@
     flex: 1;
     min-width: 0;
     height: 32px;
-    gap: 6px;
-    font-size: 14px;
+    gap: 8px;
+    font-size: var(--fs-secondary);
   }
   .cs-dot {
     flex: none;
     width: 8px;
     height: 8px;
-    margin-right: -14px; /* the dot doesn't push the label off centre */
+    margin-right: -16px; /* the dot doesn't push the label off centre */
     border-radius: 50%;
     background: var(--accent);
     opacity: 0;
@@ -98,12 +98,12 @@
     flex: none;
     display: grid;
     align-content: start;
-    gap: 1px;
+    gap: 0px;
     min-width: 104px;
     max-width: 168px;
-    min-height: 88px;
-    padding: 10px 12px;
-    border-radius: 12px;
+    min-height: 80px;
+    padding: 12px 12px;
+    border-radius: var(--r-tile);
     background: var(--surface);
     border: 1px solid var(--border);
     text-align: left;
@@ -119,16 +119,16 @@
   }
   .ct-icon {
     color: var(--text-2);
-    margin-bottom: 6px;
+    margin-bottom: 8px;
   }
   .ct-label {
-    font-size: 15px;
+    font-size: var(--fs-body);
     font-weight: 600;
     color: var(--text);
     white-space: nowrap;
   }
   .ct-line {
-    font-size: 13px;
+    font-size: var(--fs-secondary);
     color: var(--text-3);
     overflow: hidden;
     text-overflow: ellipsis;
@@ -153,7 +153,7 @@
     min-height: 56px;
     margin: 0 16px 12px;
     padding: 0 4px 0 0;
-    border-radius: 12px;
+    border-radius: var(--r-tile);
     background: var(--ok-soft, rgba(15, 157, 107, 0.12));
     animation: fade-in 0.2s ease-out backwards;
   }
@@ -194,12 +194,12 @@
     white-space: nowrap;
   }
   .hbn-text strong {
-    font-size: 15px;
+    font-size: var(--fs-body);
     font-weight: 600;
     color: var(--ok, #0f9d6b);
   }
   .hbn-text small {
-    font-size: 13px;
+    font-size: var(--fs-secondary);
     color: var(--text-2);
   }
   .hbn-x {
@@ -225,7 +225,7 @@
     width: 100%;
     min-height: 44px;
     padding: 0 12px 0 16px;
-    font-size: 15px;
+    font-size: var(--fs-body);
     font-weight: 600;
     letter-spacing: 0;
     text-transform: none;
@@ -242,7 +242,7 @@
     place-items: center;
     width: 24px;
     height: 24px;
-    border-radius: 6px;
+    border-radius: var(--r-tile);
     background: var(--hover);
     color: var(--text-2);
   }
@@ -256,12 +256,12 @@
     display: inline-grid;
     place-items: center;
     min-width: 22px;
-    height: 18px;
-    padding: 0 6px;
-    border-radius: 9px;
+    height: 20px;
+    padding: 0 8px;
+    border-radius: var(--r-tile);
     background: var(--accent);
     color: #fff;
-    font-size: 12px;
+    font-size: var(--fs-caption);
   }
   .sec-fold {
     flex: none;
@@ -297,8 +297,8 @@
     color: var(--text-2);
   }
   .cl-glyph .avatar {
-    border-radius: 5px;
-    font-size: 9px !important;
+    border-radius: var(--r-tile);
+    font-size: var(--fs-caption) !important;
   }
   .cl-glyph .presence {
     width: 8px;
@@ -311,10 +311,10 @@
     min-width: 0;
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 8px;
     overflow: hidden;
     white-space: nowrap;
-    font-size: 16px;
+    font-size: var(--fs-body);
     font-weight: 400;
   }
   .cl-name > :first-child {
@@ -348,12 +348,12 @@
     display: inline-grid;
     place-items: center;
     min-width: 22px;
-    height: 18px;
-    padding: 0 6px;
-    border-radius: 9px;
+    height: 20px;
+    padding: 0 8px;
+    border-radius: var(--r-tile);
     background: var(--accent);
     color: #fff;
-    font-size: 12px;
+    font-size: var(--fs-caption);
     font-weight: 700;
   }
   /* A huddle on now: the headphones pill and who's in it. */
@@ -361,29 +361,29 @@
     flex: none;
     display: flex;
     align-items: center;
-    gap: 2px;
+    gap: 4px;
   }
   .clh-pill {
     display: inline-flex;
     align-items: center;
-    gap: 3px;
+    gap: 4px;
     height: 20px;
-    padding: 0 7px;
-    border-radius: 10px;
+    padding: 0 8px;
+    border-radius: var(--r-tile);
     background: var(--ok-soft, rgba(15, 157, 107, 0.12));
     color: var(--ok, #0f9d6b);
-    font-size: 12px;
+    font-size: var(--fs-caption);
     font-weight: 700;
   }
   .clh-avs {
     display: flex;
   }
   .clh-avs .avatar {
-    border-radius: 5px;
+    border-radius: var(--r-tile);
     box-shadow: 0 0 0 1.5px var(--surface);
   }
   .clh-avs .avatar + .avatar {
-    margin-left: -6px;
+    margin-left: -8px;
   }
   .cl-add {
     display: flex;
@@ -394,7 +394,7 @@
     padding: 0 16px;
     border-top: 1px solid var(--border);
     color: var(--text-2);
-    font-size: 16px;
+    font-size: var(--fs-body);
     transition: background 0.15s;
   }
   .cl-add:active {
@@ -408,17 +408,17 @@
   }
   .cl-row.dm-row {
     align-items: flex-start;
-    min-height: 72px;
-    padding: 10px 16px;
+    min-height: 64px;
+    padding: 12px 16px;
   }
   .dm-row-av .avatar {
-    border-radius: 10px;
+    border-radius: var(--r-tile);
   }
   .cl-main {
     flex: 1;
     min-width: 0;
     display: grid;
-    gap: 2px;
+    gap: 4px;
   }
   .cl-top,
   .cl-bottom {
@@ -436,7 +436,7 @@
   }
   .dm-row .cl-top time {
     flex: none;
-    font-size: 12.5px;
+    font-size: var(--fs-caption);
     color: var(--text-3);
   }
   .dm-row.unread .cl-top time {
@@ -450,7 +450,7 @@
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
     overflow: hidden;
-    font-size: 14px;
+    font-size: var(--fs-secondary);
     line-height: 19px;
     color: var(--text-3);
   }
@@ -464,7 +464,7 @@
   }
   .cl-preview .cl-draft-icon {
     vertical-align: -1px;
-    margin-right: 3px;
+    margin-right: 4px;
   }
   .dm-empty {
     margin-top: 48px;
@@ -484,10 +484,10 @@
   .act-chip {
     flex: none;
     height: 32px;
-    padding: 0 14px;
-    border-radius: 16px;
+    padding: 0 16px;
+    border-radius: var(--r-card);
     border: 1px solid var(--border);
-    font-size: 14px;
+    font-size: var(--fs-caption);
     font-weight: 600;
     color: var(--text-2);
     transition:
@@ -511,7 +511,7 @@
     display: grid;
     gap: 8px;
     width: 100%;
-    padding: 12px 16px 14px;
+    padding: 12px 16px 16px;
     text-align: left;
     color: var(--text);
     background: var(--surface);
@@ -523,9 +523,9 @@
   .act-context {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 8px;
     min-width: 0;
-    font-size: 12.5px;
+    font-size: var(--fs-caption);
     font-weight: 600;
     color: var(--text-2);
   }
@@ -556,12 +556,12 @@
   .act-main {
     display: flex;
     align-items: flex-start;
-    gap: 10px;
+    gap: 12px;
     min-width: 0;
   }
   .act-main .avatar {
     flex: none;
-    border-radius: 9px;
+    border-radius: var(--r-tile);
   }
   .act-ico {
     flex: none;
@@ -569,24 +569,24 @@
     place-items: center;
     width: 36px;
     height: 36px;
-    border-radius: 9px;
+    border-radius: var(--r-tile);
     background: var(--hover);
     color: var(--text-2);
   }
   .act-body {
     display: grid;
-    gap: 1px;
+    gap: 0px;
     min-width: 0;
   }
   .act-name {
-    font-size: 15px;
+    font-size: var(--fs-body);
     font-weight: 700;
   }
   .act-quote {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-size: 13px;
+    font-size: var(--fs-secondary);
     color: var(--text-3);
   }
   .act-text {
@@ -594,19 +594,19 @@
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
     overflow: hidden;
-    font-size: 15px;
+    font-size: var(--fs-body);
     line-height: 22px;
     color: var(--text);
   }
   .act-me {
-    padding: 0 2px;
-    border-radius: 4px;
+    padding: 0 4px;
+    border-radius: var(--r-tile);
     background: var(--accent-soft);
     color: var(--accent-text, var(--accent));
     font-weight: 600;
   }
   .act-empty {
-    margin-top: 40px;
+    margin-top: 48px;
   }
 
   /* New message (and Start a huddle): "To:" on top, people then channels. */
@@ -619,7 +619,7 @@
     border-bottom: 1px solid var(--border);
   }
   .nm-to span {
-    font-size: 16px;
+    font-size: var(--fs-body);
     color: var(--text-3);
   }
   .nm-to input {
@@ -628,7 +628,7 @@
     height: 44px;
     border: 0;
     background: none;
-    font-size: 16px;
+    font-size: var(--fs-field);
     color: var(--text);
     outline: none;
     box-shadow: none;
@@ -639,7 +639,7 @@
   }
   .nm-group {
     padding: 16px 16px 4px;
-    font-size: 13px;
+    font-size: var(--fs-secondary);
     font-weight: 600;
     color: var(--text-3);
   }
@@ -656,7 +656,7 @@
     background: var(--hover);
   }
   .nm-row .avatar {
-    border-radius: 7px;
+    border-radius: var(--r-tile);
   }
   .nm-glyph {
     display: grid;
@@ -671,14 +671,14 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-size: 16px;
+    font-size: var(--fs-body);
   }
   .nm-sub {
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-size: 13px;
+    font-size: var(--fs-secondary);
     color: var(--text-3);
   }
   .sheet-field {
@@ -688,7 +688,7 @@
   /* ---------- A conversation: one header row, the messages, the box ---------- */
 
   .chat-push .push-head {
-    gap: 2px;
+    gap: 4px;
   }
   .chan-title-btn {
     display: flex;
@@ -697,8 +697,8 @@
     min-width: 0;
     max-width: 100%;
     min-height: var(--tap);
-    padding: 2px 8px 2px 4px;
-    border-radius: 12px;
+    padding: 4px 8px 4px 4px;
+    border-radius: var(--r-tile);
     text-align: left;
     color: var(--text);
     transition: background 0.15s;
@@ -719,7 +719,7 @@
     align-items: center;
     gap: 4px;
     min-width: 0;
-    font-size: 17px;
+    font-size: var(--fs-title);
     font-weight: 700;
     letter-spacing: -0.01em;
     white-space: nowrap;
@@ -734,9 +734,9 @@
   .ctb-sub {
     display: flex;
     align-items: center;
-    gap: 2px;
+    gap: 4px;
     min-width: 0;
-    font-size: 12.5px;
+    font-size: var(--fs-caption);
     font-weight: 400;
     color: var(--text-3);
     white-space: nowrap;
@@ -803,10 +803,10 @@
   }
   .chat-foot .shared-note,
   .chat-foot .sched-line {
-    margin: 0 0 6px;
+    margin: 0 0 8px;
   }
   .react-row button {
-    font-size: 24px;
+    font-size: var(--fs-display);
     background: var(--hover);
   }
   .chat-foot .chat-locked {
@@ -815,33 +815,33 @@
   /* Messages at Slack's scale: 36 px rounded-square avatars, 16 px bold names with the clock time, 16/22 text. */
   .push-screen .chat-msg {
     gap: 8px;
-    padding: 5px 16px;
+    padding: 4px 16px;
     border-radius: 0;
   }
   .push-screen .chat-msg.grouped {
     padding-top: 0;
-    padding-bottom: 2px;
+    padding-bottom: 4px;
   }
   .push-screen .chat-msg > .avatar {
-    border-radius: 9px;
+    border-radius: var(--r-tile);
   }
   .push-screen .cm-gutter {
     width: 36px;
   }
   .push-screen .cm-head {
-    gap: 6px;
-    min-height: 22px;
+    gap: 8px;
+    min-height: 24px;
   }
   .push-screen .cm-head strong {
-    font-size: 16px;
+    font-size: var(--fs-body);
     font-weight: 700;
   }
   .push-screen .cm-head time {
-    font-size: 12.5px;
+    font-size: var(--fs-caption);
     color: var(--text-3);
   }
   .push-screen .cm-text {
-    font-size: 16px;
+    font-size: var(--fs-body);
     line-height: 22px;
   }
   .push-screen .cm-text a {
@@ -857,31 +857,31 @@
   }
   .push-screen .chat-msg.lp-lifted {
     background: var(--surface);
-    border-radius: 14px;
+    border-radius: var(--r-card);
   }
   .chat-push .chat-day {
     margin: 12px 0 4px;
   }
   /* Reactions: grey pills with no border; yours tinted with a thin accent line. Add-reaction is always there. */
   .push-screen .reactions {
-    gap: 6px;
-    margin-top: 6px;
+    gap: 8px;
+    margin-top: 8px;
   }
   .push-screen .reaction {
-    height: 28px;
-    min-height: 28px;
-    padding: 0 10px;
-    gap: 5px;
-    border-radius: 14px;
+    height: 32px;
+    min-height: 32px;
+    padding: 0 12px;
+    gap: 4px;
+    border-radius: var(--r-card);
     border: 1px solid transparent;
     background: var(--hover);
-    font-size: 16px;
+    font-size: var(--fs-body);
     transition:
       background 0.15s,
       border-color 0.15s;
   }
   .push-screen .reaction b {
-    font-size: 14px;
+    font-size: var(--fs-secondary);
     font-weight: 600;
     color: var(--text-2);
   }
@@ -900,8 +900,8 @@
     color: var(--text-2);
   }
   .push-screen .reaction.add svg {
-    width: 17px;
-    height: 17px;
+    width: 20px;
+    height: 20px;
   }
   /* Under a message with replies: faces, "2 replies" and the last reply's time. No box. */
   .push-screen .thread-link {
@@ -912,21 +912,21 @@
     margin-top: 4px;
     padding: 0;
     border-radius: 0;
-    font-size: 13px;
+    font-size: var(--fs-secondary);
   }
   .push-screen .thread-link:hover {
     background: none;
     box-shadow: none;
   }
   .push-screen .tl-avs .avatar {
-    border-radius: 5px;
+    border-radius: var(--r-tile);
   }
   .push-screen .tl-avs .avatar + .avatar {
-    margin-left: 2px;
+    margin-left: 4px;
     box-shadow: none;
   }
   .push-screen .thread-link b {
-    font-size: 14px;
+    font-size: var(--fs-secondary);
     font-weight: 700;
     color: var(--accent-text, var(--accent));
     white-space: nowrap;
@@ -940,7 +940,7 @@
   }
   /* Files, voice clips, shared things: a plain card with a hairline, no fill. */
   .push-screen :is(.chat-file, .voice, .cm-task, .poll) {
-    border-radius: 10px;
+    border-radius: var(--r-tile);
     border: 1px solid var(--border);
     background: none;
   }
@@ -948,7 +948,7 @@
     max-width: none;
   }
   .push-screen .cf-text strong {
-    font-size: 15px;
+    font-size: var(--fs-body);
     font-weight: 600;
   }
 
@@ -961,7 +961,7 @@
      one row of tools (+ in a circle, Aa, emoji, @) and the split Send. No box, no focus ring. */
   .composer.is-phone {
     margin: 0;
-    padding: 10px 12px 2px;
+    padding: 12px 12px 4px;
     border: 0;
     border-top: 1px solid var(--border);
     border-radius: 0;
@@ -989,8 +989,8 @@
     top: 6px;
     left: 14px;
     width: 36px;
-    height: 5px;
-    border-radius: 3px;
+    height: 6px;
+    border-radius: var(--r-tile);
     background: var(--border);
     transition: background 0.15s;
   }
@@ -999,20 +999,20 @@
   }
   .composer.is-phone .cmp-field {
     min-height: 44px;
-    padding: 11px 4px;
-    font-size: 16px;
+    padding: 12px 4px;
+    font-size: var(--fs-field);
     line-height: 22px;
     transition: height 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
   }
   .composer.is-phone .cmp-tools {
     min-height: 44px;
-    padding: 0 0 2px;
+    padding: 0 0 4px;
     gap: 0;
   }
   .composer.is-phone .cmp-tools .icon-btn {
     width: 40px;
     height: var(--tap);
-    border-radius: 10px;
+    border-radius: var(--r-tile);
     color: var(--text-2);
   }
   .composer.is-phone .cmp-tools .icon-btn.on {
@@ -1037,7 +1037,7 @@
     color: var(--accent-text, var(--accent));
   }
   .cmp-aa-text {
-    font-size: 17px;
+    font-size: var(--fs-body);
     font-weight: 600;
     letter-spacing: -0.02em;
   }
@@ -1045,7 +1045,7 @@
   .cmp-split {
     display: inline-flex;
     height: 32px;
-    border-radius: 8px;
+    border-radius: var(--r-tile);
     background: var(--hover);
     color: var(--text-3);
     overflow: hidden;
@@ -1094,7 +1094,7 @@
     flex: none;
     width: var(--tap);
     height: var(--tap);
-    border-radius: 10px;
+    border-radius: var(--r-tile);
   }
   /* @: a panel on top of the box, full width, 48 px rows. */
   .composer.is-phone .mention-pop {
@@ -1114,7 +1114,7 @@
     min-height: 48px;
     padding: 0 16px;
     border-radius: 0;
-    font-size: 16px;
+    font-size: var(--fs-field);
   }
   .composer.is-phone .mention-pop button:first-child:not(:active) {
     background: none;
@@ -1123,14 +1123,14 @@
     background: var(--hover);
   }
   .composer.is-phone .mention-pop .avatar {
-    border-radius: 7px;
+    border-radius: var(--r-tile);
   }
   /* Threads: "Also send to #channel" as a checkbox on its own row. */
   .cmp-also.is-check {
-    gap: 10px;
+    gap: 12px;
     min-height: 40px;
     padding: 0 4px;
-    font-size: 14px;
+    font-size: var(--fs-secondary);
     color: var(--text-2);
     text-align: left;
   }
@@ -1140,7 +1140,7 @@
     place-items: center;
     width: 20px;
     height: 20px;
-    border-radius: 5px;
+    border-radius: var(--r-tile);
     border: 1.5px solid var(--text-3);
     color: transparent;
     transition:
@@ -1154,7 +1154,7 @@
     color: #fff;
   }
   .composer.is-phone .rec-bar {
-    min-height: 60px;
+    min-height: 64px;
   }
   .emoji-grid button {
     height: var(--tap);
@@ -1166,8 +1166,8 @@
     line-height: 1.2;
   }
   .push-title-2 small {
-    font-size: 12.5px;
-    font-weight: 500;
+    font-size: var(--fs-caption);
+    font-weight: 400;
     color: var(--text-3);
     overflow: hidden;
     text-overflow: ellipsis;
@@ -1187,7 +1187,7 @@
     padding-bottom: 0;
   }
   .thread-push .thread-count {
-    margin: 6px 16px;
+    margin: 8px 16px;
   }
 
   /* Details: who's in it, files, pins, tasks, summaries, about; each its own screen. */
@@ -1199,15 +1199,15 @@
     text-align: center;
   }
   .cd-hero .avatar {
-    border-radius: 16px;
-    margin-bottom: 6px;
+    border-radius: var(--r-card);
+    margin-bottom: 8px;
   }
   .cd-hero strong {
-    font-size: 20px;
+    font-size: var(--fs-display);
     font-weight: 700;
   }
   .cd-topic {
-    font-size: 14px;
+    font-size: var(--fs-secondary);
     color: var(--text-3);
   }
   /* Slack's details actions: an icon over a word, no boxes. */
@@ -1221,13 +1221,13 @@
     display: grid;
     justify-items: center;
     align-content: center;
-    gap: 6px;
+    gap: 8px;
     width: 72px;
     min-height: 64px;
-    border-radius: 12px;
+    border-radius: var(--r-tile);
     color: var(--text);
-    font-size: 12.5px;
-    font-weight: 500;
+    font-size: var(--fs-caption);
+    font-weight: 600;
     transition:
       background 0.15s,
       color 0.15s;
@@ -1247,8 +1247,8 @@
   }
   .cf-row {
     display: grid;
-    gap: 2px;
-    padding: 10px 16px;
+    gap: 4px;
+    padding: 12px 16px;
     border-bottom: 1px solid var(--border);
     text-align: left;
     transition: background 0.15s;
@@ -1257,7 +1257,7 @@
     background: var(--hover);
   }
   .cf-meta {
-    font-size: 12.5px;
+    font-size: var(--fs-caption);
     color: var(--text-3);
   }
   .cf-text {
@@ -1265,7 +1265,7 @@
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
     overflow: hidden;
-    font-size: 15px;
+    font-size: var(--fs-body);
     line-height: 21px;
   }
   .cf-text b {
@@ -1279,7 +1279,7 @@
     align-items: center;
     gap: 12px;
     width: 100%;
-    min-height: 52px;
+    min-height: 48px;
     padding: 0 16px;
     border-bottom: 1px solid var(--line, var(--border));
     text-align: left;
@@ -1291,17 +1291,17 @@
   .cd-label {
     flex: 1;
     min-width: 0;
-    font-size: 15.5px;
+    font-size: var(--fs-body);
   }
   .cd-hint {
-    font-size: 13.5px;
+    font-size: var(--fs-secondary);
     color: var(--text-3);
   }
   .cd-chev {
     color: var(--text-3);
   }
   .cd-row.danger {
-    margin-top: 20px;
+    margin-top: 24px;
     border-top: 1px solid var(--line, var(--border));
     color: var(--danger);
   }
@@ -1333,7 +1333,7 @@
     left: 2px;
     top: 0.65em;
     width: 5px;
-    height: 5px;
+    height: 6px;
     border-radius: 50%;
     background: var(--text-3);
   }
@@ -1345,7 +1345,7 @@
     align-items: center;
     gap: 4px;
     min-height: 48px;
-    padding: 2px 8px 2px 16px;
+    padding: 4px 8px 4px 16px;
     background: var(--ok-soft, rgba(15, 157, 107, 0.12));
     animation: hb-in 0.22s cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
   }
@@ -1370,10 +1370,10 @@
     min-width: 0;
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 12px;
     min-height: var(--tap);
     text-align: left;
-    border-radius: 12px;
+    border-radius: var(--r-tile);
   }
   .hb-icon {
     flex: none;
@@ -1392,11 +1392,11 @@
     white-space: nowrap;
   }
   .hb-text strong {
-    font-size: 14px;
+    font-size: var(--fs-secondary);
     font-weight: 600;
   }
   .hb-text small {
-    font-size: 12.5px;
+    font-size: var(--fs-caption);
     color: var(--text-2);
   }
   .hb-avs {
@@ -1404,7 +1404,7 @@
     flex: none;
   }
   .hb-avs .huddle-av + .huddle-av {
-    margin-left: -6px;
+    margin-left: -8px;
   }
   .hb-mic.on {
     background: var(--danger-soft, rgba(209, 67, 67, 0.12));
@@ -1413,7 +1413,7 @@
   .hb-leave {
     background: var(--danger);
     color: #fff;
-    border-radius: 14px;
+    border-radius: var(--r-card);
   }
   /* The call: a full screen with Leave as a red pill, the people, and the controls at the bottom. */
   .huddle-push .push-body {
@@ -1425,12 +1425,12 @@
   }
   .hp-leave {
     height: 32px;
-    padding: 0 14px;
+    padding: 0 16px;
     margin-right: 8px;
-    border-radius: 16px;
+    border-radius: var(--r-card);
     background: var(--danger);
     color: #fff;
-    font-size: 14px;
+    font-size: var(--fs-secondary);
     font-weight: 600;
     transition: transform 0.15s;
   }
@@ -1450,15 +1450,15 @@
     grid-template-columns: repeat(auto-fill, 96px);
     justify-content: center;
     align-content: center;
-    gap: 20px 8px;
-    padding: 20px 8px;
+    gap: 24px 8px;
+    padding: 24px 8px;
   }
   .hs-person {
     display: grid;
     justify-items: center;
     gap: 8px;
-    font-size: 14px;
-    font-weight: 500;
+    font-size: var(--fs-secondary);
+    font-weight: 400;
   }
   .hs-person .huddle-av.speaking :is(.avatar, img, span:first-child) {
     box-shadow: 0 0 0 3px var(--surface), 0 0 0 6px var(--ok, #0f9d6b);
@@ -1466,7 +1466,7 @@
   .hs-react button {
     width: 48px;
     height: 48px;
-    font-size: 26px;
+    font-size: var(--fs-display);
   }
   .hs-controls {
     display: flex;
@@ -1477,10 +1477,10 @@
   .hs-ctl {
     display: grid;
     justify-items: center;
-    gap: 6px;
+    gap: 8px;
     min-width: 64px;
-    font-size: 12.5px;
-    font-weight: 500;
+    font-size: var(--fs-caption);
+    font-weight: 400;
     color: var(--text);
   }
   .hs-ctl > span {
@@ -1516,13 +1516,13 @@
   }
   .chat-page-push .page-row {
     border-radius: 0;
-    padding: 10px 8px;
+    padding: 12px 8px;
   }
   .chat-page-push .page-row:active {
     background: var(--hover);
   }
   .chat-page-push .pr-actions {
-    padding: 0 8px 10px;
+    padding: 0 8px 12px;
   }
   .chat-page-push .drafts-page .page-tabs {
     display: flex;
@@ -1538,7 +1538,7 @@
   }
   .cu-left {
     padding: 0 12px;
-    font-size: 13px;
+    font-size: var(--fs-secondary);
     color: var(--text-3);
     white-space: nowrap;
   }
@@ -1548,19 +1548,19 @@
     gap: 16px;
   }
   .page-catchup .cu-card {
-    border-radius: 12px;
+    border-radius: var(--r-tile);
     box-shadow: none;
-    padding: 14px 16px;
+    padding: 16px 16px;
   }
   .page-catchup .cu-card.under {
     transform: translateY(8px) scale(0.97);
   }
   .page-catchup .cu-msg .cm-text {
-    font-size: 16px;
+    font-size: var(--fs-body);
     line-height: 22px;
   }
   .page-catchup .cu-msg .avatar {
-    border-radius: 8px;
+    border-radius: var(--r-tile);
   }
   .cu-actions button {
     min-height: 48px;
@@ -1578,7 +1578,7 @@
   .cu-reply.is-phone {
     gap: 8px;
     min-height: 56px;
-    padding: 6px 12px;
+    padding: 8px 12px;
     border-top: 1px solid var(--border);
   }
   .cu-reply.is-phone input {
@@ -1587,7 +1587,7 @@
     border: 0;
     border-radius: 0;
     background: none;
-    font-size: 16px;
+    font-size: var(--fs-field);
     box-shadow: none;
   }
   .cu-top .link-btn {
@@ -1604,16 +1604,16 @@
     margin: 0 8px 12px;
     padding: 0 4px 0 12px;
     min-height: 44px;
-    border-radius: 10px;
+    border-radius: var(--r-tile);
     border: 1px solid var(--border);
   }
   .inline-reply input {
     flex: 1;
     min-width: 0;
-    height: 42px;
+    height: 40px;
     border: 0;
     background: none;
-    font-size: 16px;
+    font-size: var(--fs-field);
     color: var(--text);
     outline: none;
   }
@@ -1622,7 +1622,7 @@
     place-items: center;
     width: 36px;
     height: 32px;
-    border-radius: 8px;
+    border-radius: var(--r-tile);
     color: var(--text-3);
     transition:
       background 0.15s,
@@ -1633,7 +1633,7 @@
     color: #fff;
   }
   .draft-pill {
-    font-size: 12px;
+    font-size: var(--fs-caption);
   }
 }
 

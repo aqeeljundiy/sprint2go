@@ -267,7 +267,7 @@ button.team-row:hover,
   }
   .team-field {
     grid-template-columns: minmax(0, 1fr);
-    gap: 6px;
+    gap: 8px;
   }
   .team-hint {
     margin-left: 0;
@@ -276,7 +276,7 @@ button.team-row:hover,
     display: none;
   }
   .team-row {
-    min-height: 56px;
+    min-height: 48px;
   }
 }
 /* The narrowest phones: four tabs still fit when their words are longer (Indonesian). */
@@ -285,7 +285,7 @@ button.team-row:hover,
     padding-inline: 8px;
   }
   .client-tabs.team-tabs > [role='tab'] {
-    padding: 0 9px;
+    padding: 0 8px;
   }
 }
 .proj-workload {
@@ -569,7 +569,7 @@ button.team-row:hover,
   /* The name above its value, so the value gets the whole row and doesn't break mid-word */
   .cd-block .ed-rec-value {
     flex-wrap: wrap;
-    row-gap: 2px;
+    row-gap: 4px;
   }
   .cd-k {
     width: 100%;

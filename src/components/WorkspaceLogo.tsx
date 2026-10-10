@@ -1,14 +1,20 @@
 import type { Workspace } from '../types';
 import { initials } from '../utils';
 import { brand } from '../terms';
+import { isPhone } from '../mobile/media';
+import { phoneAvatar } from './Avatar';
 
-export function WorkspaceLogo({ ws, size = 28 }: { ws: Pick<Workspace, 'name' | 'logo' | 'color'>; size?: number }) {
+export function WorkspaceLogo({ ws, size: asked = 28 }: { ws: Pick<Workspace, 'name' | 'logo' | 'color'>; size?: number }) {
+  // Phones: the picture sizes of the system and a tile's corners (10).
+  const phone = isPhone();
+  const size = phone ? phoneAvatar(asked) : asked;
+  const radius = phone ? 'var(--r-tile)' : size * 0.26;
   return ws.logo ? (
-    <img className="ws-logo" src={ws.logo} alt="" width={size} height={size} style={{ width: size, height: size, flex: 'none', aspectRatio: '1 / 1', objectFit: 'cover', borderRadius: size * 0.26 }} />
+    <img className="ws-logo" src={ws.logo} alt="" width={size} height={size} style={{ width: size, height: size, flex: 'none', aspectRatio: '1 / 1', objectFit: 'cover', borderRadius: radius }} />
   ) : (
     <span
       className="ws-logo ws-mono"
-      style={{ width: size, height: size, borderRadius: size * 0.26, background: ws.color, fontSize: size * 0.4 }}
+      style={{ width: size, height: size, borderRadius: radius, background: ws.color, fontSize: size * 0.4 }}
       aria-hidden="true"
     >
       {initials(ws.name || '?')}

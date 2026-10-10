@@ -585,8 +585,8 @@ h4,
   }
   /* A task's title: a taller tap area without making the row taller (the line under it stays on top). */
   .task-title-btn {
-    padding-block: 11px;
-    margin-block: -11px;
+    padding-block: 12px;
+    margin-block: -12px;
   }
   /* Task stages: the colour dot and the name field are full-size targets too. */
   .stage-swatch {

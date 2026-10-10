@@ -1843,14 +1843,14 @@ body.resizing-x .pane-resize::after {
   .modal {
     width: 100%;
     max-height: 92dvh;
-    border-radius: 18px 18px 0 0;
+    border-radius: var(--r-card) var(--r-card) 0 0;
     padding-bottom: env(safe-area-inset-bottom);
     animation: sheetUp 0.3s var(--ease);
   }
 
   /* Drive: src/mobile/drive.css */
   .lb-stage {
-    padding: 8px 8px 64px;
+    padding: 8px 8px calc(48px + 16px);
   }
   .lb-media img,
   .lb-stage video {
@@ -2122,10 +2122,10 @@ body.resizing-x .pane-resize::after {
 
 @media (max-width: 767px) {
   .blocked-note {
-    margin-left: 14px;
+    margin-left: 16px;
   }
   .tp-timeline {
-    padding-left: 14px;
+    padding-left: 16px;
   }
   .tp-head span {
     display: none;
@@ -2629,7 +2629,7 @@ body.resizing-x .pane-resize::after {
     padding-top: max(12px, env(safe-area-inset-top));
   }
   .tracking-scroll {
-    padding: 14px 16px 96px;
+    padding: 16px 16px calc(var(--fab-space) + 8px);
   }
   .kpis {
     grid-template-columns: repeat(2, minmax(0, 1fr));

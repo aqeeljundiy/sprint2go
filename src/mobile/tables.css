@@ -12,16 +12,16 @@
 .tb-guest-head {
   flex: none;
   display: grid;
-  gap: 2px;
-  padding: 10px 16px 6px;
+  gap: 4px;
+  padding: 12px 16px 8px;
 }
 .tb-guest-title {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   min-height: var(--tap, 44px);
   margin: 0;
-  font-size: 20px;
+  font-size: var(--fs-display);
   font-weight: 700;
   letter-spacing: -0.01em;
   color: var(--text);
@@ -43,9 +43,9 @@
   flex: none;
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: 4px;
   min-height: 56px;
-  padding: 6px 8px 6px 12px;
+  padding: 8px 8px 8px 12px;
   border-bottom: 1px solid var(--border);
 }
 .tb-vpill {
@@ -56,8 +56,8 @@
   max-width: 60%;
   min-height: var(--tap, 44px);
   padding: 0 12px;
-  border-radius: 9999px;
-  font-size: 15px;
+  border-radius: var(--r-pill);
+  font-size: var(--fs-body);
   font-weight: 600;
   color: var(--text);
   background: var(--surface-2);
@@ -72,7 +72,7 @@
 }
 .tb-vpill > svg:first-child {
   flex: none;
-  color: var(--accent);
+  color: var(--accent-text);
 }
 .tb-vpill:active {
   background: var(--hover);
@@ -82,12 +82,12 @@
   flex: none;
   width: var(--tap, 44px);
   height: var(--tap, 44px);
-  border-radius: 12px;
+  border-radius: var(--r-tile);
   color: var(--text-2);
   transition: background 0.15s ease, color 0.15s ease;
 }
 .tb-pbtn.on {
-  color: var(--accent);
+  color: var(--accent-text);
   background: var(--accent-soft);
 }
 .tb-pbadge {
@@ -95,12 +95,12 @@
   top: 4px;
   right: 3px;
   min-width: 17px;
-  height: 17px;
+  height: 20px;
   padding: 0 4px;
-  border-radius: 9999px;
+  border-radius: var(--r-pill);
   display: grid;
   place-items: center;
-  font-size: 11px;
+  font-size: var(--fs-caption);
   font-weight: 700;
   line-height: 1;
   color: #fff;
@@ -114,7 +114,7 @@
   margin-left: 4px;
   padding: 0;
   justify-content: center;
-  border-radius: 9999px;
+  border-radius: var(--r-pill);
 }
 .tb-psearch {
   flex: 1;
@@ -122,8 +122,8 @@
   align-items: center;
   gap: 8px;
   min-height: var(--tap, 44px);
-  padding: 0 4px 0 14px;
-  border-radius: 12px;
+  padding: 0 4px 0 16px;
+  border-radius: var(--r-tile);
   background: var(--surface-2);
   box-shadow: inset 0 0 0 1px var(--accent);
   color: var(--text-3);
@@ -142,7 +142,7 @@
   outline: 0;
   background: none;
   font: inherit;
-  font-size: 16px;
+  font-size: var(--fs-field);
   color: var(--text);
 }
 
@@ -150,9 +150,9 @@
 .tb-fline {
   display: flex;
   align-items: center;
-  gap: 4px 10px;
-  padding: 2px 12px 2px 6px;
-  font-size: 13px;
+  gap: 4px 12px;
+  padding: 4px 12px 4px 8px;
+  font-size: var(--fs-secondary);
   border-bottom: 1px solid var(--border);
   background: color-mix(in srgb, var(--accent) 6%, var(--surface));
 }
@@ -162,15 +162,15 @@
   gap: 8px;
   min-height: var(--tap, 44px);
   padding: 0 8px;
-  border-radius: 10px;
+  border-radius: var(--r-tile);
   font-weight: 600;
-  color: var(--accent);
+  color: var(--accent-text);
 }
 .tb-fline .link-btn {
   min-height: var(--tap, 44px);
   display: inline-flex;
   align-items: center;
-  font-size: 13px;
+  font-size: var(--fs-secondary);
 }
 
 /* ---------- rows: a grid or list view on a narrow screen (Notion's List view) ---------- */
@@ -223,7 +223,7 @@
   top: 0;
   left: 16px;
   right: 0;
-  height: 0.5px;
+  height: 1px;
   background: var(--border);
 }
 .tb-crd:active {
@@ -274,7 +274,7 @@
 .tb-crd-name {
   flex: 1;
   min-width: 0;
-  font-size: 16px;
+  font-size: var(--fs-body);
   font-weight: 600;
   line-height: 21px;
   overflow: hidden;
@@ -286,10 +286,10 @@
   flex: none;
   max-width: 45%;
   height: 20px;
-  padding: 0 6px;
-  border-radius: 6px;
-  font-size: 12px;
-  font-weight: 500;
+  padding: 0 8px;
+  border-radius: var(--r-tile);
+  font-size: var(--fs-caption);
+  font-weight: 600;
   line-height: 20px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -312,7 +312,7 @@
   flex-wrap: nowrap;
   align-items: center;
   gap: 12px;
-  font-size: 14px;
+  font-size: var(--fs-secondary);
   line-height: 20px;
   color: var(--text-2);
   min-width: 0;
@@ -350,7 +350,7 @@
 .tb-crd-ghead .tb-group-toggle {
   flex: 1;
   min-height: var(--tap, 44px);
-  font-size: 14px;
+  font-size: var(--fs-secondary);
 }
 .tb-crd-ghead.sub {
   position: static;
@@ -359,7 +359,7 @@
   backdrop-filter: none;
 }
 .tb-crd-ghead.sub .tb-group-toggle {
-  font-size: 13px;
+  font-size: var(--fs-secondary);
   color: var(--text-2);
 }
 .tb-crd-gadd {
@@ -379,8 +379,8 @@
   padding: 16px 0 calc(24px + var(--fab-space, 0px));
 }
 .tb-home-row.g-row {
-  min-height: 56px;
-  font-weight: 500;
+  min-height: 48px;
+  font-weight: 400;
 }
 .tb-home-tile {
   flex: none;
@@ -388,9 +388,9 @@
   place-items: center;
   width: 32px;
   height: 32px;
-  border-radius: 8px;
+  border-radius: var(--r-tile);
   color: #fff;
-  font-size: 15px;
+  font-size: var(--fs-body);
   font-weight: 700;
 }
 .tb-home-row + .tb-home-row::before {
@@ -405,7 +405,7 @@
 .tb-empty.empty-state {
   flex: 1;
   justify-content: center;
-  padding-bottom: 80px;
+  padding-bottom: var(--fab-space);
 }
 
 /* ---------- the bar that takes the tab bar's place while picking rows ---------- */
@@ -419,9 +419,9 @@
   width: auto;
   max-width: none;
   min-height: calc(56px + env(safe-area-inset-bottom));
-  gap: 2px;
-  padding: 6px 8px calc(6px + env(safe-area-inset-bottom));
-  border-radius: 18px 18px 0 0;
+  gap: 4px;
+  padding: 8px 8px calc(8px + env(safe-area-inset-bottom));
+  border-radius: var(--r-card) var(--r-card) 0 0;
   transform: none;
   animation: tb-bar-up 0.24s cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
 }
@@ -440,7 +440,7 @@
   display: none; /* Duplicate and Delete as icons; Change keeps its word */
 }
 .tb-bulkbar.phone .tb-bulk-all {
-  padding: 0 10px;
+  padding: 0 12px;
 }
 /* While picking rows, the bar takes the tab bar's place: lists keep its room free and toasts sit above it. */
 @media (max-width: 767px) {
@@ -460,8 +460,8 @@
 @media (max-width: 767px) {
   .tb-qchip {
     min-height: var(--tap, 44px);
-    padding: 0 14px;
-    font-size: 14px;
+    padding: 0 16px;
+    font-size: var(--fs-caption);
   }
 }
 /* The filter sheet (Notion's one menu): what's filtered, then fields; values open inside the sheet. */
@@ -471,25 +471,25 @@
   gap: 8px;
 }
 .tb-fs-title small {
-  font-size: 15px;
+  font-size: var(--fs-body);
   font-weight: 400;
   color: var(--text-3);
 }
 .tb-fs-head-btn {
   display: inline-flex;
   align-items: center;
-  gap: 2px;
+  gap: 4px;
   min-height: 44px;
   padding: 0 8px;
-  font-size: 17px;
-  color: var(--accent);
+  font-size: var(--fs-title);
+  color: var(--accent-text);
 }
 .tb-fs-head-btn.strong {
   font-weight: 600;
 }
 .tb-fs-head {
   margin: 8px 12px 4px;
-  font-size: 13px;
+  font-size: var(--fs-secondary);
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.02em;
@@ -502,13 +502,13 @@
 .tb-fs-on > .as-item {
   flex: 1;
   min-width: 0;
-  min-height: 52px;
+  min-height: 48px;
 }
 .tb-fs-sum {
   flex: 0 1 auto;
   min-width: 0;
   max-width: 50%;
-  font-size: 15px;
+  font-size: var(--fs-body);
   color: var(--text-3);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -529,9 +529,9 @@
   max-width: 60%;
   height: 24px;
   padding: 0 8px;
-  border-radius: 6px;
+  border-radius: var(--r-tile);
   font-style: normal;
-  font-size: 15px;
+  font-size: var(--fs-body);
   line-height: 24px;
   color: color-mix(in srgb, var(--c) 75%, var(--text));
   background: color-mix(in srgb, var(--c) 14%, transparent);
@@ -541,14 +541,14 @@
 }
 .tb-fs-count {
   flex: none;
-  font-size: 15px;
+  font-size: var(--fs-body);
   color: var(--text-3);
   font-variant-numeric: tabular-nums;
 }
 .tb-fs-tick {
   flex: none;
   width: 18px;
-  color: var(--accent);
+  color: var(--accent-text);
   opacity: 0;
   transform: scale(0.6);
   transition: opacity 0.15s, transform 0.15s;
@@ -569,7 +569,7 @@
 }
 .tb-sheet-back {
   order: -1;
-  margin-left: -10px;
+  margin-left: -12px;
 }
 .tb-set-seg {
   display: flex;
@@ -578,8 +578,8 @@
   gap: 12px;
   min-height: 52px;
   padding: 0 12px 4px;
-  font-size: 15px;
-  font-weight: 500;
+  font-size: var(--fs-body);
+  font-weight: 600;
 }
 .tb-set-page {
   display: grid;
@@ -596,23 +596,23 @@
 .tb-kind-pick {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 6px;
+  gap: 8px;
 }
 .tb-kind-pick > button {
   display: grid;
   justify-items: center;
   gap: 4px;
   min-height: 64px;
-  padding: 10px 4px;
-  border-radius: 12px;
-  font-size: 13px;
+  padding: 12px 4px;
+  border-radius: var(--r-tile);
+  font-size: var(--fs-secondary);
   color: var(--text-2);
   background: var(--surface-2);
   box-shadow: inset 0 0 0 1px var(--border);
   transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
 }
 .tb-kind-pick > button.on {
-  color: var(--accent);
+  color: var(--accent-text);
   background: var(--accent-soft);
   box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--accent) 45%, transparent);
 }
@@ -623,26 +623,26 @@
   display: flex;
   align-items: center;
   gap: 12px;
-  min-height: 56px;
-  padding: 6px 4px;
+  min-height: 48px;
+  padding: 8px 4px;
   border-bottom: 1px solid var(--line, var(--border));
 }
 .tb-rule-text {
   flex: 1;
   min-width: 0;
   display: grid;
-  gap: 2px;
+  gap: 4px;
 }
 .tb-rule-text strong {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  font-size: 15px;
+  gap: 8px;
+  font-size: var(--fs-body);
 }
 .tb-url {
   overflow-wrap: anywhere;
   font-family: var(--mono, ui-monospace, monospace);
-  font-size: 12px;
+  font-size: var(--fs-caption);
 }
 .tb-set-btns {
   display: flex;
@@ -668,8 +668,8 @@
 }
 .tb-tpl-chips .tb-qchip {
   min-height: 40px;
-  padding: 0 14px;
-  font-size: 14px;
+  padding: 0 16px;
+  font-size: var(--fs-caption);
 }
 .tb-quick-sheet .sheet-foot {
   justify-content: space-between;
@@ -689,8 +689,8 @@
   width: calc(100% + 16px);
   margin: 0 -8px 12px;
   padding: 4px 8px;
-  border-radius: 10px;
-  font-size: 28px;
+  border-radius: var(--r-tile);
+  font-size: var(--fs-display);
   font-weight: 700;
   line-height: 34px;
   letter-spacing: -0.01em;
@@ -704,7 +704,7 @@ button.tb-page-title:active {
 }
 .tb-page-meta {
   padding: 0 4px 8px;
-  font-size: 13px;
+  font-size: var(--fs-secondary);
   color: var(--text-3);
 }
 .tb-page-tabs {
@@ -729,10 +729,10 @@ button.tb-page-title:active {
   column-gap: 12px;
   min-height: 44px;
   margin: 0 -8px;
-  padding: 6px 8px;
+  padding: 8px 8px;
   text-align: left;
   color: var(--text);
-  border-radius: 10px;
+  border-radius: var(--r-tile);
   transition: background 0.15s ease;
 }
 .tb-pf-tap:active:not(:disabled) {
@@ -751,7 +751,7 @@ button.tb-page-title:active {
   align-items: center;
   gap: 8px;
   min-width: 0;
-  font-size: 15px;
+  font-size: var(--fs-body);
   font-weight: 400;
   color: var(--text-3);
   overflow: hidden;
@@ -765,7 +765,7 @@ button.tb-page-title:active {
 }
 .tb-pf-val {
   min-width: 0;
-  font-size: 15px;
+  font-size: var(--fs-body);
   line-height: 20px;
   overflow-wrap: anywhere;
 }
@@ -784,19 +784,19 @@ button.tb-page-title:active {
   margin-left: 0;
 }
 .tb-pf-section h4 {
-  margin: 18px 0 2px;
-  font-size: 13px;
-  font-weight: 650;
+  margin: 16px 0 4px;
+  font-size: var(--fs-secondary);
+  font-weight: 600;
   color: var(--text-2);
 }
 .tb-pf-more {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   min-height: var(--tap, 44px);
   padding: 0 4px;
-  font-size: 15px;
-  font-weight: 500;
+  font-size: var(--fs-body);
+  font-weight: 400;
   color: var(--text-3);
 }
 .tb-pf-none {
@@ -824,11 +824,11 @@ button.tb-page-title:active {
   width: 100%;
   min-height: var(--tap, 44px);
   justify-content: center;
-  font-size: 15px;
-  border-radius: 12px;
+  font-size: var(--fs-body);
+  border-radius: var(--r-tile);
 }
 .tb-page .tb-comment-new input {
-  font-size: 16px;
+  font-size: var(--fs-field);
   min-height: var(--tap, 44px);
 }
 /* ---------- board: one column at a time, the next peeking, a strip of names to jump ---------- */
@@ -836,8 +836,8 @@ button.tb-page-title:active {
 .tb-board-wrap.phone .tb-board {
   scroll-snap-type: x mandatory;
   scroll-padding-left: 16px;
-  padding: 10px 16px 16px;
-  gap: 10px;
+  padding: 12px 16px 16px;
+  gap: 12px;
   overscroll-behavior-x: contain;
 }
 .tb-board-wrap.phone .tb-col {
@@ -847,12 +847,12 @@ button.tb-page-title:active {
 }
 .tb-board-wrap.phone .tb-col-head {
   min-height: var(--tap, 44px);
-  font-size: 14px;
+  font-size: var(--fs-secondary);
 }
 .tb-board-wrap.phone .tb-card {
   min-height: 56px;
-  padding: 12px 14px;
-  font-size: 14px;
+  padding: 12px 16px;
+  font-size: var(--fs-secondary);
   cursor: pointer;
 }
 .tb-board-wrap.phone .tb-card:hover {
@@ -860,8 +860,8 @@ button.tb-page-title:active {
 }
 .tb-card-pill {
   position: relative;
-  font-size: 12.5px;
-  padding: 3px 10px;
+  font-size: var(--fs-caption);
+  padding: 4px 12px;
 }
 .tb-card-pill::after {
   content: '';
@@ -871,8 +871,8 @@ button.tb-page-title:active {
 .tb-jump {
   flex: none;
   display: flex;
-  gap: 6px;
-  padding: 8px 16px 2px;
+  gap: 8px;
+  padding: 8px 16px 4px;
   overflow-x: auto;
   scrollbar-width: none;
 }
@@ -883,18 +883,18 @@ button.tb-page-title:active {
   flex: none;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   min-height: var(--tap, 44px);
   padding: 0 12px;
-  border-radius: 9999px;
-  font-size: 13.5px;
+  border-radius: var(--r-pill);
+  font-size: var(--fs-secondary);
   color: var(--text-2);
   background: var(--surface-2);
   box-shadow: inset 0 0 0 1px var(--border);
   transition: background 0.18s ease, color 0.18s ease, box-shadow 0.18s ease;
 }
 .tb-jump button small {
-  font-size: 12px;
+  font-size: var(--fs-caption);
   color: var(--text-3);
   font-variant-numeric: tabular-nums;
 }
@@ -921,7 +921,7 @@ button.tb-page-title:active {
   padding: 8px 12px;
 }
 .tb-pcal-head strong {
-  font-size: 16px;
+  font-size: var(--fs-body);
   padding: 0 4px;
   white-space: nowrap;
 }
@@ -937,7 +937,7 @@ button.tb-page-title:active {
 .tb-pcal-wd {
   padding: 4px 0;
   text-align: center;
-  font-size: 12px;
+  font-size: var(--fs-caption);
   font-weight: 600;
   color: var(--text-3);
 }
@@ -945,10 +945,10 @@ button.tb-page-title:active {
   display: grid;
   justify-items: center;
   align-content: start;
-  gap: 3px;
+  gap: 4px;
   min-height: 48px;
   padding: 4px 0;
-  border-radius: 12px;
+  border-radius: var(--r-tile);
   color: var(--text);
   transition: background 0.15s ease, color 0.15s ease;
 }
@@ -959,14 +959,14 @@ button.tb-page-title:active {
   display: grid;
   place-items: center;
   width: 30px;
-  height: 30px;
+  height: 32px;
   border-radius: 50%;
-  font-size: 15px;
+  font-size: var(--fs-body);
   font-variant-numeric: tabular-nums;
   transition: background 0.15s ease, color 0.15s ease;
 }
 .tb-pcal-day.today .tb-pcal-n {
-  color: var(--accent);
+  color: var(--accent-text);
   font-weight: 700;
 }
 .tb-pcal-day.on .tb-pcal-n {
@@ -975,12 +975,12 @@ button.tb-page-title:active {
 }
 .tb-pcal-dots {
   display: flex;
-  gap: 3px;
-  height: 5px;
+  gap: 4px;
+  height: 6px;
 }
 .tb-pcal-dots i {
   width: 5px;
-  height: 5px;
+  height: 6px;
   border-radius: 50%;
   background: var(--accent);
   opacity: 0.75;
@@ -993,12 +993,12 @@ button.tb-page-title:active {
 .tb-pcal-list h4,
 .tb-ag-day h4 {
   margin: 8px 0 4px;
-  font-size: 13px;
-  font-weight: 650;
+  font-size: var(--fs-secondary);
+  font-weight: 600;
   color: var(--text-2);
 }
 .tb-ag-day h4.today {
-  color: var(--accent);
+  color: var(--accent-text);
 }
 .tb-agenda {
   padding: 0 16px 16px;
@@ -1006,7 +1006,7 @@ button.tb-page-title:active {
 .tb-ag-row {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   width: 100%;
   min-height: 48px;
   padding: 0 4px;
@@ -1021,7 +1021,7 @@ button.tb-page-title:active {
 .tb-ag-name {
   flex: 1;
   min-width: 0;
-  font-size: 15px;
+  font-size: var(--fs-body);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1031,18 +1031,18 @@ button.tb-page-title:active {
   display: flex;
   width: 100%;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   min-height: var(--tap, 44px);
   padding: 0 4px;
-  font-size: 14px;
+  font-size: var(--fs-secondary);
   font-weight: 600;
   color: var(--text-2);
 }
 .tb-ag-add {
-  color: var(--accent);
+  color: var(--accent-text);
 }
 .tb-ag-none {
-  margin: 10px 0;
+  margin: 12px 0;
 }
 
 /* ---------- the grid on a phone: the name stays, the rest scrolls; a tap edits ---------- */
@@ -1076,7 +1076,7 @@ button.tb-page-title:active {
 @media (max-width: 767px) {
   .tb-rd-line {
     grid-template-columns: 1fr;
-    gap: 2px;
+    gap: 4px;
   }
   .tb-imap-row {
     grid-template-columns: 1fr;
@@ -1093,8 +1093,8 @@ button.tb-page-title:active {
     padding: 4px;
   }
   .tb-cal-item {
-    font-size: 12px;
-    padding: 2px 4px;
+    font-size: var(--fs-caption);
+    padding: 4px 4px;
   }
   .tb-list-row {
     flex-wrap: wrap;
@@ -1145,11 +1145,11 @@ button.tb-page-title:active {
   /* Sharing with guests: checkboxes big enough for a thumb. */
   .tb-share-grid {
     grid-template-columns: minmax(0, 1fr) 64px 80px;
-    row-gap: 2px;
+    row-gap: 4px;
   }
   .tb-share-grid input[type='checkbox'] {
     width: 22px;
-    height: 22px;
+    height: 24px;
   }
   .tb-share-grid > *,
   .tb-share-grid .contents > * {
@@ -1161,7 +1161,7 @@ button.tb-page-title:active {
   .tb-filter,
   .tb-filter.tb-sort {
     grid-template-columns: 52px minmax(0, 1fr) var(--tap, 44px);
-    row-gap: 6px;
+    row-gap: 8px;
   }
   .tb-filter > :nth-child(2) {
     grid-column: 2;
@@ -1205,7 +1205,7 @@ button.tb-page-title:active {
 @media (max-width: 599px) {
   .tb-maptable-row {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    row-gap: 2px;
+    row-gap: 4px;
     padding: 8px 0;
   }
   .tb-maptable-row.head {
@@ -1214,15 +1214,15 @@ button.tb-page-title:active {
   .tb-maptable-row .tb-map-sample {
     grid-column: 1;
     grid-row: 2;
-    font-size: 12px;
+    font-size: var(--fs-caption);
   }
   .tb-maptable-row > span:last-child {
     grid-column: 2;
     grid-row: 1 / span 2;
   }
   .tb-gallery {
-    padding: 12px 16px 20px;
-    gap: 10px;
+    padding: 12px 16px 24px;
+    gap: 12px;
   }
   .tb-gadd {
     min-height: 64px;
@@ -1243,8 +1243,8 @@ button.tb-page-title:active {
   }
   .tb-vpill {
     max-width: 52%;
-    padding: 0 10px;
-    font-size: 14px;
+    padding: 0 12px;
+    font-size: var(--fs-caption);
   }
 }
 

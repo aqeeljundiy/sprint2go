@@ -38,7 +38,7 @@
     margin-left: auto;
   }
   .team-page .team-row {
-    min-height: 52px;
+    min-height: 48px;
   }
 }
 
@@ -54,7 +54,7 @@
   }
   /* A filter row that wraps loses its one grey track (it would be a blob): each choice is its own chip instead. */
   .adm-main .segmented {
-    gap: 6px;
+    gap: 8px;
     padding: 0;
     border-radius: 0;
     background: none;
@@ -69,7 +69,7 @@
   .adm-main small,
   .adm-main em,
   .adm-main .grow {
-    font-size: 12px;
+    font-size: var(--fs-caption);
   }
   .adm-main .adm-sort {
     min-height: 36px;
@@ -97,7 +97,7 @@
     border-radius: 0;
   }
   .onboard-body {
-    padding: 18px 16px 24px;
+    padding: 16px 16px 24px;
   }
   .ob-done {
     padding-top: 56px;
@@ -110,19 +110,19 @@
     grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
     row-gap: 4px;
-    padding: max(8px, env(safe-area-inset-top)) 6px 8px 16px;
+    padding: max(8px, env(safe-area-inset-top)) 8px 8px 16px;
   }
   .ob-steps {
     grid-column: 1;
     grid-row: 1;
     flex-wrap: nowrap;
-    gap: 6px;
+    gap: 8px;
     min-width: 0;
     overflow: hidden;
   }
   .ob-steps > span {
     flex: none;
-    gap: 6px;
+    gap: 8px;
   }
   .ob-steps > span:not(.on) .ob-step-name {
     display: none;
@@ -130,7 +130,7 @@
   .ob-steps > span.on {
     flex: 0 1 auto;
     min-width: 0;
-    font-size: 14px;
+    font-size: var(--fs-secondary);
   }
   .ob-steps .on .ob-step-name {
     overflow: hidden;
@@ -140,7 +140,7 @@
   .ob-steps b {
     width: 24px;
     height: 24px;
-    font-size: 12px;
+    font-size: var(--fs-caption);
   }
   .onboard-head > .ob-close {
     grid-column: 2;
@@ -155,14 +155,14 @@
 
   /* Brand colours (here and in Settings): one row of nine, no lonely swatch on a second line. */
   .accent-row {
-    gap: 6px;
+    gap: 8px;
   }
 
   /* Invite your team: email on top with Remove beside it, then name and role. */
   .ob-person {
     grid-template-columns: minmax(0, 1fr) auto var(--tap);
-    padding: 10px;
-    border-radius: 12px;
+    padding: 12px;
+    border-radius: var(--r-tile);
     border: 1px solid var(--border);
   }
   .ob-person > input:nth-child(2) {
@@ -239,7 +239,7 @@
   /* No desktop card on a phone: the form sits on the page, a little below the top, with nothing framing it. */
   .signin {
     align-content: start;
-    padding: max(10vh, calc(env(safe-area-inset-top) + 32px)) 20px calc(24px + env(safe-area-inset-bottom));
+    padding: max(10vh, calc(env(safe-area-inset-top) + 32px)) 24px calc(24px + env(safe-area-inset-bottom));
   }
   .signin-card:not(.cn-card) {
     padding: 0;
@@ -275,8 +275,8 @@
   .demo-bar {
     gap: 8px;
     height: calc(var(--demo-bar-h) + env(safe-area-inset-top));
-    padding: env(safe-area-inset-top) 6px 0 12px;
-    font-size: 13px;
+    padding: env(safe-area-inset-top) 8px 0 12px;
+    font-size: var(--fs-secondary);
   }
   .demo-bar-text > svg {
     display: none;
@@ -287,8 +287,8 @@
   .demo-bar .ghost-btn.sm,
   .demo-bar .primary-btn.sm {
     height: 40px;
-    padding: 0 10px;
-    font-size: 13px;
+    padding: 0 12px;
+    font-size: var(--fs-secondary);
   }
   .demo-bar .ghost-btn.sm > svg {
     display: none;
@@ -298,7 +298,7 @@
     height: calc(100dvh - var(--demo-bar-h) - env(safe-area-inset-top));
   }
   .app.with-demo-bar .mobile-top {
-    padding-top: 6px;
+    padding-top: 8px;
   }
 
   /* "Viewing as" a guest: the same kind of strip on top instead of a pill floating over the content and the composer. */
@@ -309,7 +309,7 @@
     left: 0;
     max-width: none;
     height: calc(var(--demo-bar-h) + env(safe-area-inset-top));
-    padding: env(safe-area-inset-top) 6px 0 14px;
+    padding: env(safe-area-inset-top) 8px 0 16px;
     border-radius: 0;
     transform: none;
     box-shadow: none;
@@ -329,7 +329,7 @@
     height: calc(100dvh - var(--demo-bar-h) - env(safe-area-inset-top));
   }
   .app.client-app:has(> .view-as-pill) .mobile-top {
-    padding-top: 6px;
+    padding-top: 8px;
   }
   .client-app:has(.view-as-pill) .client-toast {
     bottom: calc(var(--bar-space) + 12px);
@@ -365,14 +365,14 @@
     margin-bottom: 4px;
   }
   .vault-gate-card h2 {
-    font-size: 22px;
+    font-size: var(--fs-display);
     font-weight: 700;
     letter-spacing: -0.01em;
   }
   .vault-gate-card > p {
     max-width: 320px;
     text-wrap: balance;
-    font-size: 15px;
+    font-size: var(--fs-body);
     line-height: 20px;
   }
   .vault-gate-card form {
@@ -382,13 +382,13 @@
   }
   .vault-gate-card input {
     min-height: 48px;
-    border-radius: 12px;
-    font-size: 17px;
+    border-radius: var(--r-tile);
+    font-size: var(--fs-field);
   }
   .vault-gate-card .primary-btn {
     min-height: 48px;
-    border-radius: 12px;
-    font-size: 17px;
+    border-radius: var(--r-tile);
+    font-size: var(--fs-body);
     justify-content: center;
   }
   .vault-gate-card .fold {
@@ -400,14 +400,14 @@
     gap: 4px;
     min-height: 44px;
     padding: 0 8px;
-    font-size: 15px;
-    font-weight: 500;
-    color: var(--accent);
+    font-size: var(--fs-body);
+    font-weight: 400;
+    color: var(--accent-text);
   }
   .vg-how-text {
     margin: 0 auto;
     max-width: 320px;
-    font-size: 15px;
+    font-size: var(--fs-body);
     line-height: 20px;
   }
 
@@ -428,8 +428,8 @@
     gap: 8px;
     height: 36px;
     margin: 8px 16px 4px;
-    padding: 0 8px 0 10px;
-    border-radius: 10px;
+    padding: 0 8px 0 12px;
+    border-radius: var(--r-tile);
     background: var(--hover);
     color: var(--text-3);
   }
@@ -440,7 +440,7 @@
     border: 0;
     background: none;
     font: inherit;
-    font-size: 17px;
+    font-size: var(--fs-field);
     color: var(--text);
     outline: none;
   }
@@ -460,7 +460,7 @@
     align-items: center;
     gap: 16px;
     min-height: 64px;
-    padding: 10px 16px;
+    padding: 12px 16px;
     cursor: pointer;
     transition: background 0.15s;
   }
@@ -473,7 +473,7 @@
     top: 0;
     left: 72px;
     right: 0;
-    height: 0.5px;
+    height: 1px;
     background: var(--border);
   }
   .vp-tile {
@@ -489,10 +489,10 @@
     min-width: 0;
     display: flex;
     flex-direction: column;
-    gap: 1px;
+    gap: 0px;
   }
   .vp-title {
-    font-size: 17px;
+    font-size: var(--fs-title);
     line-height: 22px;
     color: var(--text);
     overflow: hidden;
@@ -500,7 +500,7 @@
     white-space: nowrap;
   }
   .vp-user {
-    font-size: 15px;
+    font-size: var(--fs-body);
     line-height: 20px;
     color: var(--text-3);
     overflow: hidden;
@@ -517,20 +517,20 @@
   .vp-foot {
     text-wrap: balance;
     margin: 16px 32px 0;
-    font-size: 13px;
+    font-size: var(--fs-secondary);
     line-height: 18px;
     text-align: center;
     color: var(--text-3);
   }
   .vp-none {
     margin: 24px 16px;
-    font-size: 15px;
+    font-size: var(--fs-body);
     text-align: center;
     color: var(--text-3);
   }
   .vp-confirm-text {
     margin: 0 4px 8px;
-    font-size: 15px;
+    font-size: var(--fs-body);
     line-height: 20px;
     color: var(--text-2);
   }
@@ -561,22 +561,22 @@
   }
   .vp-head h2 {
     margin: 0;
-    font-size: 22px;
+    font-size: var(--fs-display);
     font-weight: 700;
     line-height: 28px;
     overflow-wrap: anywhere;
   }
   .vp-head p {
     margin: 0;
-    font-size: 13px;
+    font-size: var(--fs-secondary);
     color: var(--text-3);
   }
   .vp-edit {
     min-height: 44px;
-    padding: 0 10px;
-    border-radius: 12px;
-    font-size: 17px;
-    color: var(--accent);
+    padding: 0 12px;
+    border-radius: var(--r-tile);
+    font-size: var(--fs-body);
+    color: var(--accent-text);
     transition: background 0.15s, opacity 0.15s;
   }
   .vp-edit.strong {
@@ -592,12 +592,12 @@
     min-height: 64px;
   }
   .vp-label {
-    font-size: 15px;
+    font-size: var(--fs-body);
     line-height: 20px;
     color: var(--text-3);
   }
   .vp-field .g-sub {
-    font-size: 17px;
+    font-size: var(--fs-field);
     line-height: 22px;
     color: var(--text);
   }
@@ -606,11 +606,11 @@
   }
   .vp-value.mono {
     font-family: ui-monospace, Menlo, monospace;
-    font-size: 16px;
+    font-size: var(--fs-body);
   }
   .vp-code {
     font-family: ui-monospace, Menlo, monospace;
-    font-size: 22px;
+    font-size: var(--fs-title);
     line-height: 28px;
     letter-spacing: 0.06em;
     color: var(--text);
@@ -635,7 +635,7 @@
     padding: 4px 0;
   }
   .vp-notes-text {
-    font-size: 17px;
+    font-size: var(--fs-body);
     line-height: 22px;
     white-space: pre-wrap;
     overflow-wrap: anywhere;
@@ -652,7 +652,7 @@
     display: flex;
     flex-direction: column;
     gap: 0;
-    border-radius: 16px;
+    border-radius: var(--r-card);
     background: var(--surface);
     overflow: hidden;
   }
@@ -666,7 +666,7 @@
     top: 0;
     left: 16px;
     right: 0;
-    height: 0.5px;
+    height: 1px;
     background: var(--border);
   }
   /* No box inside the card: fields and pickers are plain, the card is the frame. */
@@ -689,12 +689,12 @@
     gap: 4px;
   }
   .vp-form .field > span:first-child {
-    font-size: 13px;
+    font-size: var(--fs-secondary);
     color: var(--text-3);
   }
   .vp-form > .field {
     padding: 12px 16px;
-    border-radius: 16px;
+    border-radius: var(--r-card);
     background: var(--surface);
   }
   :root[data-theme='dark'] .vp-form .vault-grid,
@@ -725,8 +725,8 @@
     gap: 8px;
     height: 40px;
     margin: 0 16px 8px;
-    padding: 0 6px 0 12px;
-    border-radius: 10px;
+    padding: 0 8px 0 12px;
+    border-radius: var(--r-tile);
     background: var(--hover);
     color: var(--text-3);
   }
@@ -737,7 +737,7 @@
     border: 0;
     background: none;
     font: inherit;
-    font-size: 17px;
+    font-size: var(--fs-field);
     color: var(--text);
     outline: none;
   }
@@ -756,7 +756,7 @@
     border: 0;
     background: none;
     margin: 0 16px 4px;
-    font-size: 13px;
+    font-size: var(--fs-secondary);
     font-weight: 600;
     letter-spacing: 0.02em;
     text-transform: uppercase;
@@ -769,7 +769,7 @@
     min-width: 0;
     align-items: center;
     gap: 12px;
-    min-height: 60px;
+    min-height: 64px;
     padding: 8px 16px;
     cursor: pointer;
     color: var(--text);
@@ -784,7 +784,7 @@
     top: 0;
     left: 64px;
     right: 0;
-    height: 0.5px;
+    height: 1px;
     background: var(--border);
   }
   .tdir-tile {
@@ -793,9 +793,9 @@
     place-items: center;
     width: 36px;
     height: 36px;
-    border-radius: 9px;
+    border-radius: var(--r-tile);
     color: #fff;
-    font-size: 15px;
+    font-size: var(--fs-body);
     font-weight: 700;
   }
   .tdir-text {
@@ -803,14 +803,14 @@
     min-width: 0;
     display: flex;
     flex-direction: column;
-    gap: 1px;
+    gap: 0px;
   }
   .tdir-text strong {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 8px;
     min-width: 0;
-    font-size: 17px;
+    font-size: var(--fs-body);
     font-weight: 600;
     line-height: 22px;
     overflow: hidden;
@@ -818,7 +818,7 @@
     text-overflow: ellipsis;
   }
   .tdir-text small {
-    font-size: 15px;
+    font-size: var(--fs-body);
     line-height: 20px;
     color: var(--text-3);
     overflow: hidden;
@@ -827,7 +827,7 @@
   }
   .tdir-state {
     flex: none;
-    font-size: 13px;
+    font-size: var(--fs-secondary);
     font-weight: 600;
   }
   .tdir-state.bad {
@@ -840,12 +840,12 @@
   .tdir-row .primary-btn.sm {
     flex: none;
     min-height: 32px;
-    border-radius: 16px;
+    border-radius: var(--r-card);
   }
   .tdir-none {
     margin: 24px 16px;
     text-align: center;
-    font-size: 15px;
+    font-size: var(--fs-body);
     color: var(--text-3);
   }
   /* A member's profile, on top of their actions. */
@@ -859,11 +859,11 @@
   }
   .tdir-profile strong {
     margin-top: 8px;
-    font-size: 20px;
+    font-size: var(--fs-title);
     font-weight: 600;
   }
   .tdir-profile small {
-    font-size: 15px;
+    font-size: var(--fs-body);
     color: var(--text-3);
   }
   /* Member rows: no hover box left behind after a tap (it showed as a stray rounded border). */

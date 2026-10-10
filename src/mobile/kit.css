@@ -50,7 +50,7 @@
   flex-direction: column;
   width: 100%;
   max-height: calc(100dvh - var(--kb, 0px) - max(12px, env(safe-area-inset-top)) - 12px);
-  border-radius: 20px 20px 0 0;
+  border-radius: var(--r-card) var(--r-card) 0 0;
   background: var(--surface);
   box-shadow: var(--shadow-lg);
   padding-bottom: env(safe-area-inset-bottom);
@@ -69,9 +69,9 @@
 .sheet-grab {
   flex: none;
   width: 38px;
-  height: 5px;
+  height: 6px;
   margin: 8px auto 4px;
-  border-radius: 5px;
+  border-radius: var(--r-tile);
   background: var(--border);
   touch-action: none;
 }
@@ -81,14 +81,14 @@
   align-items: center;
   gap: 8px;
   min-height: 44px;
-  padding: 2px 16px 6px;
+  padding: 4px 16px 8px;
   touch-action: none;
 }
 .sheet-title {
   flex: 1;
   min-width: 0;
   margin: 0;
-  font-size: 17px;
+  font-size: var(--fs-title);
   font-weight: 700;
   letter-spacing: -0.01em;
   overflow: hidden;
@@ -107,7 +107,7 @@
   display: flex;
   gap: 8px;
   justify-content: flex-end;
-  padding: 10px 16px 12px;
+  padding: 12px 16px 12px;
   border-top: 1px solid var(--line);
 }
 /* Rising from above the tab bar, which stays in view (More): the bar's room is kept free. */
@@ -150,7 +150,7 @@
 
 .as-list {
   display: grid;
-  gap: 1px;
+  gap: 0px;
 }
 .as-item {
   display: flex;
@@ -159,9 +159,9 @@
   width: 100%;
   min-height: 48px;
   padding: 8px 12px;
-  border-radius: 12px;
-  font-size: 15px;
-  font-weight: 500;
+  border-radius: var(--r-tile);
+  font-size: var(--fs-body);
+  font-weight: 400;
   color: var(--text);
   text-align: left;
   transition: background 0.15s, color 0.15s;
@@ -190,16 +190,16 @@
   flex: 1;
   min-width: 0;
   display: grid;
-  gap: 1px;
+  gap: 0px;
 }
 .as-label small {
-  font-size: 13px;
+  font-size: var(--fs-secondary);
   font-weight: 400;
   color: var(--text-3);
 }
 .as-check {
   flex: none;
-  color: var(--accent);
+  color: var(--accent-text);
 }
 .as-sep {
   height: 1px;
@@ -208,17 +208,17 @@
 }
 .as-group {
   padding: 12px 12px 4px;
-  font-size: 12px;
+  font-size: var(--fs-caption);
   font-weight: 600;
   color: var(--text-3);
 }
 /* As a desktop menu: the denser size of the app's other menus. */
 .pop .as-item {
-  min-height: 34px;
-  padding: 6px 10px;
-  border-radius: 8px;
-  font-size: 13.5px;
-  gap: 10px;
+  min-height: 36px;
+  padding: 8px 12px;
+  border-radius: var(--r-tile);
+  font-size: var(--fs-secondary);
+  gap: 12px;
 }
 .pop .as-item .as-icon {
   width: 16px;
@@ -250,8 +250,8 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 0 22px;
-  font-size: 13px;
+  padding: 0 24px;
+  font-size: var(--fs-secondary);
   font-weight: 700;
   color: var(--text-2);
   background: var(--surface-2);
@@ -317,15 +317,15 @@
   flex: 0 10 auto;
   display: inline-flex;
   align-items: center;
-  gap: 2px;
+  gap: 4px;
   min-width: 44px;
   min-height: 44px;
-  padding: 0 8px 0 6px;
+  padding: 0 8px 0 8px;
   overflow: hidden;
-  border-radius: 12px;
-  color: var(--accent);
-  font-size: 16px;
-  font-weight: 500;
+  border-radius: var(--r-tile);
+  color: var(--accent-text);
+  font-size: var(--fs-body);
+  font-weight: 400;
   transition: background 0.15s;
 }
 .push-back svg {
@@ -350,7 +350,7 @@
   flex: 1 1 auto;
   min-width: 0;
   margin: 0;
-  font-size: 17px;
+  font-size: var(--fs-title);
   font-weight: 700;
   letter-spacing: -0.01em;
   overflow: hidden;
@@ -359,7 +359,7 @@
 }
 .push-actions {
   display: flex;
-  gap: 2px;
+  gap: 4px;
 }
 /* notify.css has its own .push-actions (the notifications card): none of its indent here, or the title loses 52 px. */
 .push-head > .push-actions {
@@ -412,7 +412,7 @@
   overflow-y: auto;
   overscroll-behavior: contain;
   padding: env(safe-area-inset-top) 0 calc(16px + env(safe-area-inset-bottom));
-  border-radius: 0 16px 16px 0;
+  border-radius: 0 var(--r-card) var(--r-card) 0;
   background: var(--surface);
   box-shadow: var(--shadow-lg);
   transition: transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);

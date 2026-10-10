@@ -1873,7 +1873,7 @@ button.td-chip:hover,
     display: grid;
     grid-template-columns: 36px minmax(0, 1fr) auto auto;
     grid-template-areas: 'swatch name order remove' '. kind kind kind';
-    gap: 2px 6px;
+    gap: 4px 8px;
     padding: 8px 0;
   }
   .stage-swatch {
@@ -1890,7 +1890,7 @@ button.td-chip:hover,
     max-width: 100%;
   }
   .stage-kind-fixed {
-    padding: 8px 10px;
+    padding: 8px 12px;
   }
   .stage-order {
     grid-area: order;
