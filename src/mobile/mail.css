@@ -1621,7 +1621,7 @@
     white-space: nowrap;
     text-overflow: ellipsis;
   }
-  .gm-fixed-value.muted {
+  .compose.phone .gm-fixed-value.muted {
     color: var(--text-3);
   }
   /* The strip above the keyboard shows only while the keyboard is up (Gmail has no toolbar at rest). */
@@ -1814,6 +1814,8 @@
   }
   .compose.phone .compose-field .gm-fixed-value,
   .compose.phone .recip .gm-fixed-value {
+    font-size: 16px;
+    color: var(--text);
     flex: 1;
     width: auto;
     padding: 0;
