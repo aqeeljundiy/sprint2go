@@ -714,12 +714,12 @@
 /* ---------- Teams on phones (teams/TeamsApp.tsx): Slack's people directory ---------- */
 
 @media (max-width: 767px) {
-  .tasks-pane.tp-pane > .tracking-scroll {
+  .tasks-pane.tdir-pane > .tracking-scroll {
     padding-top: 8px;
     padding-left: 0;
     padding-right: 0;
   }
-  .tp-search {
+  .tdir-search {
     display: flex;
     align-items: center;
     gap: 8px;
@@ -730,7 +730,7 @@
     background: var(--hover);
     color: var(--text-3);
   }
-  .tp-search input {
+  .tdir-search input {
     flex: 1;
     min-width: 0;
     height: 100%;
@@ -741,17 +741,17 @@
     color: var(--text);
     outline: none;
   }
-  .tp-search button {
+  .tdir-search button {
     display: grid;
     place-items: center;
     width: 32px;
     height: 32px;
     color: var(--text-3);
   }
-  .tp-sec {
+  .tdir-sec {
     margin-top: 16px;
   }
-  .tp-pane .tp-head {
+  .tdir-pane .tdir-head {
     padding: 0;
     border: 0;
     background: none;
@@ -762,9 +762,11 @@
     text-transform: uppercase;
     color: var(--text-3);
   }
-  .tp-row {
+  .tdir-row {
     position: relative;
     display: flex;
+    width: 100%;
+    min-width: 0;
     align-items: center;
     gap: 12px;
     min-height: 60px;
@@ -773,10 +775,10 @@
     color: var(--text);
     transition: background 0.15s;
   }
-  .tp-row:active {
+  .tdir-row:active {
     background: var(--hover);
   }
-  .tp-row + .tp-row::before {
+  .tdir-row + .tdir-row::before {
     content: '';
     position: absolute;
     top: 0;
@@ -785,7 +787,7 @@
     height: 0.5px;
     background: var(--border);
   }
-  .tp-tile {
+  .tdir-tile {
     flex: none;
     display: grid;
     place-items: center;
@@ -796,14 +798,14 @@
     font-size: 15px;
     font-weight: 700;
   }
-  .tp-text {
+  .tdir-text {
     flex: 1;
     min-width: 0;
     display: flex;
     flex-direction: column;
     gap: 1px;
   }
-  .tp-text strong {
+  .tdir-text strong {
     display: flex;
     align-items: center;
     gap: 6px;
@@ -815,7 +817,7 @@
     white-space: nowrap;
     text-overflow: ellipsis;
   }
-  .tp-text small {
+  .tdir-text small {
     font-size: 15px;
     line-height: 20px;
     color: var(--text-3);
@@ -823,31 +825,31 @@
     white-space: nowrap;
     text-overflow: ellipsis;
   }
-  .tp-state {
+  .tdir-state {
     flex: none;
     font-size: 13px;
     font-weight: 600;
   }
-  .tp-state.bad {
+  .tdir-state.bad {
     color: var(--danger);
   }
-  .tp-state.warn {
+  .tdir-state.warn {
     color: var(--warn, #b45309);
   }
-  .tp-row .ghost-btn.sm,
-  .tp-row .primary-btn.sm {
+  .tdir-row .ghost-btn.sm,
+  .tdir-row .primary-btn.sm {
     flex: none;
     min-height: 32px;
     border-radius: 16px;
   }
-  .tp-none {
+  .tdir-none {
     margin: 24px 16px;
     text-align: center;
     font-size: 15px;
     color: var(--text-3);
   }
   /* A member's profile, on top of their actions. */
-  .tp-profile {
+  .tdir-profile {
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -855,19 +857,19 @@
     padding: 4px 8px 16px;
     text-align: center;
   }
-  .tp-profile strong {
+  .tdir-profile strong {
     margin-top: 8px;
     font-size: 20px;
     font-weight: 600;
   }
-  .tp-profile small {
+  .tdir-profile small {
     font-size: 15px;
     color: var(--text-3);
   }
   /* Member rows: no hover box left behind after a tap (it showed as a stray rounded border). */
-  .team-page .tp-member {
-    width: calc(100% + 32px);
-    margin: 0 -16px;
+  .team-page .tdir-member {
+    width: calc(100% + 24px);
+    margin: 0 -12px;
     min-height: 56px;
   }
   .team-page .team-row {

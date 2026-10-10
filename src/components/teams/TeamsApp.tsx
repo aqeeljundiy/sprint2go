@@ -127,7 +127,7 @@ export function TeamsHome({ teams, users, tasks, me, canCreate, actions, onOpen,
   const phone = usePhone();
   if (phone && teams.length)
     return (
-      <section className="tasks-pane view-enter tp-pane">
+      <section className="tasks-pane view-enter tdir-pane">
         <div className="tracking-scroll">
           <TeamsPhone teams={teams} users={users} tasks={tasks} me={me} actions={actions} onOpen={onOpen} />
         </div>
@@ -225,29 +225,29 @@ function TeamsPhone({ teams, users, tasks, me, actions, onOpen }: { teams: Team[
     const lead = users.find((u) => u.id === tm.leadId);
     const s = teamState(tm, tasks);
     return (
-      <div key={tm.id} className="tp-row" role="button" tabIndex={0} onClick={() => onOpen(tm.id)} onKeyDown={(e) => e.key === 'Enter' && e.target === e.currentTarget && onOpen(tm.id)}>
-        <span className="tp-tile" style={{ background: tm.color }} aria-hidden>
+      <div key={tm.id} className="tdir-row" role="button" tabIndex={0} onClick={() => onOpen(tm.id)} onKeyDown={(e) => e.key === 'Enter' && e.target === e.currentTarget && onOpen(tm.id)}>
+        <span className="tdir-tile" style={{ background: tm.color }} aria-hidden>
           {tm.name.charAt(0).toUpperCase()}
         </span>
-        <span className="tp-text">
+        <span className="tdir-text">
           <strong>{tm.name}</strong>
           <small>{[lead ? t('Led by {name}', { name: lead.name.split(' ')[0] }) : t('No lead yet'), tm.members.length ? tn(tm.members.length, '{n} person', '{n} people') : t('Nobody yet')].join(' · ')}</small>
         </span>
-        {s.issues.length > 0 && <span className={`tp-state ${s.late ? 'bad' : 'warn'}`}>{s.issues[0]}</span>}
+        {s.issues.length > 0 && <span className={`tdir-state ${s.late ? 'bad' : 'warn'}`}>{s.issues[0]}</span>}
         {other && <JoinButton tm={tm} me={me} actions={actions} small />}
       </div>
     );
   };
   const section = (title: string, list: Team[], other: boolean) =>
     list.length > 0 && (
-      <section className="tp-sec">
-        <h2 className="tp-head">{title}</h2>
-        <div className="tp-list">{list.map((tm) => row(tm, other))}</div>
+      <section className="tdir-sec">
+        <h2 className="tdir-head">{title}</h2>
+        <div className="tdir-list">{list.map((tm) => row(tm, other))}</div>
       </section>
     );
   return (
-    <div className="tp">
-      <label className="tp-search">
+    <div className="tdir">
+      <label className="tdir-search">
         <Search size={17} />
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t('Search teams and people')} aria-label={t('Search teams and people')} enterKeyHint="search" />
         {q && (
@@ -259,15 +259,15 @@ function TeamsPhone({ teams, users, tasks, me, actions, onOpen }: { teams: Team[
       {section(t('Your teams'), mine, false)}
       {section(t('Other teams'), others, true)}
       {people.length > 0 && (
-        <section className="tp-sec">
-          <h2 className="tp-head">{t('People')}</h2>
-          <div className="tp-list">
+        <section className="tdir-sec">
+          <h2 className="tdir-head">{t('People')}</h2>
+          <div className="tdir-list">
             {people.map((u) => {
               const theirs = teams.filter((tm) => tm.members.includes(u.id));
               return (
-                <div key={u.id} className="tp-row" role={theirs[0] ? 'button' : undefined} onClick={theirs[0] ? () => onOpen(theirs[0].id) : undefined}>
+                <div key={u.id} className="tdir-row" role={theirs[0] ? 'button' : undefined} onClick={theirs[0] ? () => onOpen(theirs[0].id) : undefined}>
                   <Avatar person={u} size={36} />
-                  <span className="tp-text">
+                  <span className="tdir-text">
                     <strong>{u.name}</strong>
                     <small>{[u.title, theirs.map((x) => x.name).join(', ')].filter(Boolean).join(' · ') || u.email}</small>
                   </span>
@@ -277,7 +277,7 @@ function TeamsPhone({ teams, users, tasks, me, actions, onOpen }: { teams: Team[
           </div>
         </section>
       )}
-      {query && !shown.length && !people.length && <p className="tp-none">{t('Nothing matches “{q}”.', { q: q.trim() })}</p>}
+      {query && !shown.length && !people.length && <p className="tdir-none">{t('Nothing matches “{q}”.', { q: q.trim() })}</p>}
     </div>
   );
 }
@@ -299,7 +299,7 @@ function MemberRow({ u, tm, teams, me, manage, actions }: { u: User; tm: Team; t
     ],
     {
       header: (
-        <div className="tp-profile">
+        <div className="tdir-profile">
           <Avatar person={u} size={56} />
           <strong>{u.name}</strong>
           <small>{[u.title, u.email].filter(Boolean).join(' · ')}</small>
@@ -310,9 +310,9 @@ function MemberRow({ u, tm, teams, me, manage, actions }: { u: User; tm: Team; t
   );
   return (
     <>
-      <div className="tp-row tp-member lp" role="button" tabIndex={0} {...menu.bind} onClick={(e) => menu.openAt(e.clientX, e.clientY)} onKeyDown={(e) => e.key === 'Enter' && menu.openAt(0, 0)}>
+      <div className="tdir-row tdir-member lp" role="button" tabIndex={0} {...menu.bind} onClick={(e) => menu.openAt(e.clientX, e.clientY)} onKeyDown={(e) => e.key === 'Enter' && menu.openAt(0, 0)}>
         <Avatar person={u} size={36} />
-        <span className="tp-text">
+        <span className="tdir-text">
           <strong>
             {u.name}
             {u.id === me && <Badge tone="accent">{t('You')}</Badge>}
